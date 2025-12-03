@@ -7,12 +7,19 @@ import { Briefcase, ShoppingCart, Box, Clock, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 
-// Mapeo manual de iconos para no complicarnos con imports dinámicos
 const iconMap: Record<string, any> = {
   travel: Briefcase,
   inventory: Box,
   shopping: ShoppingCart,
   timeline: Clock
+}
+
+// Mapeo de rutas: Clave del módulo -> Ruta de la web
+const routeMap: Record<string, string> = {
+  travel: '/travel',
+  timeline: '/timeline',
+  inventory: '/inventory', // (Aún no existe, dará 404 si entras)
+  shopping: '/shopping'    // (Aún no existe, dará 404 si entras)
 }
 
 export default function Dashboard() {
@@ -23,11 +30,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function init() {
-      // 1. Obtener usuario
       const { data: { user } } = await supabase.auth.getUser()
       if (user) setUserEmail(user.email || "")
 
-      // 2. Obtener módulos (Apps instaladas)
       const { data } = await supabase.from('app_modules').select('*').eq('is_active', true)
       if (data) setModules(data)
     }
@@ -59,14 +64,13 @@ export default function Dashboard() {
         
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
           {modules.map((mod) => {
-            const IconComponent = iconMap[mod.key] || Box // Icono por defecto si falla
+            const IconComponent = iconMap[mod.key] || Box
             
-            // Decidimos a dónde lleva el link
-            // Si es 'travel', va a /travel. Los demás por ahora no hacen nada (#).
-            const href = mod.key === 'travel' ? '/travel' : '#'
+            // BUSCAMOS LA RUTA EN EL MAPA
+            const href = routeMap[mod.key] || '#' 
             
             return (
-              <Link href={href} key={mod.id} className={mod.key !== 'travel' ? 'cursor-not-allowed opacity-60' : ''}>
+              <Link href={href} key={mod.id}>
                 <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full border-slate-200">
                   <CardHeader className="flex flex-row items-center gap-4">
                     <div className="p-3 bg-indigo-50 rounded-lg text-indigo-600">
