@@ -16,8 +16,8 @@ export default function LoginPage({
   searchParams: { message: string }
 }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 pb-32">
+      <Card className="w-full max-w-md shadow-lg border-0">
         <CardHeader>
           <CardTitle className="text-2xl text-center font-bold">Life OS</CardTitle>
           <CardDescription className="text-center">

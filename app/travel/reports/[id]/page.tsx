@@ -109,9 +109,9 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
   const reportMonthYear = reportDate.toLocaleDateString('es-ES', { month: '2-digit', year: 'numeric' }).replace('/', ' ')
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans pb-24 print:bg-white print:pb-0">
+    <div className="min-h-screen bg-slate-100 font-sans pb-24 print:bg-white print:pb-0 print:m-0 print:p-0 print:overflow-visible">
       
-      {/* HEADER NAVEGACIÓN (Solo pantalla) */}
+      {/* HEADER NAVEGACIÓN (Oculto al imprimir) */}
       <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 shadow-sm print:hidden flex justify-between items-center">
          <div className="flex items-center gap-3">
             <Link href="/travel"><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
@@ -120,11 +120,18 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
          <PrintButton />
       </div>
 
-      <main className="max-w-[210mm] mx-auto p-8 print:p-0 print:m-0 print:w-full">
+      {/* TRUCO PARA MÓVIL: 
+          print:min-w-[1024px] -> Fuerza a que el contenedor sea ANCHO aunque la pantalla sea estrecha.
+          print:absolute print:top-0 print:left-0 -> Lo saca del flujo normal para evitar scrollbars raros.
+          print:scale-[0.6] md:print:scale-100 -> Opcional: si en tu móvil sale cortado, el navegador suele tener opción de "Escala".
+          Pero lo mejor es forzar el ancho.
+      */}
+      <main className="max-w-[210mm] mx-auto p-4 md:p-8 print:p-0 print:m-0 print:w-[210mm] print:max-w-none print:absolute print:top-0 print:left-0">
         
         {/* --- PÁGINA 1: LA HOJA "FEA" (OFICIAL) --- */}
-        <div className="bg-white shadow-lg p-10 min-h-[297mm] print:shadow-none print:p-0 print:min-h-0 text-black font-mono text-sm leading-tight">
+        <div className="bg-white shadow-lg p-6 md:p-10 min-h-[297mm] print:shadow-none print:p-10 print:min-h-0 text-black font-mono text-sm leading-tight print:w-[210mm]">
             
+            {/* ... (Todo el contenido interior de la hoja sigue IGUAL que antes) ... */}
             {/* CABECERA CUADRICULADA */}
             <div className="border border-black mb-6">
                 <div className="flex border-b border-black">
@@ -146,13 +153,13 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
                 Gastos de Viaje
             </div>
 
-            {/* TABLA PRINCIPAL (Estilo Excel Antiguo) */}
+            {/* TABLA PRINCIPAL */}
             <table className="w-full border-collapse border border-black mb-8 text-xs">
                 <thead>
                     <tr className="bg-slate-200">
                         <th className="border border-black p-2 text-left w-1/3">CONCEPTO</th>
-                        <th className="border border-black p-2 text-right w-1/4">PROPIO (Reembolsar)</th>
-                        <th className="border border-black p-2 text-right w-1/4">EMPRESA (Visa)</th>
+                        <th className="border border-black p-2 text-right w-1/4">PROPIO</th>
+                        <th className="border border-black p-2 text-right w-1/4">EMPRESA</th>
                         <th className="border border-black p-2 text-right w-1/4">TOTAL</th>
                     </tr>
                 </thead>
@@ -160,7 +167,6 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
                     {orderedKeys.map(key => {
                         const row = summary[key]
                         const label = categoryMap[key]
-                        // Solo mostramos filas si tienen importe o si queremos que aparezcan siempre las fijas
                         return (
                             <tr key={key}>
                                 <td className="border border-black p-2 font-bold">{label}</td>
@@ -170,7 +176,6 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
                             </tr>
                         )
                     })}
-                    {/* FILA DE TOTALES */}
                     <tr className="bg-slate-200 font-bold border-t-2 border-black">
                         <td className="border border-black p-2">TOTALES</td>
                         <td className="border border-black p-2 text-right">{totalPropio.toFixed(2)}</td>
@@ -182,7 +187,7 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
 
             {/* RESUMEN DE PAGO */}
             <div className="flex justify-end mb-10">
-                <div className="w-1/2 border border-black">
+                <div className="w-full md:w-1/2 border border-black">
                     <div className="bg-slate-200 border-b border-black p-2 font-bold text-center">RESUMEN LIQUIDACIÓN</div>
                     <div className="flex justify-between p-2 border-b border-black border-dashed">
                         <span>Total Gastado:</span>
@@ -211,10 +216,10 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
             </div>
         </div>
 
-        {/* --- PÁGINA 2: DETALLE GLOSADO (Para que sepan de dónde sale) --- */}
-        <div className="mt-8 print:break-before-page bg-white shadow-lg p-10 print:shadow-none print:p-0 text-black font-sans">
+        {/* --- PÁGINA 2: DETALLE --- */}
+        <div className="mt-8 print:break-before-page bg-white shadow-lg p-6 md:p-10 print:shadow-none print:p-10 print:min-h-0 text-black font-sans print:w-[210mm]">
             <h2 className="text-xl font-bold border-b-2 border-black pb-2 mb-6 uppercase">Detalle de Movimientos</h2>
-            
+            {/* ... (Contenido de detalle igual) ... */}
             {Object.keys(groupedForDetail).map((catName) => {
                if(groupedForDetail[catName].length === 0) return null
                return (
@@ -250,10 +255,10 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
 
         {/* --- PÁGINA 3: ANEXO DE TICKETS --- */}
         {receipts.length > 0 && (
-            <div className="mt-8 print:break-before-page bg-white shadow-lg p-10 print:shadow-none print:p-0">
+            <div className="mt-8 print:break-before-page bg-white shadow-lg p-6 md:p-10 print:shadow-none print:p-10 text-black print:w-[210mm]">
                 <h2 className="text-xl font-bold text-slate-900 mb-6 border-b-2 border-black pb-2 uppercase">Anexo: Justificantes</h2>
-                
-                <div className="grid grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 print:grid-cols-2"> {/* Forzamos 2 columnas al imprimir */}
+                    {/* ... (Contenido de tickets igual) ... */}
                     {receipts.map(rec => (
                         <div key={rec.id} className="break-inside-avoid border border-slate-300 rounded p-2">
                             <div className="mb-2 pb-1 border-b border-slate-200 text-xs font-bold flex justify-between">
