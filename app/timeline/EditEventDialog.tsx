@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog"
 import { Pencil, Link as LinkIcon, Trash2, Plus } from 'lucide-react'
-
+import imageCompression from 'browser-image-compression'
 // Tipos
 interface LinkItem { label: string; url: string }
 
@@ -43,11 +43,21 @@ export function EditEventDialog({ event, allTags, allPeople }: { event: any, all
   const toggleTag = (id: string) => setSelectedTags(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id])
   const togglePerson = (id: string) => setSelectedPeople(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id])
 
-  async function handleSubmit(formData: FormData) {
+async function handleSubmit(formData: FormData) {
+    // 1. COMPRESIÓN
+    const originalFile = formData.get('media_file') as File
+    if (originalFile && originalFile.size > 0 && originalFile.type.startsWith('image/')) {
+        try {
+            const options = { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: true }
+            const compressedFile = await imageCompression(originalFile, options)
+            formData.set('media_file', compressedFile)
+        } catch (err) { console.error(err) }
+    }
+
+    // 2. DATOS
     formData.append('event_id', event.id)
     formData.append('tags', selectedTags.join(','))
     formData.append('people', selectedPeople.join(','))
-    // Convertimos el array de links a texto para enviarlo
     formData.append('external_links', JSON.stringify(links))
 
     const res = await updateTimelineEvent(formData)

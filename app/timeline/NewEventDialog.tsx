@@ -12,6 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog"
 import { Plus, Image as ImageIcon, Users, Tag, Loader2 } from 'lucide-react'
+import imageCompression from 'browser-image-compression'
 
 // Tipos de datos que recibimos de la base de datos
 interface TagData { id: string; name: string }
@@ -63,11 +64,34 @@ export function NewEventDialog({ allTags, allPeople }: { allTags: TagData[], all
     }
   }
 
-  // --- ENVÍO FINAL ---
+// --- ENVÍO FINAL (Con Compresión) ---
   async function handleSubmit(formData: FormData) {
     setIsSubmitting(true)
     
-    // Añadimos manualmente los arrays seleccionados al FormData
+    // 1. INTERCEPTAR FOTO
+    const originalFile = formData.get('media_file') as File
+    
+    // Si es imagen, comprimimos
+    if (originalFile && originalFile.size > 0 && originalFile.type.startsWith('image/')) {
+        try {
+            console.log("Comprimiendo imagen...", originalFile.size)
+            const options = {
+                maxSizeMB: 1.5,          // Máx 1.5 MB (Alta calidad web)
+                maxWidthOrHeight: 1920,  // Full HD
+                useWebWorker: true
+            }
+            const compressedFile = await imageCompression(originalFile, options)
+            console.log("Comprimida a:", compressedFile.size)
+            
+            // Reemplazamos el archivo original por el ligero
+            formData.set('media_file', compressedFile)
+            
+        } catch (err) {
+            console.error("Error comprimiendo, se usará original:", err)
+        }
+    }
+
+    // 2. AÑADIR RESTO DE DATOS
     formData.append('tags', selectedTags.join(','))
     formData.append('people', selectedPeople.join(','))
 
@@ -76,7 +100,6 @@ export function NewEventDialog({ allTags, allPeople }: { allTags: TagData[], all
     setIsSubmitting(false)
     if (res?.success) {
       setOpen(false)
-      // Resetear formulario
       setSelectedTags([])
       setSelectedPeople([])
     } else {

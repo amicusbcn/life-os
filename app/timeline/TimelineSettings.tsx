@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { MoreVertical, Settings, Trash2, Save, Tag, Users, Upload, UserCircle } from 'lucide-react'
+import imageCompression from 'browser-image-compression'
 
 // --- FILA DE ETIQUETA (Con Color) ---
 function TagRow({ tag }: { tag: any }) {
@@ -51,7 +52,7 @@ function TagRow({ tag }: { tag: any }) {
   )
 }
 
-// --- FILA DE PERSONA (Con Avatar) ---
+// --- FILA DE PERSONA (Con Compresión) ---
 function PersonRow({ person }: { person: any }) {
   const [name, setName] = useState(person.name)
   const [isChanged, setIsChanged] = useState(false)
@@ -68,19 +69,42 @@ function PersonRow({ person }: { person: any }) {
     setIsChanged(false)
   }
 
-  // Subir Avatar al seleccionar archivo
+  // Subir Avatar (COMPRIMIDO)
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const originalFile = e.target.files?.[0]
+    if (!originalFile) return
 
     setUploading(true)
-    const formData = new FormData()
-    formData.append('id', person.id)
-    formData.append('name', name) // Enviamos el nombre también por si acaso
-    formData.append('avatar_file', file)
 
-    await updatePerson(formData)
-    setUploading(false)
+    try {
+      // 1. Opciones de compresión (Agresiva para avatares pequeños)
+      const options = {
+        maxSizeMB: 0.2,          // Máx 200KB
+        maxWidthOrHeight: 500,   // Máx 500px
+        useWebWorker: true,
+        fileType: 'image/jpeg'
+      }
+
+      // 2. Comprimir
+      const compressedFile = await imageCompression(originalFile, options)
+      
+      // 3. Preparar envío
+      const formData = new FormData()
+      formData.append('id', person.id)
+      formData.append('name', name)
+      // Enviamos el fichero comprimido
+      formData.append('avatar_file', compressedFile, 'avatar.jpg') 
+
+      const res = await updatePerson(formData)
+      
+      if (res?.error) alert(res.error)
+
+    } catch (error) {
+      console.error("Error comprimiendo:", error)
+      alert("No se pudo procesar la imagen.")
+    } finally {
+      setUploading(false)
+    }
   }
 
   const handleDelete = async () => {
@@ -89,12 +113,10 @@ function PersonRow({ person }: { person: any }) {
 
   return (
     <div className="flex items-center gap-3 mb-3 bg-white p-2 rounded border border-slate-100 shadow-sm">
-      
-      {/* AVATAR CLICKABLE */}
-      <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+      <div className="relative group cursor-pointer" onClick={() => !uploading && fileInputRef.current?.click()}>
         <input 
             type="file" ref={fileInputRef} className="hidden" accept="image/*" 
-            onChange={handleAvatarChange}
+            onChange={handleAvatarChange} disabled={uploading}
         />
         <Avatar className="h-10 w-10 border border-slate-200">
             <AvatarImage src={person.avatar_url} className="object-cover" />
@@ -102,7 +124,6 @@ function PersonRow({ person }: { person: any }) {
                 {uploading ? '...' : person.name.substring(0,2).toUpperCase()}
             </AvatarFallback>
         </Avatar>
-        {/* Overlay de subida al pasar ratón */}
         <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
             <Upload className="h-3 w-3 text-white" />
         </div>
