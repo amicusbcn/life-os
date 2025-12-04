@@ -1,6 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
-import { InventoryListView } from '@/components/inventory/InventoryListView'
-import { NewItemDialog } from '@/components/inventory/NewItemDialog'
+import { InventoryListView } from './InventoryListView'
+import { NewItemDialog } from './NewItemDialog'
 import Link from 'next/link'
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from 'lucide-react'
