@@ -184,3 +184,66 @@ export async function updateTimelineEvent(formData: FormData) {
   revalidatePath('/timeline')
   return { success: true }
 }
+
+// ...
+
+// === GESTIÓN DE ETIQUETAS ===
+export async function updateTag(tagId: string, name: string, color: string) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('timeline_tags').update({ name, color }).eq('id', tagId)
+  if (error) return { error: error.message }
+  revalidatePath('/timeline')
+  return { success: true }
+}
+
+export async function deleteTag(tagId: string) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('timeline_tags').delete().eq('id', tagId)
+  if (error) return { error: error.message }
+  revalidatePath('/timeline')
+  return { success: true }
+}
+
+// === GESTIÓN DE PERSONAS (Mejorada) ===
+export async function updatePerson(formData: FormData) {
+  const supabase = await createClient()
+  const personId = formData.get('id') as string
+  const name = formData.get('name') as string
+  
+  const updateData: any = { name }
+
+  // Gestión de Avatar (Si suben foto)
+  const file = formData.get('avatar_file') as File
+  if (file && file.size > 0) {
+    // 1. Subir archivo
+    const fileExt = file.name.split('.').pop()
+    const fileName = `avatars/${personId}-${Date.now()}.${fileExt}`
+    
+    // Usamos el mismo bucket 'timeline' pero en carpeta 'avatars'
+    const { error: uploadError } = await supabase.storage
+      .from('timeline')
+      .upload(fileName, file)
+      
+    if (!uploadError) {
+      // 2. Obtener URL pública
+      const { data } = supabase.storage.from('timeline').getPublicUrl(fileName)
+      updateData.avatar_url = data.publicUrl
+    }
+  }
+
+  // Actualizar base de datos
+  const { error } = await supabase.from('timeline_people').update(updateData).eq('id', personId)
+  
+  if (error) return { error: error.message }
+  
+  revalidatePath('/timeline')
+  return { success: true }
+}
+
+export async function deletePerson(personId: string) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('timeline_people').delete().eq('id', personId)
+  if (error) return { error: error.message }
+  revalidatePath('/timeline')
+  return { success: true }
+}

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft, Link as LinkIcon } from 'lucide-react'
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
+import { TimelineSettings } from './TimelineSettings'
 
 export default async function TimelinePage(props: { searchParams: Promise<{ tag?: string, person?: string }> }) {
   const searchParams = await props.searchParams
@@ -39,9 +40,14 @@ export default async function TimelinePage(props: { searchParams: Promise<{ tag?
       {/* HEADER */}
       <div className="sticky top-0 z-20 bg-white/90 backdrop-blur-sm border-b border-slate-200 px-4 py-3 shadow-sm flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/"><Button variant="ghost" size="icon" className="-ml-2"><ArrowLeft className="h-5 w-5 text-slate-600" /></Button></Link>
+          <Link href="/"><Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-200 -ml-2 rounded-full">
+            <ArrowLeft className="h-5 w-5 text-slate-600" />
+          </Button></Link>
           <h1 className="text-xl font-bold text-slate-800">Línea de Vida</h1>
         </div>
+        
+        {/* MENÚ DE CONFIGURACIÓN (NUEVO) */}
+        <TimelineSettings allTags={tags || []} allPeople={people || []} />
       </div>
 
       <TimelineFilters allTags={tags || []} allPeople={people || []} />
@@ -120,8 +126,20 @@ export default async function TimelinePage(props: { searchParams: Promise<{ tag?
                                         {event.timeline_event_people?.map((rel: any) => (
                                             <Badge key={rel.person.id} variant="secondary" className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100">@{rel.person.name}</Badge>
                                         ))}
-                                        {event.timeline_event_tags?.map((rel: any) => (
-                                            <Badge key={rel.tag.id} variant="outline" className="text-slate-500 border-slate-200">#{rel.tag.name}</Badge>
+                                          {event.timeline_event_tags?.map((rel: any, idx: number) => (
+                                            <Badge 
+                                            key={idx} 
+                                            variant="outline" 
+                                            // ESTILO DINÁMICO PARA EL COLOR
+                                            style={{
+                                                backgroundColor: rel.tag.color ? `${rel.tag.color}15` : '#f1f5f9', // 15 es transparencia hex (aprox 10%)
+                                                color: rel.tag.color || '#64748b',
+                                                borderColor: rel.tag.color ? `${rel.tag.color}40` : '#e2e8f0'
+                                            }}
+                                            className="text-xs font-medium"
+                                            >
+                                                #{rel.tag.name}
+                                            </Badge>
                                         ))}
                                     </div>
                                 </div>
