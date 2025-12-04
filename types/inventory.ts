@@ -15,6 +15,7 @@ export interface InventoryLocation {
   id: string;
   name: string;
   description?: string;
+  parent_id?: string | null; // <--- ¡AÑADE ESTO!
 }
 
 export interface InventoryItem {
@@ -36,6 +37,7 @@ export interface InventoryItem {
   
   external_links: InventoryLink[]; // Aquí usamos el tipo definido arriba, no solo JSON
 }
+
 
 export interface MaintenanceTask {
   id: string;

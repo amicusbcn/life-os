@@ -4,6 +4,7 @@ import { NewItemDialog } from './NewItemDialog'
 import Link from 'next/link'
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from 'lucide-react'
+import { InventorySettings } from './InventorySettings'
 
 export default async function InventoryPage() {
   const supabase = await createClient()
@@ -17,7 +18,7 @@ export default async function InventoryPage() {
   // 2. Obtener Ubicaciones (para pasar al diálogo)
   const { data: locations } = await supabase
     .from('inventory_locations')
-    .select('id, name')
+    .select('id, name, parent_id')
     .order('name')
 
   // 3. Obtener Items (el inventario en sí)
@@ -36,13 +37,28 @@ export default async function InventoryPage() {
       
       {/* HEADER SUPERIOR */}
       <div className="sticky top-0 z-10 bg-slate-100/90 backdrop-blur-sm border-b border-slate-200/50 px-4 py-3 shadow-sm">
-        <div className="max-w-xl mx-auto flex items-center gap-3">
-          <Link href="/">
-            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-200 -ml-2 rounded-full">
-              <ArrowLeft className="h-5 w-5 text-slate-600" />
-            </Button>
-          </Link>
-          <h1 className="text-xl font-bold text-slate-800">Inventario</h1>
+        
+        {/* Este es el contenedor principal que debe gestionar la alineación
+           del 'atrás' (izquierda), el título (centro/left) y el botón de ajustes (derecha) */}
+        <div className="max-w-xl mx-auto flex items-center justify-between">
+          
+          {/* GRUPO IZQUIERDA: Botón de atrás y título */}
+          <div className="flex items-center gap-3">
+            <Link href="/">
+              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-200 -ml-2 rounded-full">
+                <ArrowLeft className="h-5 w-5 text-slate-600" />
+              </Button>
+            </Link>
+            {/* El título se alinea justo después del botón de atrás */}
+            <h1 className="text-xl font-bold text-slate-800">Inventario</h1>
+          </div>
+          
+          {/* GRUPO DERECHA: Botón de configuración.
+             justify-between lo empuja al extremo derecho del max-w-xl */}
+          <InventorySettings
+            categories={categories || []} 
+            locations={locations || []} 
+          />
         </div>
       </div>
 
