@@ -1,151 +1,203 @@
 'use client'
 
-import { useState } from 'react'
-import { updateTimelineEvent } from './actions'
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { useState, useTransition } from 'react'
+import { Pencil } from 'lucide-react'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog"
-import { Pencil, Link as LinkIcon, Trash2, Plus } from 'lucide-react'
-import imageCompression from 'browser-image-compression'
-// Tipos
-interface LinkItem { label: string; url: string }
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { updateTimelineEvent, createTag } from './actions'
+import { MultiSelect } from '@/components/ui/multi-select'
 
-export function EditEventDialog({ event, allTags, allPeople }: { event: any, allTags: any[], allPeople: any[] }) {
-  const [open, setOpen] = useState(false)
-  
-  // ESTADOS INICIALES (Cargados del evento)
-  const [selectedTags, setSelectedTags] = useState<string[]>(event.timeline_event_tags.map((r: any) => r.tag.id))
-  const [selectedPeople, setSelectedPeople] = useState<string[]>(event.timeline_event_people.map((r: any) => r.person.id))
-  const [links, setLinks] = useState<LinkItem[]>(event.external_links || [])
-  
-  // ESTADO PARA NUEVO LINK
-  const [newLinkUrl, setNewLinkUrl] = useState('')
-  const [newLinkLabel, setNewLinkLabel] = useState('')
+// --- TIPOS ADAPTADOS A UUIDs (Strings) ---
+// Usamos string | number para ser flexibles, pero en tu caso son strings
+type Tag = { id: string | number; name: string; color: string | null }
+type Person = { id: string | number; name: string }
 
-  // --- GESTIÓN DE LINKS ---
-  const addLink = () => {
-    if (newLinkUrl) {
-      setLinks([...links, { label: newLinkLabel || 'Enlace', url: newLinkUrl }])
-      setNewLinkUrl(''); setNewLinkLabel('')
+type TimelineEvent = {
+  id: string
+  date: string
+  title: string
+  description: string | null
+  media_url: string | null
+  external_links: { label: string; url: string }[] | null
+  timeline_event_tags: { tag: Tag }[]
+  timeline_event_people: { person: Person }[]
+}
+
+interface EditEventDialogProps {
+  event: TimelineEvent
+  allTags: Tag[]
+  allPeople: Person[]
+}
+
+export function EditEventDialog({ event, allTags, allPeople }: EditEventDialogProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [isPending, startTransition] = useTransition()
+  const [availableTags, setAvailableTags] = useState(allTags);
+  // --- ESTADO INICIAL ---
+  const [formData, setFormData] = useState({
+    title: event.title,
+    // Aseguramos formato YYYY-MM-DD para el input date
+    date: event.date.split('T')[0], 
+    description: event.description || '',
+    media_url: event.media_url || '',
+    
+    // IMPORTANTE: Cargamos los IDs como Strings desde el principio
+    // para evitar conflictos con los UUIDs
+    selectedTags: event.timeline_event_tags.map(t => t.tag.id.toString()),
+    selectedPeople: event.timeline_event_people.map(p => p.person.id.toString()),
+  })
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
+  }
+const handleCreateTag = async (tagName: string) => {
+    // Optimismo UI: Podrías poner un toast de "Creando..."
+    
+    const result = await createTag(tagName); // Llamada al servidor
+
+    if (result.success && result.tag) {
+      const newTag = result.tag;
+      
+      // A. Añadimos la nueva etiqueta a la lista de opciones disponibles
+      setAvailableTags(prev => [...prev, newTag]);
+
+      // B. La seleccionamos automáticamente en el formulario
+      setFormData(prev => ({
+        ...prev,
+        selectedTags: [...prev.selectedTags, newTag.id.toString()]
+      }));
+
+      toast.success(`Etiqueta "${newTag.name}" creada`);
+    } else {
+      toast.error("Error al crear la etiqueta");
     }
+  };
+  
+  async function handleSubmit(formDataFromEvent: FormData) {
+    startTransition(async () => {
+      // 1. Añadimos el ID del evento (necesario para el WHERE del update)
+      formDataFromEvent.append('event_id', event.id);
+
+      // 2. FORZAMOS LOS DATOS DE LOS ARRAYS (La Red de Seguridad)
+      // Aunque tenemos inputs ocultos, hacemos esto para estar 100% seguros
+      // de que enviamos el estado actual de React.
+      
+      // Eliminamos lo que venga del formulario nativo por si acaso para no duplicar
+      formDataFromEvent.delete('tags');
+      formDataFromEvent.delete('people');
+
+      // Añadimos la versión limpia del estado
+      formDataFromEvent.append('tags', formData.selectedTags.join(','));
+      formDataFromEvent.append('people', formData.selectedPeople.join(','));
+
+      const result = await updateTimelineEvent(formDataFromEvent);
+      
+      if (result?.error) {
+        toast.error(`Error al actualizar: ${result.error}`);
+        console.error(result.error);
+      } else {
+        toast.success('Recuerdo actualizado con éxito')
+        setIsOpen(false)
+      }
+    })
   }
-  const removeLink = (index: number) => {
-    setLinks(links.filter((_, i) => i !== index))
-  }
 
-  // --- SELECCIÓN (Igual que en crear) ---
-  const toggleTag = (id: string) => setSelectedTags(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id])
-  const togglePerson = (id: string) => setSelectedPeople(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id])
-
-async function handleSubmit(formData: FormData) {
-    // 1. COMPRESIÓN
-    const originalFile = formData.get('media_file') as File
-    if (originalFile && originalFile.size > 0 && originalFile.type.startsWith('image/')) {
-        try {
-            const options = { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: true }
-            const compressedFile = await imageCompression(originalFile, options)
-            formData.set('media_file', compressedFile)
-        } catch (err) { console.error(err) }
-    }
-
-    // 2. DATOS
-    formData.append('event_id', event.id)
-    formData.append('tags', selectedTags.join(','))
-    formData.append('people', selectedPeople.join(','))
-    formData.append('external_links', JSON.stringify(links))
-
-    const res = await updateTimelineEvent(formData)
-    if (res?.success) setOpen(false)
-    else alert(res?.error)
-  }
-
+  // Opciones para el Select (Value siempre String)
+  const tagOptions = availableTags.map(t => ({ value: t.id.toString(), label: t.name }))
+  const peopleOptions = allPeople.map(p => ({ value: p.id.toString(), label: p.name }))
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20">
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
           <Pencil className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Editar Recuerdo</DialogTitle></DialogHeader>
+      <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Editar Recuerdo</DialogTitle>
+        </DialogHeader>
         
-        <form action={handleSubmit} className="space-y-6 py-2">
-          
-          <div className="space-y-3">
-            <Input name="title" defaultValue={event.title} className="text-lg font-bold" required />
-            <div className="flex gap-2">
-                <Input type="date" name="date" defaultValue={event.date} required />
-                <select name="visibility" defaultValue={event.visibility} className="text-sm border rounded px-2 bg-slate-50">
-                    <option value="family">👨‍👩‍👧‍👦 Familia</option>
-                    <option value="private">🔒 Privado</option>
-                </select>
+        <form action={handleSubmit}>
+          <div className="grid gap-4 py-4">
+            
+            {/* TÍTULO */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="title" className="text-right">Título</Label>
+              <Input id="title" name="title" value={formData.title} onChange={handleInputChange} className="col-span-3" required />
             </div>
+
+            {/* FECHA */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="date" className="text-right">Fecha</Label>
+              <Input id="date" name="date" type="date" value={formData.date} onChange={handleInputChange} className="col-span-3" required />
+            </div>
+
+            {/* DESCRIPCIÓN */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="description" className="text-right">Descripción</Label>
+              <Textarea id="description" name="description" value={formData.description} onChange={handleInputChange} className="col-span-3" />
+            </div>
+
+            {/* URL IMAGEN (Opcional, ya que usas subida de ficheros en actions) */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="media_url" className="text-right">URL Imagen</Label>
+              <Input id="media_url" name="media_url" value={formData.media_url} onChange={handleInputChange} className="col-span-3" />
+            </div>
+
+            {/* --- ETIQUETAS (CORREGIDO) --- */}
+      <div className="grid grid-cols-4 items-center gap-4">
+          <Label htmlFor="tags" className="text-right">Etiquetas</Label>
+          <MultiSelect
+            className="col-span-3"
+            options={tagOptions}
+            selected={formData.selectedTags}
+            onChange={(newSelected) => setFormData(prev => ({ ...prev, selectedTags: newSelected }))}
+            
+            onCreate={handleCreateTag} // <--- AQUI LA MAGIA
+            
+            placeholder="Selecciona o escribe para crear..."
+          />
+          <input type="hidden" name="tags" value={formData.selectedTags.join(',')} />
+      </div>
+
+            {/* --- PERSONAS (CORREGIDO) --- */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="people" className="text-right">Personas</Label>
+              <MultiSelect
+                className="col-span-3"
+                options={peopleOptions}
+                selected={formData.selectedPeople} // Pasamos strings directos
+                onChange={(newSelected) => setFormData(prev => ({ ...prev, selectedPeople: newSelected }))} // Sin conversión a Number
+                placeholder="Selecciona personas..."
+              />
+              {/* Input Oculto de respaldo */}
+              <input type="hidden" name="people" value={formData.selectedPeople.join(',')} />
+            </div>
+
           </div>
 
-          <Textarea name="description" defaultValue={event.description} placeholder="Descripción..." />
-
-          {/* GESTOR DE LINKS */}
-          <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
-             <Label className="text-xs font-bold text-slate-400 uppercase">Enlaces Externos</Label>
-             
-             {/* Lista de links actuales */}
-             {links.map((link, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-sm bg-white p-2 rounded border">
-                    <LinkIcon className="h-3 w-3 text-slate-400" />
-                    <a href={link.url} target="_blank" className="flex-1 text-indigo-600 truncate underline">{link.label}</a>
-                    <Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-red-400" onClick={() => removeLink(idx)}>
-                        <Trash2 className="h-3 w-3" />
-                    </Button>
-                </div>
-             ))}
-
-             {/* Añadir nuevo */}
-             <div className="flex gap-2 mt-2">
-                <Input placeholder="URL (ej: https://photos...)" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} className="text-xs h-8 flex-1" />
-                <Input placeholder="Nombre" value={newLinkLabel} onChange={e => setNewLinkLabel(e.target.value)} className="text-xs h-8 w-20" />
-                <Button type="button" size="icon" className="h-8 w-8 shrink-0" onClick={addLink} disabled={!newLinkUrl}>
-                    <Plus className="h-4 w-4" />
-                </Button>
-             </div>
-          </div>
-
-          {/* SELECCIÓN PERSONAS Y ETIQUETAS (Simplificado para brevedad, copia la lógica visual del NewEventDialog aquí si quieres que se vea igual de bonito) */}
-          <div className="space-y-2">
-             <Label>Personas</Label>
-             <div className="flex flex-wrap gap-2">
-                {allPeople.map(p => (
-                    <Badge key={p.id} variant={selectedPeople.includes(p.id) ? "default" : "outline"} onClick={() => togglePerson(p.id)} className="cursor-pointer">
-                        {p.name}
-                    </Badge>
-                ))}
-             </div>
-          </div>
-          
-          <div className="space-y-2">
-             <Label>Etiquetas</Label>
-             <div className="flex flex-wrap gap-2">
-                {allTags.map(t => (
-                    <Badge key={t.id} variant={selectedTags.includes(t.id) ? "default" : "outline"} onClick={() => toggleTag(t.id)} className="cursor-pointer">
-                        {t.name}
-                    </Badge>
-                ))}
-             </div>
-          </div>
-
-          {/* FOTO */}
-          <div className="grid gap-2">
-            <Label>Cambiar Foto (Opcional)</Label>
-            <Input name="media_file" type="file" accept="image/*" />
-          </div>
-
-          <Button type="submit" className="w-full">Guardar Cambios</Button>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary" disabled={isPending}>Cancelar</Button>
+            </DialogClose>
+            <Button type="submit" disabled={isPending}>
+              {isPending ? 'Guardando...' : 'Guardar Cambios'}
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

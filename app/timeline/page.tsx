@@ -101,7 +101,7 @@ export default async function TimelinePage(props: { searchParams: Promise<{ tag?
                                         </div>
                                         {/* Si no hay foto, ponemos los botones aquí */}
                                         {!event.media_url && (
-                                            <div className="flex gap-1">
+                                            <div className="flex gap-1 -mt-2">
                                                 <EditEventDialog event={event} allTags={tags || []} allPeople={people || []} />
                                                 <DeleteEventButton eventId={event.id} />
                                             </div>
