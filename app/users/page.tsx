@@ -1,3 +1,4 @@
+// app/users/page.tsx
 import { redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
 import { createAdminClient } from '@/utils/supabase/admin'; // Importamos desde el fichero renombrado
@@ -15,7 +16,7 @@ import { UserActions } from './user-actions'; // Componente Cliente para las acc
 import { UserMenu } from '../UserMenu';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-
+import { AdminUserProfile } from '@/types/common';
 // Definimos el tipo para el perfil de usuario para ayudar a TypeScript
 type Profile = {
   id: string;

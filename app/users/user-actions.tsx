@@ -1,3 +1,4 @@
+// app/users/user-actions.tsx
 'use client';
 
 import { useState, useTransition } from 'react';
@@ -60,7 +61,7 @@ export function UserActions({ userProfile, availableGroups, isCurrentUser, group
 
   const onRemoveFromGroup = () => {
     if (!groupToRemove) return;
-    handleAction(() => removeUserFromGroup(userProfile.id, groupToRemove.id));
+    handleAction(() => removeUserFromGroup(userProfile.id, Number(groupToRemove.id)));
   };
 
   // Si este componente se usa para mostrar una píldora de grupo, renderiza solo eso.

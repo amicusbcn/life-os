@@ -1,62 +1,78 @@
+// app/users/actions.ts
 'use server'
 
-import { createClient } from '@/utils/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { createClient } from '@/utils/supabase/server';
+// Importamos ActionResponse desde el módulo travel que hemos estado utilizando
+import { ActionResponse, Profile } from '@/types/common';
 
-interface EventData {
-  title: string
-  date: string
-  description?: string
-  media_url?: string
-  tag_ids?: number[]
-  person_ids?: number[]
+const supabase = createClient();
+
+/**
+ * [STUB] Cambia el rol de administrador de un usuario.
+ */
+export async function toggleAdminRole(userId: string): Promise<ActionResponse> {
+    console.log(`[USER_ACTION] Solicitud: toggleAdminRole para ${userId}`);
+    // *** IMPLEMENTACIÓN PENDIENTE ***
+    
+    // Ejemplo de lógica (requiere permisos de Admin):
+    /*
+    const { data, error } = await supabase
+        .from('profiles')
+        .update({ role: 'admin' }) // O 'user'
+        .eq('id', userId);
+
+    if (error) {
+        return { success: false, error: "Error al cambiar el rol." };
+    }
+    */
+    
+    return { success: "false", error: "Función de cambio de rol no implementada." };
 }
 
-export async function updateTimelineEvent(eventId: string, data: EventData) {
-  const supabase = await createClient()
+/**
+ * [STUB] Actualiza los grupos de un usuario.
+ */
+export async function updateUserGroups(userId: string, groupIds: string[]): Promise<ActionResponse> {
+    console.log(`[USER_ACTION] Solicitud: updateUserGroups para ${userId} con grupos: ${groupIds.join(', ')}`);
+    // *** IMPLEMENTACIÓN PENDIENTE ***
+    
+    /*
+    // 1. Eliminar entradas antiguas en profiles_groups
+    // 2. Insertar nuevas entradas en profiles_groups
+    */
+    
+    return { success: "false", error: "Función de actualización de grupos no implementada." };
+}
 
-  // 1. Actualizar los datos principales del evento
-  const { error: eventError } = await supabase
-    .from('timeline_events')
-    .update({
-      title: data.title,
-      date: data.date,
-      description: data.description,
-      media_url: data.media_url,
-    })
-    .eq('id', eventId)
+/**
+ * [STUB] Envía un email de reseteo de contraseña a un usuario (solo disponible para administradores).
+ */
+export async function resetUserPassword(userId: string): Promise<ActionResponse> {
+    console.log(`[USER_ACTION] Solicitud: resetUserPassword para ${userId}`);
+    // *** IMPLEMENTACIÓN PENDIENTE ***
+    
+    // Si usas el admin client de Supabase, puedes generar un enlace de reseteo
+    /*
+    const { data, error } = await supabase.auth.admin.generatePasswordResetLink(userId);
+    */
+    
+    return { success: "false", error: "Función de reseteo de contraseña no implementada." };
+}
 
-  if (eventError) return { error: eventError.message }
-
-  // 2. Actualizar etiquetas (borrar las antiguas e insertar las nuevas)
-  const { error: deleteTagsError } = await supabase
-    .from('timeline_event_tags')
-    .delete()
-    .eq('event_id', eventId)
-
-  if (deleteTagsError) return { error: deleteTagsError.message }
-
-  if (data.tag_ids && data.tag_ids.length > 0) {
-    const newTags = data.tag_ids.map(tag_id => ({ event_id: eventId, tag_id }))
-    const { error: insertTagsError } = await supabase.from('timeline_event_tags').insert(newTags)
-    if (insertTagsError) return { error: insertTagsError.message }
-  }
-
-  // 3. Actualizar personas (borrar las antiguas e insertar las nuevas)
-  const { error: deletePeopleError } = await supabase
-    .from('timeline_event_people')
-    .delete()
-    .eq('event_id', eventId)
-
-  if (deletePeopleError) return { error: deletePeopleError.message }
-
-  if (data.person_ids && data.person_ids.length > 0) {
-    const newPeople = data.person_ids.map(person_id => ({ event_id: eventId, person_id }))
-    const { error: insertPeopleError } = await supabase.from('timeline_event_people').insert(newPeople)
-    if (insertPeopleError) return { error: insertPeopleError.message }
-  }
-
-  // 4. Revalidar la ruta para que se muestren los cambios
-  revalidatePath('/timeline')
-  return { success: true }
+/**
+ * [STUB] Elimina un usuario de un grupo específico.
+ */
+export async function removeUserFromGroup(userId: string, groupId: string): Promise<ActionResponse> {
+    console.log(`[USER_ACTION] Solicitud: removeUserFromGroup para usuario ${userId} del grupo ${groupId}`);
+    // *** IMPLEMENTACIÓN PENDIENTE ***
+    
+    /*
+    const { error } = await supabase
+        .from('profiles_groups')
+        .delete()
+        .eq('id_user', userId)
+        .eq('id_group', groupId);
+    */
+    
+    return { success: "false", error: "Función de eliminación de grupo no implementada." };
 }

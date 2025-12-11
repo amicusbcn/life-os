@@ -3,14 +3,8 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { 
-    ReportCandidatesResponse, 
-    TravelTrip, 
-    TravelReport, 
-    TripDbStatus, 
-    ActionResponse, 
-    CreateReportResponse 
-} from '@/types/travel' 
+import { ActionResponse, CreateReportResponse } from '@/types/common' 
+import { ReportCandidatesResponse, TravelTrip, TravelReport, TripDbStatus } from '@/types/travel'
 import React from 'react'
 import { renderToStream } from '@react-pdf/renderer'
 import { getReportSummary, ReportSummary } from '@/utils/report-logic'
