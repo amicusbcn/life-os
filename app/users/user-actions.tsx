@@ -61,7 +61,7 @@ export function UserActions({ userProfile, availableGroups, isCurrentUser, group
 
   const onRemoveFromGroup = () => {
     if (!groupToRemove) return;
-    handleAction(() => removeUserFromGroup(userProfile.id, Number(groupToRemove.id)));
+    handleAction(() => removeUserFromGroup(userProfile.id, String(groupToRemove.id)));
   };
 
   // Si este componente se usa para mostrar una píldora de grupo, renderiza solo eso.
@@ -82,14 +82,14 @@ export function UserActions({ userProfile, availableGroups, isCurrentUser, group
   };
 
   const onToggleAdmin = () => {
-    handleAction(() => toggleAdminRole(userProfile.id, userProfile.role || 'user'));
+    handleAction(() => toggleAdminRole(userProfile.id));
   };
 
   // Esta función ahora maneja un array de IDs de grupo
   const onUpdateGroups = (groupIds: number[]) => {
     // Por ahora, la UI solo permite seleccionar un grupo, así que el array solo tendrá un elemento.
     // Pero la acción está preparada para manejar múltiples grupos.
-    handleAction(() => updateUserGroups(userProfile.id, groupIds));
+    handleAction(() => updateUserGroups(userProfile.id, groupIds.map(String)));
   };
 
   return (
