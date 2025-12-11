@@ -71,7 +71,7 @@ export function TripListView({ trips, reports, employers }: TripListViewProps) {
   const handleAction = async (action: string, reportId: string) => {
     startTransition(async () => {
         try {
-            let result: ActionResponse = { success: "false" };
+            let result: ActionResponse = { success: false };
 
             if (action === 'submit') result = await markAsSubmitted(reportId);
             if (action === 'pay') result = await markAsPaidAndArchive(reportId);

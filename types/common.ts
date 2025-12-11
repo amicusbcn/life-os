@@ -4,7 +4,7 @@
 
 // Tipo estándar para respuestas de Server Action
 export interface ActionResponse {
-    success: string; // <--- CAMBIADO de 'boolean' a 'string'
+    success: boolean;
     error?: string;
     message?: string;
 }

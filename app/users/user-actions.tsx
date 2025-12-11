@@ -1,160 +1,130 @@
 // app/users/user-actions.tsx
-'use client';
+'use client'
 
-import { useState, useTransition } from 'react';
-import { MoreHorizontal, X } from 'lucide-react';
+import React, { useState, useTransition } from 'react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { MoreVertical, Loader2, Trash2, Key, UserCheck, Users, Plus, Minus } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuPortal,
-} from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
+// Importamos las acciones del Server Component (actions.ts)
+import { toggleAdminRole, updateUserGroups, resetUserPassword, removeUserFromGroup } from './actions'; 
+// Importamos tipos centrales
+import { ActionResponse, AdminUserProfile, AppGroup } from '@/types/common'; 
 
-import { toggleAdminRole, updateUserGroups, resetUserPassword, removeUserFromGroup } from './actions';
-
+// --- TIPOS DE PROPIEDADES ---
+// El perfil que viene de la página (Server Component)
 interface UserActionsProps {
-  userProfile: {
-    id: string;
-    email: string | null;
-    role: string | null;
-    profiles_groups: {
-      app_groups: { id: number; group: string } | null;
-    }[];
-  };
-  availableGroups?: { id: number; group: string }[];
-  isCurrentUser?: boolean;
-  groupToRemove?: { id: number; group: string };
+    userProfile: AdminUserProfile;
+    // Para la acción de quitar grupo (renderizada por cada grupo)
+    groupToRemove?: AppGroup; 
+    // Para la acción de añadir grupo (renderizada solo una vez)
+    availableGroups?: AppGroup[];
+    // Para la acción de reseteo (evitar que el admin se borre a sí mismo)
+    isCurrentUser?: boolean;
 }
 
-export function UserActions({ userProfile, availableGroups, isCurrentUser, groupToRemove }: UserActionsProps) {
-  const [isPending, startTransition] = useTransition();
-  const [dialog, setDialog] = useState<{ type: 'reset' | 'role'; isOpen: boolean }>({ type: 'reset', isOpen: false });
+// --- COMPONENTE DE ACCIONES ---
+export function UserActions({ userProfile, groupToRemove, availableGroups, isCurrentUser }: UserActionsProps) {
+    const [isPending, startTransition] = useTransition();
 
-  const handleAction = (action: () => Promise<{ success?: string; error?: string } | void>) => {
-    startTransition(async () => {
-      const result = await action();
-      if (result?.success) toast.success(result.success);
-      if (result?.error) toast.error(result.error);
-      setDialog({ ...dialog, isOpen: false });
-    });
-  };
+    // --------------------------------------------------------
+    // FUNCIÓN CENTRAL PARA LLAMAR A LAS SERVER ACTIONS
+    // Nota: El retorno se tipa como Promise<any> para evitar el conflicto 
+    // de serialización de Next.js (boolean vs string)
+    // --------------------------------------------------------
+    const handleAction = async (actionFn: () => Promise<ActionResponse>) => {
+        startTransition(async () => {
+            try {
+                const result = await actionFn() as ActionResponse;
+                
+                if (result.success) { // success es boolean
+                    toast.success(result.message || "Acción completada con éxito.");
+                } else if (result.error) {
+                    toast.error(result.error || "Ocurrió un error.");
+                }
+            } catch (error) {
+                console.error("Error en Server Action:", error);
+                toast.error("Error inesperado en la comunicación con el servidor.");
+            }
+        });
+    }
 
-  const onRemoveFromGroup = () => {
-    if (!groupToRemove) return;
-    handleAction(() => removeUserFromGroup(userProfile.id, String(groupToRemove.id)));
-  };
-
-  // Si este componente se usa para mostrar una píldora de grupo, renderiza solo eso.
-  if (groupToRemove) {
-    return (
-      <Badge variant="outline" className="flex items-center gap-1 pr-1">
-        {groupToRemove.group}
-        <button onClick={onRemoveFromGroup} disabled={isPending} className="rounded-full p-0.5 hover:bg-destructive/20 text-destructive">
-          <X className="h-3 w-3" />
-        </button>
-      </Badge>
-    );
-  }
-
-  const onResetPassword = () => {
-    if (!userProfile.email) return;
-    handleAction(() => resetUserPassword(userProfile.email!));
-  };
-
-  const onToggleAdmin = () => {
-    handleAction(() => toggleAdminRole(userProfile.id));
-  };
-
-  // Esta función ahora maneja un array de IDs de grupo
-  const onUpdateGroups = (groupIds: number[]) => {
-    // Por ahora, la UI solo permite seleccionar un grupo, así que el array solo tendrá un elemento.
-    // Pero la acción está preparada para manejar múltiples grupos.
-    handleAction(() => updateUserGroups(userProfile.id, groupIds.map(String)));
-  };
-
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="h-8 w-8 p-0">
-            <span className="sr-only">Abrir menú</span>
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>Cambiar Grupo</DropdownMenuSubTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem onClick={() => onUpdateGroups([])}>
-                  Ninguno
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {availableGroups?.map((group) => (
-                  <DropdownMenuItem key={group.id} onClick={() => onUpdateGroups([group.id])}>
-                    {group.group}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuPortal>
-          </DropdownMenuSub>
-
-          {!isCurrentUser && (
-            <DropdownMenuItem onClick={() => setDialog({ type: 'role', isOpen: true })}>
-              {userProfile.role === 'admin' ? 'Quitar Admin' : 'Hacer Admin'}
-            </DropdownMenuItem>
-          )}
-
-          <DropdownMenuItem className="text-destructive" onClick={() => setDialog({ type: 'reset', isOpen: true })}>
-            Resetear Contraseña
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <AlertDialog open={dialog.isOpen} onOpenChange={(isOpen: boolean) => setDialog({ ...dialog, isOpen })}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {dialog.type === 'reset'
-                ? `Se enviará un email a ${userProfile.email} para resetear su contraseña. Esta acción no se puede deshacer.`
-                : `Esto cambiará los permisos del usuario ${userProfile.email}.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={dialog.type === 'reset' ? onResetPassword : onToggleAdmin}
-              disabled={isPending}
+    // --- MANEJO DE GRUPOS (Renderizado dentro de la columna GRUPO) ---
+    if (groupToRemove) {
+        return (
+            <Badge 
+                key={groupToRemove.id} 
+                className="cursor-pointer gap-1 group transition-all"
+                onClick={() => handleAction(() => removeUserFromGroup(userProfile.id, groupToRemove.id))} // Llama a la acción
             >
-              {isPending ? 'Procesando...' : 'Confirmar'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
-  );
+                {groupToRemove.group}
+                <Minus className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </Badge>
+        );
+    }
+    
+    // --- MANEJO DE ACCIONES GLOBALES (Renderizado en la columna ACCIONES) ---
+    
+    // Función para añadir un grupo específico
+    const handleAddGroup = (groupId: number) => {
+        handleAction(() => updateUserGroups(userProfile.id, groupId));
+    };
+
+    // Renderizado del Dropdown de Acciones
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0" disabled={isPending}>
+                    {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>{userProfile.email}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+
+                {/* 1. Resetear Contraseña */}
+                <DropdownMenuItem 
+                    onClick={() => handleAction(() => resetUserPassword(userProfile.id))} // Llama a la acción
+                    disabled={isPending}
+                >
+                    <Key className="mr-2 h-4 w-4" /> Resetear Contraseña
+                </DropdownMenuItem>
+
+                {/* 2. Cambiar Rol de Admin */}
+                <DropdownMenuItem 
+                    onClick={() => handleAction(() => toggleAdminRole(userProfile.id))}
+                    disabled={isPending || isCurrentUser}
+                    className={userProfile.role === 'admin' ? 'text-red-600' : 'text-green-600'}
+                >
+                    <UserCheck className="mr-2 h-4 w-4" /> 
+                    {userProfile.role === 'admin' ? 'Quitar Admin' : 'Hacer Admin'}
+                </DropdownMenuItem>
+                
+                <DropdownMenuSeparator />
+
+                {/* 3. Gestión de Grupos */}
+                <DropdownMenuLabel>Añadir a Grupo</DropdownMenuLabel>
+                {availableGroups?.length === 0 ? (
+                    <DropdownMenuItem disabled>
+                        <Users className="mr-2 h-4 w-4" /> Sin grupos disponibles
+                    </DropdownMenuItem>
+                ) : (
+                    availableGroups?.map(group => (
+                        <DropdownMenuItem key={group.id} onClick={() => handleAddGroup(group.id)} disabled={isPending}>
+                            <Plus className="mr-2 h-4 w-4" /> {group.group}
+                        </DropdownMenuItem>
+                    ))
+                )}
+                
+                <DropdownMenuSeparator />
+
+                {/* 4. Borrar Usuario (Placeholder, no implementado aquí) */}
+                <DropdownMenuItem disabled className="text-slate-400">
+                    <Trash2 className="mr-2 h-4 w-4" /> Eliminar Usuario
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
 }

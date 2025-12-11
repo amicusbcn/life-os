@@ -2,77 +2,129 @@
 'use server'
 
 import { createClient } from '@/utils/supabase/server';
-// Importamos ActionResponse desde el módulo travel que hemos estado utilizando
-import { ActionResponse, Profile } from '@/types/common';
+import { createAdminClient } from '@/utils/supabase/admin'; 
+import { revalidatePath } from 'next/cache';
+import { ActionResponse } from '@/types/common'; // De nuevo a ActionResponse { success: boolean, ... }
 
-const supabase = createClient();
+const supabaseAdmin = await createAdminClient(); // <-- Esto solo funciona si está en un scope asíncrono
+const ADMIN_ROLE = 'admin';
+const USER_ROLE = 'user';
 
 /**
- * [STUB] Cambia el rol de administrador de un usuario.
+ * 1. Cambia el rol de administrador de un usuario (admin <-> user).
  */
 export async function toggleAdminRole(userId: string): Promise<ActionResponse> {
-    console.log(`[USER_ACTION] Solicitud: toggleAdminRole para ${userId}`);
-    // *** IMPLEMENTACIÓN PENDIENTE ***
+    const supabaseAdmin = await createAdminClient();
     
-    // Ejemplo de lógica (requiere permisos de Admin):
-    /*
-    const { data, error } = await supabase
+    // 1. Obtener el rol actual
+    const { data: profile, error: fetchError } = await supabaseAdmin
         .from('profiles')
-        .update({ role: 'admin' }) // O 'user'
+        .select('role')
+        .eq('id', userId)
+        .single();
+
+    if (fetchError || !profile) {
+        return { success: false, error: "Usuario o perfil no encontrado." };
+    }
+
+    // 2. Determinar el nuevo rol
+    const newRole = profile.role === ADMIN_ROLE ? USER_ROLE : ADMIN_ROLE;
+
+    // 3. Actualizar el rol
+    const { error: updateError } = await supabaseAdmin
+        .from('profiles')
+        .update({ role: newRole })
         .eq('id', userId);
 
-    if (error) {
-        return { success: false, error: "Error al cambiar el rol." };
+    if (updateError) {
+        console.error("Error al cambiar rol:", updateError);
+        return { success: false, error: "Fallo al actualizar el rol en la base de datos." };
     }
-    */
-    
-    return { success: "false", error: "Función de cambio de rol no implementada." };
+
+    revalidatePath('/users');
+    return { success: true, message: `Rol cambiado a '${newRole}'.` };
 }
 
+
 /**
- * [STUB] Actualiza los grupos de un usuario.
+ * 2. Añade un grupo a un usuario.
  */
-export async function updateUserGroups(userId: string, groupIds: string[]): Promise<ActionResponse> {
-    console.log(`[USER_ACTION] Solicitud: updateUserGroups para ${userId} con grupos: ${groupIds.join(', ')}`);
-    // *** IMPLEMENTACIÓN PENDIENTE ***
-    
-    /*
-    // 1. Eliminar entradas antiguas en profiles_groups
-    // 2. Insertar nuevas entradas en profiles_groups
-    */
-    
-    return { success: "false", error: "Función de actualización de grupos no implementada." };
+export async function updateUserGroups(userId: string, groupId: number): Promise<ActionResponse> {
+    const supabaseAdmin = await createAdminClient(); 
+
+    // Aquí insertamos la relación de grupo
+    const { error } = await supabaseAdmin
+        .from('profiles_groups')
+        .insert({
+            id_user: userId,
+            id_group: groupId,
+        })
+        .select();
+
+    if (error) {
+        // Ignoramos el error de duplicado (23505)
+        if (error.code === '23505') { 
+            return { success: true, message: "El grupo ya estaba asignado." }; 
+        }
+        console.error("Error al añadir grupo:", error);
+        return { success: false, error: "Fallo al añadir el grupo al usuario." };
+    }
+
+    revalidatePath('/users');
+    return { success: true, message: "Grupo añadido con éxito." };
 }
 
 /**
- * [STUB] Envía un email de reseteo de contraseña a un usuario (solo disponible para administradores).
+ * 3. Envía un email de reseteo de contraseña a un usuario.
  */
 export async function resetUserPassword(userId: string): Promise<ActionResponse> {
-    console.log(`[USER_ACTION] Solicitud: resetUserPassword para ${userId}`);
-    // *** IMPLEMENTACIÓN PENDIENTE ***
-    
-    // Si usas el admin client de Supabase, puedes generar un enlace de reseteo
-    /*
-    const { data, error } = await supabase.auth.admin.generatePasswordResetLink(userId);
-    */
-    
-    return { success: "false", error: "Función de reseteo de contraseña no implementada." };
+    const supabaseAdmin = await createAdminClient();
+
+// app/users/actions.ts (dentro de resetUserPassword)
+
+// 1. Obtener el email del usuario primero (porque la API de Auth lo requiere)
+const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
+
+if (userError || !userData?.user?.email) {
+    console.error("Error al obtener email del usuario:", userError);
+    return { success: false, error: "No se pudo encontrar el correo del usuario." };
+}
+
+// 2. Usar la función de la API normal (Client) para enviar el enlace al email
+// Las funciones de envío de correo se encuentran en el cliente de usuario normal, no en el admin,
+// salvo que se configure explícitamente.
+const { error } = await supabaseAdmin.auth.resetPasswordForEmail(userData.user.email); 
+
+if (error) {
+    console.error("Error al enviar correo de reseteo:", error);
+    return { success: false, error: "Fallo al enviar el correo de reseteo." };
+}
+
+    if (error) {
+        console.error("Error al resetear contraseña:", error);
+        return { success: false, error: "Fallo al enviar el correo de reseteo." };
+    }
+
+    return { success: true, message: "Correo de reseteo de contraseña enviado." };
 }
 
 /**
- * [STUB] Elimina un usuario de un grupo específico.
+ * 4. Elimina un usuario de un grupo específico.
  */
-export async function removeUserFromGroup(userId: string, groupId: string): Promise<ActionResponse> {
-    console.log(`[USER_ACTION] Solicitud: removeUserFromGroup para usuario ${userId} del grupo ${groupId}`);
-    // *** IMPLEMENTACIÓN PENDIENTE ***
-    
-    /*
-    const { error } = await supabase
+export async function removeUserFromGroup(userId: string, groupId: number): Promise<ActionResponse> {
+    const supabaseAdmin = await createAdminClient();
+
+    const { error } = await supabaseAdmin
         .from('profiles_groups')
         .delete()
         .eq('id_user', userId)
         .eq('id_group', groupId);
-    */
-    
-    return { success: "false", error: "Función de eliminación de grupo no implementada." };
+
+    if (error) {
+        console.error("Error al eliminar grupo:", error);
+        return { success: false, error: "Fallo al eliminar el grupo del usuario." };
+    }
+
+    revalidatePath('/users');
+    return { success: true, message: "Grupo eliminado con éxito." };
 }
