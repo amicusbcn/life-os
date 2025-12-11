@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from "react"
-import { createMaintenanceTask } from "@/app/inventory/actions"
+import { updateMaintenanceTask } from "@/app/inventory/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,13 +11,21 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Wrench, Loader2, Calendar, User, Euro } from "lucide-react"
+import { Loader2, Calendar, User, Euro } from "lucide-react"
 
-export function NewMaintenanceDialog({ itemId, profiles }: { itemId: string, profiles: any[] }) {
-  const [open, setOpen] = useState(false)
+export function EditMaintenanceDialog({ 
+  task, 
+  profiles, 
+  open, 
+  onOpenChange 
+}: { 
+  task: any, 
+  profiles: any[], 
+  open: boolean, 
+  onOpenChange: (open: boolean) => void 
+}) {
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -25,127 +33,120 @@ export function NewMaintenanceDialog({ itemId, profiles }: { itemId: string, pro
     setIsLoading(true)
     const formData = new FormData(event.currentTarget)
     
-    // Aseguramos que el ID se envía
-    if (!formData.get('item_id')) formData.append('item_id', itemId)
+    // IDs necesarios para la actualización y revalidación
+    formData.append('id', task.id)
+    formData.append('item_id', task.item_id)
 
     try {
-      const result = await createMaintenanceTask(formData)
+      const result = await updateMaintenanceTask(formData)
       if (result?.error) {
          alert("Error: " + result.error)
       } else {
-         setOpen(false)
+         onOpenChange(false)
       }
     } catch (error) {
-      alert("Error al guardar")
+      alert("Error al actualizar")
     } finally {
       setIsLoading(false)
     }
   }
 
-  const today = new Date().toISOString().split('T')[0]
+  // Formatear fecha para el input type="date" (YYYY-MM-DD)
+  const dateValue = task.last_maintenance_date 
+    ? new Date(task.last_maintenance_date).toISOString().split('T')[0] 
+    : ''
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {/* Botón oscuro y ancho para la barra inferior */}
-        <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-sm gap-2">
-          <Wrench className="h-4 w-4" /> 
-          <span>Mantenimiento</span>
-        </Button>
-      </DialogTrigger>
-      
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md rounded-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Registrar Tarea</DialogTitle>
+          <DialogTitle>Editar Tarea</DialogTitle>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
            
-           {/* 1. TÍTULO Y FECHA */}
+           {/* TÍTULO Y FECHA */}
            <div className="grid grid-cols-3 gap-4">
              <div className="col-span-2 space-y-2">
-                <Label htmlFor="desc">Título / Acción *</Label>
+                <Label htmlFor="edit-desc">Título / Acción</Label>
                 <Input 
-                  id="desc" 
+                  id="edit-desc" 
                   name="description" 
-                  placeholder="Ej: Revisión anual..." 
+                  defaultValue={task.description}
                   required 
-                  autoFocus 
                 />
              </div>
              <div className="col-span-1 space-y-2">
-                <Label htmlFor="date">Fecha</Label>
-                <Input type="date" id="date" name="date" defaultValue={today} required />
+                <Label htmlFor="edit-date">Fecha</Label>
+                <Input type="date" id="edit-date" name="date" defaultValue={dateValue} />
              </div>
            </div>
 
-           {/* 2. DETALLE / NOTAS (NUEVO CAMPO) */}
+           {/* DETALLES */}
            <div className="space-y-2">
-              <Label htmlFor="notes">Detalles (Opcional)</Label>
+              <Label htmlFor="edit-notes">Detalles</Label>
               <Textarea 
-                id="notes" 
+                id="edit-notes" 
                 name="notes" 
-                placeholder="Explica qué se hizo, materiales usados..." 
+                defaultValue={task.notes || ''}
                 className="resize-none min-h-[80px]"
               />
            </div>
 
-           {/* 3. COSTE Y RESPONSABLE (NUEVO CAMPO COSTE) */}
+           {/* COSTE Y RESPONSABLE */}
            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                 <Label htmlFor="cost" className="flex items-center gap-1">
+                 <Label htmlFor="edit-cost" className="flex items-center gap-1">
                     <Euro className="h-3.5 w-3.5" /> Coste (€)
                  </Label>
                  <Input 
                     type="number" 
-                    id="cost" 
+                    id="edit-cost" 
                     name="cost" 
-                    placeholder="0.00" 
+                    defaultValue={task.cost || ''}
                     step="0.01" 
                     min="0"
                  />
               </div>
 
               <div className="space-y-2">
-                 <Label htmlFor="user" className="flex items-center gap-1">
+                 <Label htmlFor="edit-user" className="flex items-center gap-1">
                     <User className="h-3.5 w-3.5" /> Responsable
                  </Label>
                  <select 
-                   id="user" 
+                   id="edit-user" 
                    name="responsible_user_id" 
-                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                   defaultValue="no-user"
+                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                   defaultValue={task.responsible_user_id || "no-user"}
                  >
                    <option value="no-user">-- Nadie --</option>
                    {profiles.map((p) => (
-                     <option key={p.id} value={p.id}>{p.full_name || 'Sin nombre'}</option>
+                     <option key={p.id} value={p.id}>{p.full_name}</option>
                    ))}
                  </select>
               </div>
            </div>
 
-           {/* 4. PERIODICIDAD */}
+           {/* PERIODICIDAD */}
            <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
-              <Label htmlFor="period" className="text-xs text-slate-500 uppercase font-bold">Recordatorio (Opcional)</Label>
+              <Label className="text-xs text-slate-500 uppercase font-bold">Recordatorio</Label>
               <div className="flex items-center gap-2">
                  <span className="text-sm text-slate-600">Repetir cada</span>
                  <Input 
                     type="number" 
-                    id="period" 
                     name="periodicity_days" 
-                    placeholder="365" 
+                    defaultValue={task.periodicity_days || ''}
                     className="w-20 bg-white" 
                  />
                  <span className="text-sm text-slate-600">días</span>
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">Deja vacío si es una reparación puntual.</p>
            </div>
 
            <DialogFooter className="pt-2 gap-2">
-             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
              <Button type="submit" disabled={isLoading} className="bg-slate-900 text-white">
                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-               Guardar Tarea
+               Guardar Cambios
              </Button>
            </DialogFooter>
 

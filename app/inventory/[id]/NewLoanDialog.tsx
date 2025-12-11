@@ -14,7 +14,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { History, Loader2, Calendar, User } from "lucide-react"
+import { Handshake, Loader2, Calendar, User } from "lucide-react" // Cambiamos History por Handshake
 
 export function NewLoanDialog({ itemId }: { itemId: string }) {
   const [open, setOpen] = useState(false)
@@ -25,6 +25,11 @@ export function NewLoanDialog({ itemId }: { itemId: string }) {
     setIsLoading(true)
     const formData = new FormData(event.currentTarget)
     
+    // Aseguramos que el ID va en el formData (aunque usamos input hidden, esto es doble seguridad)
+    if (!formData.get('item_id')) {
+        formData.append('item_id', itemId)
+    }
+
     try {
       const result = await createInventoryLoan(formData)
       if (result?.error) {
@@ -44,42 +49,65 @@ export function NewLoanDialog({ itemId }: { itemId: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="aspect-square p-0 flex-shrink-0 border-slate-300 shadow-sm" title="Prestar Item">
-           <History className="h-5 w-5 text-slate-700" />
+        {/* CAMBIO CLAVE: Botón ancho y Naranja para la barra inferior */}
+        <Button className="w-full bg-orange-600 hover:bg-orange-700 text-white shadow-sm gap-2">
+           <Handshake className="h-4 w-4" />
+           <span>Prestar</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md rounded-xl">
+      
+      <DialogContent className="max-w-sm rounded-xl">
         <DialogHeader>
-          <DialogTitle>Prestar Item</DialogTitle>
+          <DialogTitle>Registrar Préstamo</DialogTitle>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
+           {/* Mantenemos tu input hidden, es una técnica sólida */}
            <input type="hidden" name="item_id" value={itemId} />
 
            <div className="space-y-2">
-              <Label htmlFor="borrower" className="flex items-center gap-2">
-                 <User className="h-3 w-3" /> ¿A quién se lo prestas?
+              <Label htmlFor="borrower" className="flex items-center gap-2 text-slate-600">
+                 <User className="h-3.5 w-3.5" /> ¿A quién se lo prestas?
               </Label>
-              <Input id="borrower" name="borrower_name" placeholder="Ej: Vecino del 5º, Cuñado..." required autoFocus />
+              <Input 
+                id="borrower" 
+                name="borrower_name" 
+                placeholder="Ej: Vecino, Hermano..." 
+                required 
+                autoFocus 
+              />
            </div>
 
            <div className="space-y-2">
-              <Label htmlFor="date" className="flex items-center gap-2">
-                 <Calendar className="h-3 w-3" /> Fecha de préstamo
+              <Label htmlFor="date" className="flex items-center gap-2 text-slate-600">
+                 <Calendar className="h-3.5 w-3.5" /> Fecha de préstamo
               </Label>
-              <Input type="date" id="date" name="loan_date" defaultValue={today} required />
+              <Input 
+                type="date" 
+                id="date" 
+                name="loan_date" 
+                defaultValue={today} 
+                required 
+              />
            </div>
 
            <div className="space-y-2">
-              <Label htmlFor="notes">Notas (Opcional)</Label>
-              <Textarea id="notes" name="notes" placeholder="Condiciones, estado al entregar..." />
+              <Label htmlFor="notes" className="text-slate-600">Notas (Opcional)</Label>
+              <Textarea 
+                id="notes" 
+                name="notes" 
+                placeholder="Condiciones, fecha de devolución estimada..." 
+                className="resize-none"
+              />
            </div>
 
-           <DialogFooter className="pt-2">
-             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-             <Button type="submit" disabled={isLoading}>
+           <DialogFooter className="pt-2 gap-2">
+             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+                Cancelar
+             </Button>
+             <Button type="submit" disabled={isLoading} className="bg-orange-600 hover:bg-orange-700 text-white">
                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-               Registrar Préstamo
+               Confirmar Préstamo
              </Button>
            </DialogFooter>
 

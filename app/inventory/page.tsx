@@ -1,28 +1,31 @@
 import { createClient } from '@/utils/supabase/server'
-import { InventoryListView } from './InventoryListView'
-import { NewItemDialog } from './NewItemDialog'
 import Link from 'next/link'
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from 'lucide-react'
-import { InventorySettings } from './InventorySettings'
 
+// Componentes Locales
+// Asegúrate de que los nombres de archivo coinciden mayúsculas/minúsculas
+import { InventorySettingsDialog } from './InventorySettingsDialog'
+import { InventoryListView } from './InventoryListView'
+import { NewItemDialog } from './NewItemDialog'
+
+// ¡ESTA LÍNEA ES LA CLAVE! Debe ser 'export default' y 'async'
 export default async function InventoryPage() {
   const supabase = await createClient()
 
-  // 1. Obtener Categorías (para pasar al diálogo y a los filtros)
+  // 1. Obtener Categorías
   const { data: categories } = await supabase
     .from('inventory_categories')
     .select('id, name, icon')
     .order('name')
 
-  // 2. Obtener Ubicaciones (para pasar al diálogo)
+  // 2. Obtener Ubicaciones
   const { data: locations } = await supabase
     .from('inventory_locations')
     .select('id, name, parent_id')
     .order('name')
 
-  // 3. Obtener Items (el inventario en sí)
-  // Hacemos el join para traer el nombre de la categoría y ubicación
+  // 3. Obtener Items
   const { data: items } = await supabase
     .from('inventory_items')
     .select(`
@@ -37,28 +40,22 @@ export default async function InventoryPage() {
       
       {/* HEADER SUPERIOR */}
       <div className="sticky top-0 z-10 bg-slate-100/90 backdrop-blur-sm border-b border-slate-200/50 px-4 py-3 shadow-sm">
-        
-        {/* Este es el contenedor principal que debe gestionar la alineación
-           del 'atrás' (izquierda), el título (centro/left) y el botón de ajustes (derecha) */}
         <div className="max-w-xl mx-auto flex items-center justify-between">
           
-          {/* GRUPO IZQUIERDA: Botón de atrás y título */}
           <div className="flex items-center gap-3">
             <Link href="/">
               <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-200 -ml-2 rounded-full">
                 <ArrowLeft className="h-5 w-5 text-slate-600" />
               </Button>
             </Link>
-            {/* El título se alinea justo después del botón de atrás */}
             <h1 className="text-xl font-bold text-slate-800">Inventario</h1>
           </div>
           
-          {/* GRUPO DERECHA: Botón de configuración.
-             justify-between lo empuja al extremo derecho del max-w-xl */}
-          <InventorySettings
+          <InventorySettingsDialog
             categories={categories || []} 
             locations={locations || []} 
           />
+          
         </div>
       </div>
 
@@ -71,10 +68,9 @@ export default async function InventoryPage() {
         />
       </main>
 
-      {/* BARRA INFERIOR FIJA */}
+      {/* BARRA INFERIOR */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-200 z-20 safe-area-bottom shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
          <div className="max-w-xl mx-auto">
-            {/* Pasamos categorías y ubicaciones para el desplegable del formulario */}
             <NewItemDialog 
               categories={categories || []} 
               locations={locations || []} 

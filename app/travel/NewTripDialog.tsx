@@ -1,3 +1,4 @@
+// app/travel/NewTripDialog.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -20,35 +21,34 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Plus } from 'lucide-react'
+// IMPORTAMOS EL TIPO CENTRALIZADO
+import { TravelEmployer } from '@/types/travel'
 
-interface Employer {
-  id: string
-  name: string
-}
-
-export function NewTripDialog({ employers }: { employers: Employer[] }) {
+// Usamos TravelEmployer[] en las props
+export function NewTripDialog({ employers }: { employers: TravelEmployer[] }) {
   const [open, setOpen] = useState(false)
   
   // ESTADOS PARA LAS FECHAS
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [defaultEmployerId, setDefaultEmployerId] = useState('')
+
+  // OPTIMIZACIÓN: Calculamos el ID por defecto directamente.
+  // Al venir 'employers' del servidor, ya tenemos los datos. No hace falta un useEffect.
+  const defaultEmployerId = employers.find(e => e.name.toUpperCase().includes('BAIDATA'))?.id
 
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0]
-    setStartDate(today)
-    setEndDate(today)
-
-    const baidata = employers.find(e => e.name.toUpperCase().includes('BAIDATA'))
-    if (baidata) {
-      setDefaultEmployerId(baidata.id)
+    // Inicializamos fechas solo en cliente para evitar error de hidratación
+    if (open) {
+        const today = new Date().toISOString().split('T')[0]
+        setStartDate(today)
+        setEndDate(today)
     }
-  }, [employers])
+  }, [open]) // Se ejecuta cada vez que abrimos el diálogo
 
   const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDate = e.target.value
     setStartDate(newDate)
-    setEndDate(newDate)
+    setEndDate(newDate) // UX: Al cambiar inicio, el fin se pone igual por defecto
   }
 
   async function handleSubmit(formData: FormData) {
@@ -63,7 +63,7 @@ export function NewTripDialog({ employers }: { employers: Employer[] }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {/* BOTÓN ADAPTADO A BARRA INFERIOR (w-full, más alto) */}
+        {/* BOTÓN ADAPTADO A BARRA INFERIOR */}
         <Button className="w-full h-11 text-base font-bold shadow-md bg-indigo-600 hover:bg-indigo-700 gap-2">
           <Plus className="h-5 w-5" /> Nuevo Viaje
         </Button>
@@ -82,6 +82,7 @@ export function NewTripDialog({ employers }: { employers: Employer[] }) {
 
           <div className="grid gap-2">
             <Label htmlFor="employer">Empresa</Label>
+            {/* Usamos key para forzar re-render si el default cambia (truco de React) */}
             <Select name="employer_id" defaultValue={defaultEmployerId} required>
               <SelectTrigger>
                 <SelectValue placeholder="Selecciona empresa" />

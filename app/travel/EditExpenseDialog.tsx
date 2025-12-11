@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { updateExpense, deleteExpense, deleteReceipt } from './actions' // <--- IMPORT NUEVO
+import { updateExpense, deleteExpense, deleteReceipt } from './actions'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,47 +19,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Pencil, Trash2, Calculator, X } from 'lucide-react' // <--- IMPORT NUEVO (X)
+import { Pencil, Trash2, Calculator, X } from 'lucide-react'
 import { CategoryIcon } from '@/utils/icon-map'
 
-interface Category {
-  id: string
-  name: string
-  is_mileage: boolean
-  current_rate: number
-  icon_key?: string
-}
+// --- CAMBIO 1: Importamos los tipos centralizados y borramos los locales ---
+import { TravelExpense, TravelCategory } from '@/types/travel'
 
-interface Expense {
-  id: string
-  trip_id: string
-  category_id: string
-  date: string
-  concept: string
-  amount: number
-  is_reimbursable: boolean
-  receipt_url?: string
-  mileage_distance?: number
-  mileage_rate_snapshot?: number
-}
+// (Borramos interface Category e interface Expense locales)
 
-export function EditExpenseDialog({ expense, categories }: { expense: Expense, categories: Category[] }) {
+export function EditExpenseDialog({ expense, categories }: { expense: TravelExpense, categories: TravelCategory[] }) {
   const [open, setOpen] = useState(false)
-  const [isMileage, setIsMileage] = useState(!!expense.mileage_distance)
+  
+  // --- CAMBIO 2: Inicialización segura de estados ---
+  // Buscamos si la categoría original es de kilometraje para inicializar bien el estado
+  const initialCat = categories.find(c => c.id === expense.category_id)
+  const initialIsMileage = initialCat?.is_mileage || false
+  // Usamos el snapshot guardado o el actual de la categoría
+  const initialRate = expense.mileage_rate_snapshot || initialCat?.current_rate || 0
+
+  const [isMileage, setIsMileage] = useState(initialIsMileage)
+  const [currentRate, setCurrentRate] = useState(initialRate)
   
   const [amount, setAmount] = useState(expense.amount.toString())
   const [distance, setDistance] = useState(expense.mileage_distance?.toString() || '')
-  const [currentRate, setCurrentRate] = useState(expense.mileage_rate_snapshot || 0)
 
   const handleCategoryChange = (catId: string) => {
     const cat = categories.find(c => c.id === catId)
     if (cat?.is_mileage) {
       setIsMileage(true)
+      // Usamos || 0 por seguridad con los tipos opcionales
       setCurrentRate(cat.current_rate || 0)
       if(distance) setAmount((Number(distance) * (cat.current_rate || 0)).toFixed(2))
     } else {
       setIsMileage(false)
-      setDistance('') 
+      // setDistance('') // Opcional: ¿Quieres borrar la distancia si cambian a taxi? A tu gusto.
     }
   }
 
@@ -86,18 +79,15 @@ export function EditExpenseDialog({ expense, categories }: { expense: Expense, c
     else alert(res?.error)
   }
 
-  // --- NUEVA FUNCIÓN PARA BORRAR SOLO TICKET ---
+  // --- MANTENEMOS TU FUNCIÓN DE BORRAR TICKET ---
   async function handleDeleteReceipt() {
     if(!confirm("¿Borrar solo la foto del ticket?")) return
     const res = await deleteReceipt(expense.id, expense.trip_id)
     if (res?.success) {
-        // No cerramos el modal, solo refrescamos visualmente (Next.js lo hace solo al revalidar)
-        // pero podemos cerrar para forzar limpieza
         setOpen(false) 
     }
     else alert(res?.error)
   }
-  // -------------------------------------------
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -175,11 +165,11 @@ export function EditExpenseDialog({ expense, categories }: { expense: Expense, c
           )}
 
           <div className="flex items-center gap-2 mt-2">
-             <input type="checkbox" name="is_reimbursable" id="reimb_edit" defaultChecked={expense.is_reimbursable} className="w-4 h-4" />
-             <Label htmlFor="reimb_edit">¿Es reembolsable?</Label>
+             <input type="checkbox" name="is_reimbursable" id="reimb_edit" defaultChecked={expense.is_reimbursable} className="w-4 h-4 accent-indigo-600" />
+             <Label htmlFor="reimb_edit" className="cursor-pointer">¿Es reembolsable?</Label>
           </div>
 
-          {/* INPUT FOTO CON BOTÓN DE BORRAR */}
+          {/* INPUT FOTO CON BOTÓN DE BORRAR (TU LÓGICA MANTENIDA) */}
           <div className="grid gap-2 mt-2">
             <Label htmlFor="receipt_edit">Ticket / Factura</Label>
             
@@ -190,7 +180,6 @@ export function EditExpenseDialog({ expense, categories }: { expense: Expense, c
                     <a href={expense.receipt_url} target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-green-900">Ver</a>
                  </div>
                  
-                 {/* BOTÓN BORRAR TICKET */}
                  <Button 
                    type="button" 
                    variant="ghost" 

@@ -3,58 +3,93 @@ import { NewExpenseDialog } from '../NewExpenseDialog'
 import { EditExpenseDialog } from '../EditExpenseDialog'
 import { QuickReceiptUpload } from './QuickReceiptUpload'
 import { TripStatusSelector } from './TripStatusSelector'
-import { toggleReceiptWaived, togglePersonalAccounting } from '../actions' // <--- IMPORT NUEVO
+import { toggleReceiptWaived, togglePersonalAccounting } from '../actions'
 import { CategoryIcon } from '@/utils/icon-map'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Calendar, Paperclip, AlertCircle, Ban, CheckCircle2, Wallet } from 'lucide-react' // <--- Wallet IMPORTADO
+import { ArrowLeft, MapPin, Calendar, Paperclip, AlertCircle, Ban, CheckCircle2, Wallet } from 'lucide-react'
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { redirect } from 'next/navigation'
+// IMPORTAMOS TIPOS
+import { TravelExpense, TravelCategory, TravelTrip } from '@/types/travel'
+
+// Interfaz local para el JOIN del viaje (Trip + Employer Name)
+interface TripDetailData extends TravelTrip {
+  travel_employers: { name: string } | null
+}
 
 export default async function TripDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const tripId = id
   const supabase = await createClient()
 
-  const { data: trip } = await supabase.from('travel_trips').select('*, travel_employers(name)').eq('id', tripId).single()
-  if (!trip) redirect('/travel')
+  // 1. Obtener Viaje (Tipado con la interfaz extendida)
+  const { data: rawTrip, error } = await supabase
+    .from('travel_trips')
+    .select('*, travel_employers(name)')
+    .eq('id', tripId)
+    .single()
 
-  const { data: categories } = await supabase.from('travel_categories').select('*').order('name')
-  const { data: expenses } = await supabase.from('travel_expenses').select('*').eq('trip_id', tripId).order('date', { ascending: false })
+  if (error || !rawTrip) redirect('/travel');
+  const trip = rawTrip as unknown as TripDetailData;
 
+  // 2. Obtener Categorías
+  const { data: categories } = await supabase
+    .from('travel_categories')
+    .select('*')
+    .order('name')
+    .returns<TravelCategory[]>()
+
+  // 3. Obtener Gastos
+  const { data: expenses } = await supabase
+    .from('travel_expenses')
+    .select('*')
+    .eq('trip_id', tripId)
+    .order('date', { ascending: false })
+    .returns<TravelExpense[]>()
+
+  // CÁLCULOS
   const totalAmount = expenses?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0
+  
+  // Usamos el tipo TripStatus que ya incluye 'closed'
   const isClosed = trip.status === 'closed'
 
-  // VALIDACIÓN
+  // VALIDACIÓN DE TICKETS
   const pendingCount = expenses?.filter(e => {
-     const isMileage = categories?.find(c => c.id === e.category_id)?.is_mileage
-     return !isMileage && !e.receipt_url && !e.receipt_waived
+      const isMileage = categories?.find(c => c.id === e.category_id)?.is_mileage
+      // Lógica: Si no es kilometraje, no tiene URL y no está exento -> Pendiente
+      return !isMileage && !e.receipt_url && !e.receipt_waived
   }).length || 0
+  
   const hasPendingReceipts = pendingCount > 0
 
-  // AGRUPACIÓN
-  const groupedExpenses = expenses?.reduce((acc: any, expense) => {
+  // AGRUPACIÓN POR FECHA (Tipado Seguro)
+  const groupedExpenses = expenses?.reduce<Record<string, TravelExpense[]>>((acc, expense) => {
     const dateKey = expense.date 
     if (!acc[dateKey]) acc[dateKey] = []
     acc[dateKey].push(expense)
     return acc
-  }, {})
-  const sortedDates = Object.keys(groupedExpenses || {}).sort((a, b) => b.localeCompare(a))
+  }, {}) || {} 
+
+  const sortedDates = Object.keys(groupedExpenses).sort((a, b) => b.localeCompare(a))
 
   return (
     <div className="min-h-screen bg-slate-100 pb-24 font-sans">
       
-      {/* HEADER */}
-      <div className="bg-white sticky top-0 z-10 border-b border-slate-200 px-4 py-2 flex items-center gap-3 shadow-sm">
-        <Link href="/travel" className="p-2 -ml-2 rounded-full hover:bg-slate-100 text-slate-600">
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <h1 className="text-base font-bold text-slate-800 truncate flex-1">{trip.name}</h1>
-        <div className="scale-90 origin-right">
-          <TripStatusSelector trip={trip} hasPendingReceipts={hasPendingReceipts} />
+      {/* HEADER REFACTORIZADO: Estilo Coherente con TravelPage */}
+      <div className="sticky top-0 z-10 bg-slate-100/90 backdrop-blur-sm border-b border-slate-200/50 px-4 py-3 shadow-sm">
+        <div className="max-w-3xl mx-auto flex items-center gap-3">
+            <Link href="/travel" className="p-2 -ml-2 rounded-full hover:bg-slate-200 text-slate-600 transition-colors">
+            <ArrowLeft className="h-5 w-5" />
+            </Link>
+            <h1 className="text-base font-bold text-slate-800 truncate flex-1">{trip.name}</h1>
+            <div className="scale-90 origin-right">
+                <TripStatusSelector trip={trip} hasPendingReceipts={hasPendingReceipts} />
+            </div>
         </div>
       </div>
       
+      {/* CONTENIDO PRINCIPAL */}
       <div className="max-w-3xl mx-auto p-3 space-y-4">
         
         {/* RESUMEN */}
@@ -63,7 +98,7 @@ export default async function TripDetailPage({ params }: { params: Promise<{ id:
             <div className="flex flex-col gap-1.5 text-xs text-slate-600">
               <div className="flex items-center gap-2">
                 <MapPin className="h-3.5 w-3.5 text-indigo-500" />
-                <span className="font-medium text-slate-900">{(trip.travel_employers as any)?.name}</span>
+                <span className="font-medium text-slate-900">{trip.travel_employers?.name ?? 'Sin Empresa'}</span>
               </div>
               <div className="flex items-center gap-2">
                  <Calendar className="h-3.5 w-3.5 text-orange-500" />
@@ -93,12 +128,12 @@ export default async function TripDetailPage({ params }: { params: Promise<{ id:
                 </h3>
 
                 <div className="space-y-2">
-                  {groupedExpenses[dateKey].map((expense: any) => {
-                     const category = categories?.find(c => c.id === expense.category_id)
-                     const isMileage = category?.is_mileage
-                     const isMissing = !isMileage && !expense.receipt_url && !expense.receipt_waived
+                  {groupedExpenses[dateKey].map((expense) => {
+                      const category = categories?.find(c => c.id === expense.category_id)
+                      const isMileage = category?.is_mileage
+                      const isMissing = !isMileage && !expense.receipt_url && !expense.receipt_waived
 
-                     return (
+                      return (
                       <Card 
                         key={expense.id} 
                         className={`
@@ -143,12 +178,12 @@ export default async function TripDetailPage({ params }: { params: Promise<{ id:
                                  )}
                                  {!expense.is_reimbursable && (
                                    <span className="text-[10px] bg-yellow-50 text-yellow-700 px-1 py-px rounded border border-yellow-200">
-                                     Empresa
+                                      Empresa
                                    </span>
                                  )}
                                  {expense.receipt_waived && !isMileage && !expense.receipt_url && (
                                    <span className="text-[10px] flex items-center gap-1 text-slate-400 px-1 py-px">
-                                     <Ban className="h-3 w-3" /> Sin ticket (OK)
+                                      <Ban className="h-3 w-3" /> Sin ticket (OK)
                                    </span>
                                  )}
                               </div>
@@ -160,7 +195,7 @@ export default async function TripDetailPage({ params }: { params: Promise<{ id:
                              
                              <div className="flex-1 flex items-center gap-2">
                                
-                               {/* --- NUEVO: CHECK CONTABILIDAD (Siempre visible, izquierda) --- */}
+                               {/* CHECK CONTABILIDAD */}
                                <form>
                                  <Button 
                                     formAction={async () => {
@@ -170,13 +205,12 @@ export default async function TripDetailPage({ params }: { params: Promise<{ id:
                                     variant="ghost" size="icon" 
                                     className="h-7 w-7 hover:bg-slate-100"
                                     title="Marcar como revisado en contabilidad personal"
-                                 >
-                                    <Wallet className={`h-4 w-4 transition-colors ${expense.personal_accounting_checked ? 'text-emerald-500 fill-emerald-50' : 'text-slate-300'}`} />
-                                 </Button>
+                                   >
+                                      <Wallet className={`h-4 w-4 transition-colors ${expense.personal_accounting_checked ? 'text-emerald-500 fill-emerald-50' : 'text-slate-300'}`} />
+                                   </Button>
                                </form>
-                               {/* ------------------------------------------------------------- */}
 
-                               <div className="h-4 w-px bg-slate-200 mx-1" /> {/* Separador */}
+                               <div className="h-4 w-px bg-slate-200 mx-1" />
 
                                {isMileage ? (
                                  <span className="text-[10px] text-slate-300 italic">No requiere ticket</span>
@@ -184,31 +218,31 @@ export default async function TripDetailPage({ params }: { params: Promise<{ id:
                                  <>
                                    {expense.receipt_url && (
                                       <a href={expense.receipt_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1 rounded-md text-xs font-semibold border border-indigo-100">
-                                        <Paperclip className="h-3 w-3" /> Ticket
+                                         <Paperclip className="h-3 w-3" /> Ticket
                                       </a>
                                    )}
 
                                    {!expense.receipt_url && !isClosed && (
                                       <>
-                                        {!expense.receipt_waived && (
-                                           <QuickReceiptUpload expenseId={expense.id} tripId={tripId} />
-                                        )}
-                                        <form>
-                                           <Button 
-                                             formAction={async () => {
-                                               'use server'
-                                               await toggleReceiptWaived(expense.id, tripId, expense.receipt_waived)
-                                             }}
-                                             variant="ghost" size="sm" 
-                                             className={`h-7 px-2 text-[10px] ${expense.receipt_waived ? 'text-green-600 hover:text-green-700 hover:bg-green-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}
-                                           >
-                                             {expense.receipt_waived ? (
-                                                <><CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Justificado</>
-                                             ) : (
-                                                <><Ban className="h-3.5 w-3.5 mr-1" /> Omitir</>
-                                             )}
-                                           </Button>
-                                        </form>
+                                          {!expense.receipt_waived && (
+                                             <QuickReceiptUpload expenseId={expense.id} tripId={tripId} />
+                                          )}
+                                          <form>
+                                             <Button 
+                                                formAction={async () => {
+                                                  'use server'
+                                                  await toggleReceiptWaived(expense.id, tripId, expense.receipt_waived)
+                                                }}
+                                                variant="ghost" size="sm" 
+                                                className={`h-7 px-2 text-[10px] ${expense.receipt_waived ? 'text-green-600 hover:text-green-700 hover:bg-green-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}
+                                              >
+                                                {expense.receipt_waived ? (
+                                                   <><CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Justificado</>
+                                                ) : (
+                                                   <><Ban className="h-3.5 w-3.5 mr-1" /> Omitir</>
+                                                )}
+                                              </Button>
+                                           </form>
                                       </>
                                    )}
                                    
@@ -227,7 +261,7 @@ export default async function TripDetailPage({ params }: { params: Promise<{ id:
                           </div>
                         </CardContent>
                       </Card>
-                     )
+                      )
                   })}
                 </div>
               </div>

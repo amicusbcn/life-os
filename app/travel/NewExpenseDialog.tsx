@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { createExpense } from './actions'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch" // Necesitaremos instalar este componente abajo*
 import { CategoryIcon } from '@/utils/icon-map'
 import {
   Dialog,
@@ -22,34 +21,28 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Plus, Calculator } from 'lucide-react'
+// IMPORTAMOS TIPO CENTRALIZADO
+import { TravelCategory } from '@/types/travel'
 
-// Tipos de datos que recibimos
-interface Category {
-  id: string
-  name: string
-  is_mileage: boolean
-  current_rate: number
-  icon_key?:string
-}
-
-export function NewExpenseDialog({ tripId, categories }: { tripId: string, categories: Category[] }) {
+export function NewExpenseDialog({ tripId, categories }: { tripId: string, categories: TravelCategory[] }) {
   const [open, setOpen] = useState(false)
-  const [selectedCatId, setSelectedCatId] = useState('')
-  const [isMileage, setIsMileage] = useState(false)
   
-  // Estados para cálculos
-  const [amount, setAmount] = useState('') // Euros totales
-  const [distance, setDistance] = useState('') // Kms
-  const [currentRate, setCurrentRate] = useState(0) // Precio actual (0.26)
+  // Estados para la lógica de UI
+  const [isMileage, setIsMileage] = useState(false)
+  const [currentRate, setCurrentRate] = useState(0)
+  
+  // Estados para cálculos visuales
+  const [amount, setAmount] = useState('') 
+  const [distance, setDistance] = useState('')
 
   // 1. Cuando cambiamos de categoría, detectamos si es de tipo "Kilometraje"
   const handleCategoryChange = (catId: string) => {
-    setSelectedCatId(catId)
     const cat = categories.find(c => c.id === catId)
     
     if (cat?.is_mileage) {
       setIsMileage(true)
-      setCurrentRate(cat.current_rate || 0)
+      // Usamos el rate de la BD o 0 si viene nulo
+      setCurrentRate(cat.current_rate || 0) 
       setAmount('') // Limpiamos importe para que se recalcule
     } else {
       setIsMileage(false)
@@ -77,7 +70,7 @@ export function NewExpenseDialog({ tripId, categories }: { tripId: string, categ
       // Limpiamos formulario
       setAmount('')
       setDistance('')
-      setSelectedCatId('')
+      setIsMileage(false)
     } else {
       alert("Error: " + res?.error)
     }
@@ -170,9 +163,10 @@ export function NewExpenseDialog({ tripId, categories }: { tripId: string, categ
 
           {/* Reembolsable (Checkbox manual simple) */}
           <div className="flex items-center gap-2 mt-2">
-             <input type="checkbox" name="is_reimbursable" id="reimbursable" defaultChecked className="w-4 h-4" />
+             <input type="checkbox" name="is_reimbursable" id="reimbursable" defaultChecked className="w-4 h-4 accent-indigo-600" />
              <Label htmlFor="reimbursable" className="cursor-pointer">¿Es reembolsable? (Paga la empresa)</Label>
           </div>
+          
           {/* INPUT DE ARCHIVO */}
           <div className="grid gap-2">
             <Label htmlFor="receipt">Foto del Ticket</Label>
@@ -181,7 +175,7 @@ export function NewExpenseDialog({ tripId, categories }: { tripId: string, categ
               name="receipt_file" 
               type="file" 
               capture="environment"
-              accept="image/*,application/pdf" // Aceptamos imágenes y PDF
+              accept="image/*,application/pdf"
               className="cursor-pointer bg-slate-50"
             />
           </div>

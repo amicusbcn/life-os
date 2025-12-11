@@ -1,7 +1,8 @@
 'use client'
 
-import { updateTripStatus } from '../actions'
-import { getTripVisuals } from '@/utils/trip-logic'
+import { updateTripStatus } from '@/app/travel/actions' // Asegúrate de la ruta
+import { getTripState } from '@/utils/trip-logic' // La nueva lógica centralizada
+import { TravelTrip, TripDbStatus } from '@/types/travel'
 import {
   Select,
   SelectContent,
@@ -9,52 +10,96 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { toast } from "sonner" // O tu sistema de alertas preferido
 
-// AHORA RECIBIMOS UNA PROPIEDAD NUEVA: hasPendingReceipts
-export function TripStatusSelector({ trip, hasPendingReceipts }: { trip: any, hasPendingReceipts: boolean }) {
+interface TripStatusSelectorProps {
+  trip: TravelTrip;
+  hasPendingReceipts: boolean;
+}
+
+export function TripStatusSelector({ trip, hasPendingReceipts }: TripStatusSelectorProps) {
   
-  const { label, className, canClose } = getTripVisuals(trip)
-  const currentValue = trip.status === 'closed' ? 'closed' : 'open'
+  // 1. Obtenemos toda la lógica visual y de permisos del "cerebro" central
+  const { label, color, actions, visualStatus } = getTripState(trip);
 
-  // Bloqueo total: O lógica temporal (futuro) O lógica de negocio (faltan tickets)
-  const isBlocked = !canClose || hasPendingReceipts
+  // 2. CASO ESPECIAL: REPORTADO
+  // Si está bloqueado y no se puede reabrir (caso reportado), mostramos solo un badge estático.
+  if (actions.isLocked && !actions.canReopen) {
+    return (
+      <Badge variant="outline" className={`h-8 px-3 text-xs font-bold ${color}`}>
+        {label}
+      </Badge>
+    );
+  }
 
-  async function handleChange(value: string) {
-    // Doble chequeo de seguridad
-    if (value === 'closed' && hasPendingReceipts) {
-       alert("⛔ No puedes cerrar el viaje: Faltan tickets por justificar.")
-       return
+  // 3. VALIDACIÓN DE CIERRE EXTRA (Regla de negocio: Tickets pendientes)
+  // Aunque la fecha permita cerrar, si hay tickets pendientes, bloqueamos.
+  const isClosingBlocked = !actions.canClose || (hasPendingReceipts && trip.status !== 'closed');
+
+  async function handleValueChange(newValue: string) {
+    // Protección doble
+    if (newValue === 'closed' && hasPendingReceipts) {
+      toast.error("⛔ No puedes cerrar: Faltan tickets por justificar.");
+      return;
     }
-    const res = await updateTripStatus(trip.id, value)
-    if (!res?.success) alert("Error al cambiar estado")
+
+    const statusToSend = newValue as TripDbStatus; // 'open' | 'closed'
+    
+    // Optimistic UI o espera simple
+    const res = await updateTripStatus(trip.id, statusToSend);
+    
+    if (res?.error) {
+      toast.error("Error al actualizar estado");
+    } else {
+      toast.success("Estado actualizado");
+    }
   }
 
   return (
-    <Select value={currentValue} onValueChange={handleChange}>
-      <SelectTrigger className={`w-[200px] h-8 text-xs font-bold border transition-colors ${className}`}>
+    <Select 
+      // El valor del select siempre coincide con la BBDD ('open' o 'closed')
+      // Si visualStatus es 'planned', 'active' o 'completed', el valor real en BBDD es 'open'.
+      value={trip.status} 
+      onValueChange={handleValueChange}
+    >
+      <SelectTrigger 
+        className={`w-[180px] h-8 text-xs font-bold border transition-colors ${color}`}
+      >
+        {/* Aquí mostramos la etiqueta calculada (ej: "EN CURSO"), no el valor crudo */}
         <span>{label}</span>
       </SelectTrigger>
-      <SelectContent>
+      
+      <SelectContent align="end">
+        {/* OPCIÓN 1: ESTADO ABIERTO (Automático) */}
+        {/* Si seleccionas esto, la BBDD guarda 'open', y la UI calculará si es Planificado/En Curso */}
         <SelectItem value="open">
-          {trip.status === 'closed' ? '🔓 Reabrir Viaje' : '🔄 Estado Automático'}
+          {trip.status === 'closed' ? '🔄 Reabrir / Automático' : '✅ Estado Automático'}
         </SelectItem>
         
         <div className="h-px bg-slate-100 my-1" />
         
-        {/* OPCIÓN CERRAR: Se deshabilita si hay problemas */}
+        {/* OPCIÓN 2: CERRAR */}
         <SelectItem 
           value="closed" 
-          disabled={isBlocked && trip.status !== 'closed'} 
-          className="font-bold text-slate-600"
+          disabled={isClosingBlocked}
+          className="text-slate-700 font-medium"
         >
-          {hasPendingReceipts ? '⚠️ FALTAN TICKETS' : '🔒 CERRAR VIAJE'}
-          
-          {/* Texto explicativo pequeño si está bloqueado */}
-          {(isBlocked && trip.status !== 'closed') && (
-            <span className="block text-[10px] font-normal text-red-400 mt-0.5">
-               {hasPendingReceipts ? '(Revisa los gastos en rojo)' : '(Aún no realizado)'}
+          <div className="flex flex-col items-start gap-1">
+            <span className="flex items-center gap-2">
+               {hasPendingReceipts ? '⚠️' : '🔒'} CERRAR VIAJE
             </span>
-          )}
+            
+            {/* Mensajes de ayuda si está deshabilitado */}
+            {isClosingBlocked && trip.status !== 'closed' && (
+               <span className="text-[10px] text-red-400 font-normal">
+                 {hasPendingReceipts 
+                   ? 'Faltan tickets' 
+                   : '(Aún no realizado)' // Este mensaje saldrá si intentas cerrar un viaje futuro y tu lógica lo prohibe
+                 }
+               </span>
+            )}
+          </div>
         </SelectItem>
       </SelectContent>
     </Select>
