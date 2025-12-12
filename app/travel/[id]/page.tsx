@@ -1,3 +1,5 @@
+// app/travel/[id]/page.tsx (MODIFICADO)
+
 import { createClient } from '@/utils/supabase/server'
 import { NewExpenseDialog } from '../NewExpenseDialog'
 import { EditExpenseDialog } from '../EditExpenseDialog'
@@ -10,49 +12,54 @@ import { ArrowLeft, MapPin, Calendar, Paperclip, AlertCircle, Ban, CheckCircle2,
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { redirect } from 'next/navigation'
+// IMPORTAMOS EL FETCHING DE DATOS
+import { getMileageTemplates } from '@/app/travel/data'; // <-- ¡NUEVA IMPORTACIÓN!
 // IMPORTAMOS TIPOS
-import { TravelExpense, TravelCategory, TravelTrip } from '@/types/travel'
+import { TravelExpense, TravelCategory, TripDetailData } from '@/types/travel'
 
-// Interfaz local para el JOIN del viaje (Trip + Employer Name)
-interface TripDetailData extends TravelTrip {
-  travel_employers: { name: string } | null
-}
+
 
 export default async function TripDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const tripId = id
-  const supabase = await createClient()
+	const { id } = await params
+	const tripId = id
+	const supabase = await createClient()
 
-  // 1. Obtener Viaje (Tipado con la interfaz extendida)
-  const { data: rawTrip, error } = await supabase
-    .from('travel_trips')
-    .select('*, travel_employers(name)')
-    .eq('id', tripId)
-    .single()
+	// 1. Obtener Viaje (Tipado con la interfaz extendida)
+	const { data: rawTrip, error } = await supabase
+		.from('travel_trips')
+		.select('*, travel_employers(name)')
+		.eq('id', tripId)
+		.single()
 
-  if (error || !rawTrip) redirect('/travel');
-  const trip = rawTrip as unknown as TripDetailData;
+	if (error || !rawTrip) redirect('/travel');
+	const trip = rawTrip as unknown as TripDetailData;
 
-  // 2. Obtener Categorías
-  const { data: categories } = await supabase
-    .from('travel_categories')
-    .select('*')
-    .order('name')
-    .returns<TravelCategory[]>()
+	// 2. Obtener Categorías
+	const { data: categories } = await supabase
+		.from('travel_categories')
+		.select('*')
+		.order('name')
+		.returns<TravelCategory[]>()
 
-  // 3. Obtener Gastos
-  const { data: expenses } = await supabase
-    .from('travel_expenses')
-    .select('*')
-    .eq('trip_id', tripId)
-    .order('date', { ascending: false })
-    .returns<TravelExpense[]>()
+	// 3. Obtener Gastos
+	const { data: expenses } = await supabase
+		.from('travel_expenses')
+		.select('*')
+		.eq('trip_id', tripId)
+		.order('date', { ascending: false })
+		.returns<TravelExpense[]>()
+    
+	// 4. Obtener Plantillas de Kilometraje (¡NUEVA CONSULTA!)
+	const mileageTemplates = await getMileageTemplates(); // Fetching optimizado
 
-  // CÁLCULOS
+	// CÁLCULOS
   const totalAmount = expenses?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0
   
   // Usamos el tipo TripStatus que ya incluye 'closed'
   const isClosed = trip.status === 'closed'
+
+  // 🆕 CÁLCULO PARA LA PROPIEDAD 'hasExpenses'
+  const hasExpenses = (expenses?.length || 0) > 0;
 
   // VALIDACIÓN DE TICKETS
   const pendingCount = expenses?.filter(e => {
@@ -84,7 +91,7 @@ export default async function TripDetailPage({ params }: { params: Promise<{ id:
             </Link>
             <h1 className="text-base font-bold text-slate-800 truncate flex-1">{trip.name}</h1>
             <div className="scale-90 origin-right">
-                <TripStatusSelector trip={trip} hasPendingReceipts={hasPendingReceipts} />
+                <TripStatusSelector trip={trip} hasPendingReceipts={hasPendingReceipts} hasExpenses={hasExpenses} />
             </div>
         </div>
       </div>
@@ -273,7 +280,7 @@ export default async function TripDetailPage({ params }: { params: Promise<{ id:
       {!isClosed && (
         <div className="fixed bottom-0 left-0 right-0 p-3 bg-white border-t border-slate-200 z-20 safe-area-bottom shadow-lg">
            <div className="max-w-3xl mx-auto [&>button]:w-full [&>button]:h-11 [&>button]:text-base [&>button]:font-bold [&>button]:shadow-sm">
-              <NewExpenseDialog tripId={tripId} categories={categories || []} />
+              <NewExpenseDialog tripId={tripId} categories={categories || []} templates={mileageTemplates} />
            </div>
         </div>
       )}

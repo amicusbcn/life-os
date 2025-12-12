@@ -3,15 +3,8 @@
 'use client'
 
 import Link from 'next/link'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { AppWindow, LogOut, MoreVertical, User, Users } from 'lucide-react'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger} from "@/components/ui/dropdown-menu"
+import { AppWindow, LogOut, MoreVertical, User, Users, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { logout } from './login/actions' // Importamos la server action
 
@@ -63,7 +56,16 @@ export function UserMenu({ userEmail, userRole }: UserMenuProps) {
             <AppWindow className="mr-2 h-4 w-4" />
             <span>Aplicaciones</span>
           </DropdownMenuItem>
-        )}
+        )}        
+        <DropdownMenuSeparator />
+        
+        {/* Opción: Changelog */}
+        <Link href="/changelog" passHref>
+          <DropdownMenuItem className="cursor-pointer">
+            <Zap className="mr-2 h-4 w-4 text-indigo-500" />
+            <span>v1.0.0</span>
+          </DropdownMenuItem>
+        </Link>
         
         <DropdownMenuSeparator />
         

@@ -1,8 +1,9 @@
+// app/travel/[Bid]/TripStatusSelector.tsx
 'use client'
 
-import { updateTripStatus } from '@/app/travel/actions' // Asegúrate de la ruta
-import { getTripState } from '@/utils/trip-logic' // La nueva lógica centralizada
-import { TravelTrip, TripDbStatus } from '@/types/travel'
+import { updateTripStatus, deleteTrip } from '@/app/travel/actions' // <-- ¡Importar deleteTrip!
+import { getTripState } from '@/utils/trip-logic'
+import { TravelTrip, TripDbStatus,TripStatusSelectorProps } from '@/types/travel' // <-- Tipos ya existentes
 import {
   Select,
   SelectContent,
@@ -11,20 +12,35 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { toast } from "sonner" // O tu sistema de alertas preferido
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog" 
+import { toast } from "sonner" 
+import { useRouter } from 'next/navigation' 
+import { Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { Button } from "@/components/ui/button"
 
-interface TripStatusSelectorProps {
-  trip: TravelTrip;
-  hasPendingReceipts: boolean;
-}
 
-export function TripStatusSelector({ trip, hasPendingReceipts }: TripStatusSelectorProps) {
+export function TripStatusSelector({ trip, hasPendingReceipts, hasExpenses }: TripStatusSelectorProps) { // <-- ¡Actualizar Destructuring!
+  const router = useRouter();
+  const [isDeleting, setIsDeleting] = useState(false);
   
-  // 1. Obtenemos toda la lógica visual y de permisos del "cerebro" central
   const { label, color, actions, visualStatus } = getTripState(trip);
 
+  // Requisito: Solo se puede eliminar si NO está bloqueado (reportado o cerrado).
+  const canDeleteTrip = trip.status === 'open';
+
   // 2. CASO ESPECIAL: REPORTADO
-  // Si está bloqueado y no se puede reabrir (caso reportado), mostramos solo un badge estático.
+  // ... (código que se mantiene) ...
   if (actions.isLocked && !actions.canReopen) {
     return (
       <Badge variant="outline" className={`h-8 px-3 text-xs font-bold ${color}`}>
@@ -34,19 +50,19 @@ export function TripStatusSelector({ trip, hasPendingReceipts }: TripStatusSelec
   }
 
   // 3. VALIDACIÓN DE CIERRE EXTRA (Regla de negocio: Tickets pendientes)
-  // Aunque la fecha permita cerrar, si hay tickets pendientes, bloqueamos.
   const isClosingBlocked = !actions.canClose || (hasPendingReceipts && trip.status !== 'closed');
 
   async function handleValueChange(newValue: string) {
-    // Protección doble
+    // Protección doble para cerrar
     if (newValue === 'closed' && hasPendingReceipts) {
       toast.error("⛔ No puedes cerrar: Faltan tickets por justificar.");
       return;
     }
-
-    const statusToSend = newValue as TripDbStatus; // 'open' | 'closed'
     
-    // Optimistic UI o espera simple
+    if (newValue === 'delete') return; // Se gestiona con AlertDialog
+
+    const statusToSend = newValue as TripDbStatus; 
+    
     const res = await updateTripStatus(trip.id, statusToSend);
     
     if (res?.error) {
@@ -55,53 +71,130 @@ export function TripStatusSelector({ trip, hasPendingReceipts }: TripStatusSelec
       toast.success("Estado actualizado");
     }
   }
+  
+  async function handleDeleteTrip() {
+    setIsDeleting(true);
+    const res = await deleteTrip(trip.id);
+    setIsDeleting(false);
+    
+    if (res?.error) {
+      // Si el error es por "No se puede eliminar un viaje cerrado o reportado", avisamos
+      if (res.error.includes('cerrado o reportado')) {
+        toast.error('❌ Error: El viaje no puede eliminarse en su estado actual.');
+      } else {
+        toast.error(`Error al eliminar viaje: ${res.error}`);
+      }
+      
+    } else {
+      toast.success("Viaje eliminado con éxito.");
+      router.push('/travel'); 
+    }
+  }
 
   return (
-    <Select 
-      // El valor del select siempre coincide con la BBDD ('open' o 'closed')
-      // Si visualStatus es 'planned', 'active' o 'completed', el valor real en BBDD es 'open'.
-      value={trip.status} 
-      onValueChange={handleValueChange}
-    >
-      <SelectTrigger 
-        className={`w-[180px] h-8 text-xs font-bold border transition-colors ${color}`}
+    <AlertDialog>
+      <Select 
+        value={trip.status} 
+        onValueChange={handleValueChange}
       >
-        {/* Aquí mostramos la etiqueta calculada (ej: "EN CURSO"), no el valor crudo */}
-        <span>{label}</span>
-      </SelectTrigger>
-      
-      <SelectContent align="end">
-        {/* OPCIÓN 1: ESTADO ABIERTO (Automático) */}
-        {/* Si seleccionas esto, la BBDD guarda 'open', y la UI calculará si es Planificado/En Curso */}
-        <SelectItem value="open">
-          {trip.status === 'closed' ? '🔄 Reabrir / Automático' : '✅ Estado Automático'}
-        </SelectItem>
-        
-        <div className="h-px bg-slate-100 my-1" />
-        
-        {/* OPCIÓN 2: CERRAR */}
-        <SelectItem 
-          value="closed" 
-          disabled={isClosingBlocked}
-          className="text-slate-700 font-medium"
+        <SelectTrigger 
+          className={`w-[180px] h-8 text-xs font-bold border transition-colors ${color}`}
         >
-          <div className="flex flex-col items-start gap-1">
-            <span className="flex items-center gap-2">
-               {hasPendingReceipts ? '⚠️' : '🔒'} CERRAR VIAJE
-            </span>
-            
-            {/* Mensajes de ayuda si está deshabilitado */}
-            {isClosingBlocked && trip.status !== 'closed' && (
-               <span className="text-[10px] text-red-400 font-normal">
-                 {hasPendingReceipts 
-                   ? 'Faltan tickets' 
-                   : '(Aún no realizado)' // Este mensaje saldrá si intentas cerrar un viaje futuro y tu lógica lo prohibe
-                 }
-               </span>
+          <span>{label}</span>
+        </SelectTrigger>
+        
+        <SelectContent align="end">
+          {/* OPCIÓN 1: ESTADO ABIERTO */}
+          <SelectItem value="open">
+            {trip.status === 'closed' ? '🔄 Reabrir / Automático' : '✅ Estado Automático'}
+          </SelectItem>
+          
+          <div className="h-px bg-slate-100 my-1" />
+          
+          {/* OPCIÓN 2: CERRAR */}
+          <SelectItem 
+            value="closed" 
+            disabled={isClosingBlocked}
+            className="text-slate-700 font-medium"
+          >
+            <div className="flex flex-col items-start gap-1">
+              <span className="flex items-center gap-2">
+                 {hasPendingReceipts ? '⚠️' : '🔒'} CERRAR VIAJE
+              </span>
+              
+              {isClosingBlocked && trip.status !== 'closed' && (
+                <span className="text-[10px] text-red-400 font-normal">
+                  {hasPendingReceipts 
+                    ? 'Faltan tickets' 
+                    : '(Aún no realizado)' 
+                  }
+                </span>
+              )}
+            </div>
+          </SelectItem>
+
+          {/* OPCIÓN 3: ELIMINAR */}
+          {canDeleteTrip && (
+						<>
+							<div className="h-px bg-slate-100 my-1" />
+							
+							{/* Aquí usamos el AlertDialogTrigger y envolvemos un Button 
+								para que el SelectContent lo vea como un elemento que debe cerrar el desplegable, 
+								pero el Trigger se asegura de abrir el modal. */}
+							<AlertDialogTrigger asChild>
+								<Button
+									variant="ghost"
+									// Usamos w-full y text-left para que parezca una opción de SelectItem
+									className="w-full justify-start text-red-600 font-medium hover:bg-red-50 text-sm h-8 px-2"
+								>
+									<span className="flex items-center gap-2">
+										🗑️ ELIMINAR VIAJE
+									</span>
+								</Button>
+							</AlertDialogTrigger>
+						</>
+					)}
+				</SelectContent>
+			</Select>
+      
+      {/* Diálogo de Confirmación de Eliminación */}
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>¿Estás absolutamente seguro?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Esta acción es **irreversible**. Eliminarás el viaje **{trip.name}**.
+            {hasExpenses 
+              ? (
+                <div className='mt-2 p-2 border-l-4 border-red-500 bg-red-50 text-sm'>
+                  <p className="font-bold text-red-700">⚠️ ADVERTENCIA DE GASTOS:</p>
+                  <p>Este viaje tiene gastos asociados. Se eliminarán **todos los gastos** y se borrarán
+                  **todos los archivos de recibos** del Storage de forma permanente.</p>
+                </div>
+              )
+              : (
+                <span className="font-bold"> No tiene gastos asociados, se eliminará solo el registro del viaje.</span>
+              )
+            }
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction 
+            onClick={handleDeleteTrip} 
+            disabled={isDeleting}
+            className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
+          >
+            {isDeleting ? (
+              <span className="flex items-center">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Eliminando...
+              </span>
+            ) : (
+              'Eliminar Viaje'
             )}
-          </div>
-        </SelectItem>
-      </SelectContent>
-    </Select>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
