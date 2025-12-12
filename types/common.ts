@@ -2,6 +2,17 @@
 
 // --- TIPOS TRANSVERSALES ---
 
+export interface UnifiedAppHeaderProps { 
+    title: string;
+    backHref?: string | null; 
+    rightAction?: React.ReactNode; 
+    moduleMenu?: React.ReactNode; 
+    maxWClass?: string;
+    // userEmail y userRole se añaden aquí
+    userEmail: string;
+    userRole: string | null; 
+}
+
 // Tipo estándar para respuestas de Server Action
 export interface ActionResponse {
     success: boolean;
@@ -44,4 +55,12 @@ export interface AdminUserProfile {
   profiles_groups: {
     app_groups: AppGroup;
   }[];
+}
+
+// Propiedades para el componente de menú global de usuario
+export interface UserMenuProps {
+  userEmail: string;
+  userRole: string | null;
+  additionalItems?: React.ReactNode[]; 
+  currentPath?: string;
 }

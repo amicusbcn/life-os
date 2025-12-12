@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { UserActions } from './user-actions'; // Componente Cliente para las acciones
-import { UserMenu } from '../UserMenu';
+import { UserMenu } from '../../UserMenu';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { AdminUserProfile } from '@/types/common';
