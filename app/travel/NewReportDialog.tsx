@@ -7,44 +7,45 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+	Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+	Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { FileText, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from 'sonner' 
 
 // IMPORTAMOS TIPOS CENTRALIZADOS
-import { TravelEmployer, ReportCandidatesResponse, ActionResponse } from '@/types/travel'
+import { TravelEmployer, ReportCandidatesResponse} from '@/types/travel'
+import { ActionResponse } from '@/types/common'
 
 export function NewReportDialog({ employers }: { employers: TravelEmployer[] }) {
-  const [open, setOpen] = useState(false)
-  const [step, setStep] = useState(1)
-  const [selectedEmployer, setSelectedEmployer] = useState('')
-  const [reportName, setReportName] = useState('')
-  const [reportCode, setReportCode] = useState('')
-  const [isPending, startTransition] = useTransition()
-  
-  const [candidates, setCandidates] = useState<ReportCandidatesResponse | null>(null)
-  const [selectedTrips, setSelectedTrips] = useState<string[]>([])
+	const [open, setOpen] = useState(false)
+	const [step, setStep] = useState(1)
+	const [selectedEmployer, setSelectedEmployer] = useState('')
+	const [reportName, setReportName] = useState('')
+	const [reportCode, setReportCode] = useState('')
+	const [isPending, startTransition] = useTransition()
+	
+	const [candidates, setCandidates] = useState<ReportCandidatesResponse | null>(null)
+	const [selectedTrips, setSelectedTrips] = useState<string[]>([])
 
-  // Lógica de inicialización
-  useEffect(() => {
+	// Lógica de inicialización
+	useEffect(() => {
   	if (open) {
-  	  setStep(1)
-  	  setCandidates(null)
-  	  setSelectedTrips([])
-  	  const date = new Date()
-  	  const month = date.toLocaleString('es-ES', { month: 'long' })
-  	  setReportName(`Gastos ${month.charAt(0).toUpperCase() + month.slice(1)} ${date.getFullYear()}`)
-  	  setReportCode('')
+  		setStep(1)
+  		setCandidates(null)
+  		setSelectedTrips([])
+  		const date = new Date()
+  		const month = date.toLocaleString('es-ES', { month: 'long' })
+  		setReportName(`Gastos ${month.charAt(0).toUpperCase() + month.slice(1)} ${date.getFullYear()}`)
+  		setReportCode('')
   	}
-  }, [open])
+	}, [open])
 
-  // PASO 1 -> 2: Buscar candidatos
-  function handleNext() {
+	// PASO 1 -> 2: Buscar candidatos
+	function handleNext() {
   	if (!selectedEmployer || !reportName) return
   	
   	startTransition(async () => {
@@ -56,34 +57,34 @@ export function NewReportDialog({ employers }: { employers: TravelEmployer[] }) 
   	  	}
   	  	setStep(2)
   	})
-  }
+	}
 
-  // ELIMINAMOS handleCreate y lo reemplazamos por formAction para usar FormData
-  const formAction = async (formData: FormData) => {
-  	  // Validación anticipada: Si el estado local dice que no hay viajes, no enviamos.
-  	  if (selectedTrips.length === 0) {
+	// ELIMINAMOS handleCreate y lo reemplazamos por formAction para usar FormData
+	const formAction = async (formData: FormData) => {
+  		// Validación anticipada: Si el estado local dice que no hay viajes, no enviamos.
+  		if (selectedTrips.length === 0) {
           toast.error("Debes seleccionar al menos un viaje.");
           return;
       }
 
-  	  // Paso clave: Añadir el array de IDs serializado a FormData
-  	  formData.set('tripIds', JSON.stringify(selectedTrips)); 
+  		// Paso clave: Añadir el array de IDs serializado a FormData
+  		formData.set('tripIds', JSON.stringify(selectedTrips)); 
       
-  	  startTransition(async () => {
-  	  	  // createReport ahora solo espera 1 argumento (FormData)
-  	  	  const res = await createReport(formData); 
-  	  	  
-  	  	  if (res?.success) {
-  	  	  	  toast.success(res.message || 'Hoja de gastos generada con éxito.');
-  	  	  	  setOpen(false);
-  	  	  } else {
-  	  	  	  toast.error(res?.error || "Error al crear la hoja.");
-  	  	  }
-  	  });
-  }
+  		startTransition(async () => {
+  	  		// createReport ahora solo espera 1 argumento (FormData)
+  	  		const res = await createReport(formData); 
+  	  		
+  	  		if (res?.success) {
+  	  	  		toast.success(res.message || 'Hoja de gastos generada con éxito.');
+  	  	  		setOpen(false);
+  	  		} else {
+  	  	  		toast.error(res?.error || "Error al crear la hoja.");
+  	  		}
+  		});
+	}
 
 
-  return (
+	return (
   	<>
   	  	{/* EL BOTÓN AHORA GESTIONA EL ESTADO DIRECTAMENTE */}
   	  	<Button 
@@ -97,7 +98,7 @@ export function NewReportDialog({ employers }: { employers: TravelEmployer[] }) 
 
   	  	{/* EL DIÁLOGO SE RENDERIZA CONDICIONALMENTE POR EL ESTADO 'open' */}
   	  	<Dialog open={open} onOpenChange={setOpen}>
-  	  	  <DialogContent className="sm:max-w-[500px]">
+  	  		<DialogContent className="sm:max-w-[500px]">
   	  	  	<DialogHeader>
   	  	  	  	<DialogTitle>Generar Hoja de Gastos</DialogTitle>
   	  	  	</DialogHeader>
@@ -231,5 +232,5 @@ export function NewReportDialog({ employers }: { employers: TravelEmployer[] }) 
   	  	</DialogContent>
   	  	</Dialog>
   	</>
-  )
+	)
 }
