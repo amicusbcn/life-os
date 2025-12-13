@@ -1,16 +1,34 @@
+// app/timeline/components/TimelineSettings.tsx
 'use client'
 
-import { useState, useRef } from 'react'
-import { updateTag, deleteTag, updatePerson, deletePerson } from './actions'
+import React, { useState, useRef } from 'react'
+import { updateTag, deleteTag, updatePerson, deletePerson } from '../actions' 
+import { TimelineTag, TimelinePerson } from '@/types/timeline' 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import { MoreVertical, Settings, Trash2, Save, Tag, Users, Upload, UserCircle } from 'lucide-react'
+import { Settings, Trash2, Save, Tag, Users, Upload } from 'lucide-react'
 import imageCompression from 'browser-image-compression'
 
+interface CloneableElementProps {
+    onClick?: (e: React.MouseEvent) => void;
+    // Añadimos onSelect, que es el hook que usa Radix/Shadcn para manejar la interacción de ítems
+    onSelect?: (e: Event) => void; 
+}
+// Este componente solo recibe props y actúa como botón.
+// Ahora es un componente cliente y puede ser pasado como prop.
+export const SettingsTrigger = (props: any) => (
+    <Button 
+        variant="ghost" 
+        size="icon" 
+        {...props} 
+        className="h-8 w-8 hover:bg-slate-100 rounded-full text-slate-500"
+    >
+        <Settings className="h-5 w-5" />
+    </Button>
+);
 // --- FILA DE ETIQUETA (Con Color) ---
 function TagRow({ tag }: { tag: any }) {
   const [name, setName] = useState(tag.name)
@@ -149,24 +167,53 @@ function PersonRow({ person }: { person: any }) {
 }
 
 // --- COMPONENTE PRINCIPAL ---
-export function TimelineSettings({ allTags, allPeople }: { allTags: any[], allPeople: any[] }) {
+
+export function TimelineSettings({ allTags, allPeople,children }: { allTags: TimelineTag[], allPeople: TimelinePerson[],
+    children: React.ReactNode }) {
   const [open, setOpen] = useState(false)
+
+  // 🚨 PASO 1: Aserción de tipo para el elemento hijo
+    const childElement = children as React.ReactElement<CloneableElementProps>;
+
+    // 🚨 PASO 2: Implementar el nuevo onClick
+    const newOnClick = (e: React.MouseEvent) => {
+        // Usamos una verificación de tipo de función explícita, que es más segura
+        if (typeof childElement.props.onClick === 'function') {
+            e.stopPropagation();
+            childElement.props.onClick(e);
+        }
+        setOpen(true);
+    };
+
+const newOnSelect = (e: Event) => {
+    // 1. Prevenir el comportamiento por defecto de 'onSelect' (que es cerrar el menú)
+    e.preventDefault(); 
+    
+    // 2. Ejecutar el onSelect original si existía
+    const originalOnSelect = (childElement.props as CloneableElementProps).onSelect;
+    if (typeof originalOnSelect === 'function') {
+        originalOnSelect(e);
+    }
+    
+    // 3. Abrir el diálogo
+    setOpen(true);
+};
+
+
+// Clonamos el child para inyectarle el nuevo onSelect.
+const trigger = React.cloneElement(childElement, {
+    // 🚨 Inyectamos la función en onSelect
+    onSelect: newOnSelect,
+    
+    // Opcional: También podemos añadir un onClick simple para compatibilidad, 
+    // pero onSelect debería ser suficiente para manejar el clic y prevenir el cierre.
+    onClick: (e: React.MouseEvent) => e.stopPropagation(), 
+
+} as React.PropsWithChildren<CloneableElementProps>);
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="-mr-2 text-slate-500 hover:bg-slate-100 rounded-full">
-            <MoreVertical className="h-5 w-5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setOpen(true)} className="cursor-pointer">
-            <Settings className="mr-2 h-4 w-4" /> Configurar Etiquetas y Personas
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
+    {trigger}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-[425px] h-[80vh] flex flex-col bg-slate-50">
           <DialogHeader>
@@ -193,7 +240,6 @@ export function TimelineSettings({ allTags, allPeople }: { allTags: any[], allPe
                </div>
             </TabsContent>
           </Tabs>
-
         </DialogContent>
       </Dialog>
     </>

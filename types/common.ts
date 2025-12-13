@@ -8,7 +8,6 @@ export interface UnifiedAppHeaderProps {
     rightAction?: React.ReactNode; 
     moduleMenu?: React.ReactNode; 
     maxWClass?: string;
-    // userEmail y userRole se añaden aquí
     userEmail: string;
     userRole: string | null; 
 }

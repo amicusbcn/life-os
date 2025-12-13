@@ -16,7 +16,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { updateTimelineEvent, createTag } from './actions'
+import { updateTimelineEvent, createTag } from '../actions'
 import { MultiSelect } from '@/components/ui/multi-select'
 
 // --- TIPOS ADAPTADOS A UUIDs (Strings) ---

@@ -1,6 +1,6 @@
 'use client'
 
-import { deleteTimelineEvent } from './actions'
+import { deleteTimelineEvent } from '../actions'
 import { Button } from "@/components/ui/button"
 import { Trash2 } from 'lucide-react'
 import { useState } from 'react'
