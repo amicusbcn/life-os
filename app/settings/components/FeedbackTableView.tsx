@@ -103,13 +103,13 @@ export function FeedbackTableView({ proposals }: FeedbackTableViewProps) {
                                 <TableCell className="text-xs text-slate-500">
                                     {format(new Date(prop.created_at), 'dd MMM yy', { locale: es })}
                                     <p className="text-xs font-medium text-slate-700 sm:hidden mt-1"> {/* Mostrar contexto en mobile debajo de la fecha */}
-                                        {(prop.context_path ?? '').split('/').pop() || '/'}
+                                        {(prop.context_path) || '/'}
                                     </p>
                                 </TableCell>
                                 
                                 <TableCell className="text-sm text-slate-600 hidden sm:table-cell">
                                     {/* Muestra solo la última parte de la ruta para ser conciso */}
-                                    <Badge variant="secondary">{(prop.context_path ?? '').split('/').pop() || '/'}</Badge>
+                                    <Badge variant="secondary">{(prop.context_path ?? '').split('/').filter(Boolean).pop() || '/'}</Badge>
                                 </TableCell>
                                 
                                 <TableCell>

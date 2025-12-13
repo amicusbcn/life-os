@@ -29,7 +29,7 @@ export async function submitFeedback(formData: FormData): Promise<ActionResponse
             .insert({ 
                 content: content,
                 user_id: user?.id,
-                type: 'feature_request',
+                type: 'feature',
                 context_path: currentPath || 'N/A'
             });
 
@@ -113,7 +113,7 @@ export async function getFeedbackProposals(): Promise<AppFeedback[]> {
     const { data, error } = await supabase
         .from('app_feedback')
         .select(`
-            id, created_at, content, type, is_processed, user_id,
+            id, created_at, content, type, is_processed, user_id, context_path,
             profiles ( full_name ) 
         `)
         .order('created_at', { ascending: false })

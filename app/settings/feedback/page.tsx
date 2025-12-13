@@ -7,7 +7,7 @@ import { redirect } from 'next/navigation';
 import { getFeedbackProposals } from '@/app/core/actions'; 
 import { UserMenuProps } from '@/types/common';
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
-
+import { SettingsMenu } from '../components/SettingsMenu';
 // Componente Cliente (se creará a continuación)
 import { FeedbackTableView } from '../components/FeedbackTableView'; 
 
@@ -45,6 +45,7 @@ export default async function FeedbackAdminPage() {
 								userEmail={headerProps.userEmail}
 								userRole={headerProps.userRole}
 								maxWClass='max-w-7xl'
+								moduleMenu={<SettingsMenu />}
 						/>
 						
 						{/* 2. RENDERIZAR EL CLIENT COMPONENT CON DATOS */}

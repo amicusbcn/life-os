@@ -92,7 +92,7 @@ export default async function AdminUsersPage() {
 				userEmail={headerProps.userEmail}
 				userRole={headerProps.userRole}
 				maxWClass="max-w-2xl"
-        moduleMenu={<SettingsMenu />}
+        		moduleMenu={<SettingsMenu />}
 			/>
 
 			{/* CONTENIDO PRINCIPAL */}
