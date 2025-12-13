@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Edit, KeyRound, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EditProfileDialog } from './EditProfileDialog'
-import { requestPasswordChange } from '../actions'
+import { requestPasswordChange } from '../profile/actions'
 import { ProfileViewProps, UserProfile } from '@/types/settings'; // <-- Importar tipos centrales
 
 // Nota: El componente ya no recibe 'user' y 'profile' sin tipado.
