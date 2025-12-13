@@ -4,7 +4,7 @@ import { Fragment } from 'react';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Settings } from 'lucide-react';
 import { TimelineSettings } from './TimelineSettings'; // Componente Cliente
-import { TimelineMenuProps } from '@types/timeline'; 
+import { TimelineMenuProps } from '@/types/timeline'; 
 
 export async function TimelineMenu({ allTags, allPeople }: TimelineMenuProps) {
     return (
