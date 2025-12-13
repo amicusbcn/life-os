@@ -4,7 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
 
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader'; 
-import { ProfileView } from "./components/ProfileView";
+import { ProfileView } from "../components/ProfileView";
 
 import { getFullProfileData } from './data'; 
 import { SettingsMenu }  from '../components/SettingsMenu';

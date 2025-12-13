@@ -1,9 +1,10 @@
 // app/core/actions.ts
 'use server'
-
 import { createClient } from '@/utils/supabase/server'
 import { ActionResponse } from '@/types/common'
 import { revalidatePath } from 'next/cache'
+import { FeedbackCategory } from '@/types/settings';
+import { AppFeedback } from '@/types/settings';
 
 /**
  * Guarda una petición de cambio/feedback enviada por el usuario.
@@ -11,6 +12,7 @@ import { revalidatePath } from 'next/cache'
 export async function submitFeedback(formData: FormData): Promise<ActionResponse> {
     const supabase = await createClient();
     const content = formData.get('content') as string;
+    const currentPath = formData.get('currentPath') as string;
 
     if (!content || content.length < 5) {
         return { success: false, error: 'La idea debe tener al menos 5 caracteres.' };
@@ -27,7 +29,8 @@ export async function submitFeedback(formData: FormData): Promise<ActionResponse
             .insert({ 
                 content: content,
                 user_id: user?.id,
-                type: 'feature_request' 
+                type: 'feature_request',
+                context_path: currentPath || 'N/A'
             });
 
         if (error) {
@@ -74,4 +77,52 @@ export async function updateFeedbackStatus(feedbackId: string, currentStatus: bo
         console.error('Error catastrófico en updateFeedbackStatus:', error);
         return { success: false, error: 'Error interno del servidor.' };
     }
+}
+
+export async function updateFeedbackCategory(feedbackId: string, category: FeedbackCategory): Promise<ActionResponse> {
+    const supabase = await createClient();
+
+    try {
+        const { error } = await supabase
+            .from('app_feedback')
+            .update({ type: category }) 
+            .eq('id', feedbackId);
+
+        if (error) {
+            return { success: false, error: 'Fallo al actualizar la categoría.' };
+        }
+
+        revalidatePath('/settings/feedback');
+        return { success: true, message: `Categoría actualizada a ${category}.` };
+
+    } catch (error) {
+        return { success: false, error: 'Error interno del servidor.' };
+    }
+}
+
+/**
+ * Obtiene todas las propuestas de feedback con los datos del perfil del remitente.
+ * (Debe ser protegido por RLS o lógica de admin/rol en el server).
+ */
+export async function getFeedbackProposals(): Promise<AppFeedback[]> {
+    const supabase = await createClient();
+
+    // Solo un administrador debería poder acceder a esta función.
+    // Asumimos que RLS o la función caller ya lo han validado.
+    
+    const { data, error } = await supabase
+        .from('app_feedback')
+        .select(`
+            id, created_at, content, type, is_processed, user_id,
+            profiles ( full_name ) 
+        `)
+        .order('created_at', { ascending: false })
+        .returns<AppFeedback[]>();
+        
+    if (error) {
+        console.error("Error fetching feedback proposals:", error);
+        return [];
+    }
+
+    return data as AppFeedback[];
 }

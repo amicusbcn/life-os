@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 
-import { updateProfile } from "./actions";
+import { updateProfile } from "../profile/actions";
 
 // Importaciones de componentes de shadcn/ui
 import { Button } from "@/components/ui/button";

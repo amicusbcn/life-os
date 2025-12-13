@@ -6,18 +6,12 @@ import { ActionResponse } from '@/types/common'
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Lightbulb, Send, Loader2 } from 'lucide-react'
 import { useFormStatus } from 'react-dom'
 import { toast } from 'sonner'
-import { DropdownMenuItem } from '@/components/ui/dropdown-menu' // Para usarlo dentro del UserMenu
-
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { usePathname } from 'next/navigation';
 // Componente para el estado de envío
 function SubmitButton() {
     const { pending } = useFormStatus();
@@ -36,11 +30,12 @@ function SubmitButton() {
 
 export function FeedbackDialog() {
     const [open, setOpen] = useState(false);
-    
+        const currentPath = usePathname();
+            
     // Función de envío que usa la Server Action
     async function handleSubmit(formData: FormData) {
         const content = formData.get('content') as string;
-        
+
         // Pequeña validación cliente
         if (!content || content.length < 5) {
             toast.error("Por favor, describe tu idea.");
@@ -85,6 +80,7 @@ export function FeedbackDialog() {
                 </DialogHeader>
                 
                 <form action={handleSubmit} className="grid gap-4 py-4">
+                    <input type="hidden" name="currentPath" value={currentPath} />
                     <p className="text-sm text-slate-600 -mt-2">
                         Describe brevemente tu idea de mejora, *bug* o nueva funcionalidad para Life-OS.
                     </p>

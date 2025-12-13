@@ -12,11 +12,12 @@ import { toast } from 'sonner';
 import { toggleAdminRole, updateUserGroups, resetUserPassword, removeUserFromGroup } from './actions'; 
 // Importamos tipos centrales
 import { ActionResponse, AdminUserProfile, AppGroup } from '@/types/common'; 
+import { UserProfileAdminView,UserGroupRelation } from '@/types/settings'; // <-- USAMOS EL TIPO CENTRALIZADO
 
 // --- TIPOS DE PROPIEDADES ---
 // El perfil que viene de la página (Server Component)
 interface UserActionsProps {
-    userProfile: AdminUserProfile;
+    userProfile: UserProfileAdminView;
     // Para la acción de quitar grupo (renderizada por cada grupo)
     groupToRemove?: AppGroup; 
     // Para la acción de añadir grupo (renderizada solo una vez)
