@@ -1,3 +1,4 @@
+// app/types/inventory.ts (NUEVO/ACTUALIZADO)
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export interface InventoryLink {
@@ -63,4 +64,36 @@ export interface Profile {
   full_name: string;
   email?: string;
   avatar_url?: string;
+}
+
+// Tipos de datos que ya tienes:
+export interface InventoryCategory { id: string; name: string; icon?: string; }
+export interface InventoryLocation { id: string; name: string; parent_id?: string | null; }
+
+// 🚨 Interfaz para el menú (pasando los datos)
+export interface InventoryMenuProps {
+    categories: InventoryCategory[];
+    locations: InventoryLocation[];
+}
+
+export interface CloneableElementProps {
+    onClick?: (e: React.MouseEvent) => void;
+    onSelect?: (e: Event) => void; 
+}
+export interface LocationWithLevel extends InventoryLocation {
+    level: number
+}
+export interface InventorySettingsDialogProps {
+  categories: InventoryCategory[];
+  locations: InventoryLocation[];
+  children: React.ReactNode;
+}
+export interface ItemEditDialogProps {
+    item: any;
+    categories: any[]; 
+    locations: any[];
+    // 🚨 Ahora recibe el estado directamente, no usa children
+    isOpen?: boolean; 
+    setOpen?: (open: boolean) => void; 
+    children?: React.ReactNode;
 }

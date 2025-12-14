@@ -1,47 +1,16 @@
+// app/inventory/components/InventorySettingsDialog.tsx
 'use client'
 
-import { useState, useMemo } from "react"
-import { 
-  createCategory, 
-  deleteCategory, 
-  updateCategory, 
-  createLocation, 
-  deleteLocation,
-  updateLocation  
-} from "@/app/inventory/actions"
-import { InventoryCategory, InventoryLocation } from "@/types/inventory"
+import React, { useState, useMemo } from "react"
+import { createCategory, deleteCategory, updateCategory, createLocation, deleteLocation, updateLocation} from "@/app/inventory/actions"
+import { InventorySettingsDialogProps,LocationWithLevel,InventoryCategory, InventoryLocation,InventoryMenuProps, CloneableElementProps } from "@/types/inventory"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle} from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { 
-  Settings, 
-  Plus, 
-  Trash2, 
-  Loader2, 
-  MapPin, 
-  Tag, 
-  CornerDownRight,
-  FolderTree,
-  MoreVertical,
-  Pencil, // <--- Nuevo icono
-  Check,  // <--- Nuevo icono
-  X       // <--- Nuevo icono
-} from "lucide-react"
+import { DropdownMenu,DropdownMenuContent,DropdownMenuItem,DropdownMenuLabel,DropdownMenuSeparator,DropdownMenuTrigger} from "@/components/ui/dropdown-menu"
+import { Settings, Plus, Trash2, Loader2,MapPin, Tag, CornerDownRight,FolderTree,MoreVertical,Pencil, Check, X} from "lucide-react"
 
 // --- SUB-COMPONENTE: FILA DE CATEGORÍA (Lectura/Edición) ---
 function CategoryRow({ category }: { category: InventoryCategory }) {
@@ -131,101 +100,115 @@ function CategoryRow({ category }: { category: InventoryCategory }) {
 }
 
 // --- SUB-COMPONENTE: FILA DE UBICACIÓN (Lectura/Edición + Indentación) ---
-interface LocationWithLevel extends InventoryLocation {
-    level: number
-}
 
 function LocationRow({ location }: { location: LocationWithLevel }) {
-    const [isEditing, setIsEditing] = useState(false)
-    const [loading, setLoading] = useState(false)
-    const [tempName, setTempName] = useState(location.name)
-  
-    const handleSave = async () => {
-      setLoading(true)
-      const formData = new FormData()
-      formData.append('id', location.id)
-      formData.append('name', tempName)
-  
-      try {
-          const res = await updateLocation(formData)
-          if (res.success) setIsEditing(false)
-          else alert(res.error)
-      } catch (e) { console.error(e) } 
-      finally { setLoading(false) }
-    }
+  const [isEditing, setIsEditing] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [tempName, setTempName] = useState(location.name)
 
-    const handleCancel = () => {
-        setTempName(location.name)
-        setIsEditing(false)
-    }
-  
-    const handleDelete = async () => {
-      if(!confirm("¿Borrar ubicación?")) return
-      await deleteLocation(location.id)
-    }
-  
-    return (
-      <div className="flex items-center justify-between p-2 rounded-lg border border-slate-100 bg-white shadow-sm group hover:border-indigo-100 transition-colors min-h-[46px]">
-         
-         {/* La indentación siempre es visible para mantener la estructura visual */}
-         <div style={{ paddingLeft: `${location.level * 16}px` }} className="flex items-center shrink-0 mr-2">
-            {location.level > 0 ? (
-                <CornerDownRight className="h-4 w-4 text-slate-300" />
-            ) : (
-                <FolderTree className="h-4 w-4 text-slate-800" />
-            )}
-         </div>
+  const handleSave = async () => {
+    setLoading(true)
+    const formData = new FormData()
+    formData.append('id', location.id)
+    formData.append('name', tempName)
 
-         {isEditing ? (
-             <>
-                {/* --- MODO EDICIÓN --- */}
-                <Input 
-                    value={tempName}
-                    onChange={(e) => setTempName(e.target.value)}
-                    className="flex-1 h-8 text-sm mr-2"
-                    autoFocus
-                />
-                <div className="flex gap-1 shrink-0">
-                    <Button size="icon" variant="ghost" onClick={handleSave} disabled={loading} className="h-8 w-8 text-green-600 hover:bg-green-50">
-                        {loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4" />}
-                    </Button>
-                    <Button size="icon" variant="ghost" onClick={handleCancel} disabled={loading} className="h-8 w-8 text-slate-400 hover:bg-slate-100">
-                        <X className="h-4 w-4" />
-                    </Button>
-                </div>
-             </>
-         ) : (
-             <>
-                {/* --- MODO LECTURA --- */}
-                <span className={`flex-1 truncate text-sm ${location.level === 0 ? 'font-semibold text-slate-800' : 'text-slate-600'}`}>
-                  {location.name}
-                </span>
-
-                <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button size="icon" variant="ghost" onClick={() => setIsEditing(true)} className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50">
-                        <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="icon" variant="ghost" onClick={handleDelete} className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50">
-                        <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                </div>
-             </>
-         )}
-      </div>
-    )
+    try {
+        const res = await updateLocation(formData)
+        if (res.success) setIsEditing(false)
+        else alert(res.error)
+    } catch (e) { console.error(e) } 
+    finally { setLoading(false) }
   }
+
+  const handleCancel = () => {
+      setTempName(location.name)
+      setIsEditing(false)
+  }
+
+  const handleDelete = async () => {
+    if(!confirm("¿Borrar ubicación?")) return
+    await deleteLocation(location.id)
+  }
+
+  return (
+    <div className="flex items-center justify-between p-2 rounded-lg border border-slate-100 bg-white shadow-sm group hover:border-indigo-100 transition-colors min-h-[46px]">
+        
+        {/* La indentación siempre es visible para mantener la estructura visual */}
+        <div style={{ paddingLeft: `${location.level * 16}px` }} className="flex items-center shrink-0 mr-2">
+          {location.level > 0 ? (
+              <CornerDownRight className="h-4 w-4 text-slate-300" />
+          ) : (
+              <FolderTree className="h-4 w-4 text-slate-800" />
+          )}
+        </div>
+
+        {isEditing ? (
+            <>
+              {/* --- MODO EDICIÓN --- */}
+              <Input 
+                  value={tempName}
+                  onChange={(e) => setTempName(e.target.value)}
+                  className="flex-1 h-8 text-sm mr-2"
+                  autoFocus
+              />
+              <div className="flex gap-1 shrink-0">
+                  <Button size="icon" variant="ghost" onClick={handleSave} disabled={loading} className="h-8 w-8 text-green-600 hover:bg-green-50">
+                      {loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4" />}
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={handleCancel} disabled={loading} className="h-8 w-8 text-slate-400 hover:bg-slate-100">
+                      <X className="h-4 w-4" />
+                  </Button>
+              </div>
+            </>
+        ) : (
+            <>
+              {/* --- MODO LECTURA --- */}
+              <span className={`flex-1 truncate text-sm ${location.level === 0 ? 'font-semibold text-slate-800' : 'text-slate-600'}`}>
+                {location.name}
+              </span>
+
+              <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button size="icon" variant="ghost" onClick={() => setIsEditing(true)} className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50">
+                      <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={handleDelete} className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50">
+                      <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+              </div>
+            </>
+        )}
+    </div>
+  )
+}
 
 
 // --- COMPONENTE PRINCIPAL (Sin cambios lógicos, solo estructura) ---
-interface InventorySettingsDialogProps {
-  categories: InventoryCategory[];
-  locations: InventoryLocation[];
-}
 
-export function InventorySettingsDialog({ categories, locations }: InventorySettingsDialogProps) {
+
+export function InventorySettingsDialog({ categories, locations,children }: InventorySettingsDialogProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
+  const childElement = children as React.ReactElement<CloneableElementProps>;
+
+  // 🚨 Handler para prevenir el cierre del menú y abrir el diálogo
+    const newOnSelect = (e: Event) => {
+        e.preventDefault(); // Previene el cierre automático del DropdownMenu
+        
+        // Ejecutar el onSelect original si existía
+        const originalOnSelect = (childElement.props as CloneableElementProps).onSelect;
+        if (typeof originalOnSelect === 'function') {
+            originalOnSelect(e);
+        }
+        
+        setOpen(true); // Abre el diálogo
+    };
+    
+    // Clonamos el child e inyectamos el onSelect
+    const trigger = React.cloneElement(childElement, {
+        onSelect: newOnSelect,
+        onClick: (e: React.MouseEvent) => e.stopPropagation(), // Detiene la propagación del click
+    } as React.PropsWithChildren<CloneableElementProps>);
   // --- LÓGICA DE ÁRBOL ---
   const sortedLocations = useMemo(() => {
     const roots = locations.filter((l) => !l.parent_id)
@@ -266,26 +249,12 @@ export function InventorySettingsDialog({ categories, locations }: InventorySett
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-slate-900 -mr-2">
-            <MoreVertical className="h-5 w-5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel>Opciones de Inventario</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setOpen(true)} className="cursor-pointer">
-            <Settings className="mr-2 h-4 w-4" />
-            <span>Configuración</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {trigger}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md h-[600px] flex flex-col rounded-xl p-0 overflow-hidden bg-white">
           <DialogHeader className="p-4 pb-2 border-b border-slate-100">
-            <DialogTitle>Gestionar Datos</DialogTitle>
+            <DialogTitle>Configuración de Inventario</DialogTitle>
           </DialogHeader>
 
           <Tabs defaultValue="locations" className="flex-1 flex flex-col overflow-hidden">

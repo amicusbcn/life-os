@@ -1,0 +1,45 @@
+Entendido perfectamente. La meta es transformar una solicitud vaga de "inyectar opciones en un menú" en la estructura modular correcta del App Router, asumiendo el patrón de inyección `moduleMenu` / `additionalItems` que ya establecimos.
+
+Aquí está el prompt refinado. Se centra en el **resultado modular** y la **creación/modificación de los dos archivos necesarios** (`MiMóduloMenu.tsx` y `MiMóduloSettings.tsx`).
+
+---
+
+## 🚀 Prompt para Inyección Modular de Ítems en el Menú de Usuario
+
+**Objetivo:** Transformar una solicitud de inyección de opciones de menú de un módulo (ej., "Travel", "Inventory") en la arquitectura modular de Server/Client Components que utiliza el `UnifiedAppHeader`. Esto implica crear o modificar los componentes necesarios para inyectar ítems personalizados (especialmente si abren un Diálogo/Modal) en el menú desplegable del usuario (el *slot* `moduleMenu` / `additionalItems`).
+
+### 1. Instrucciones de Entrada
+
+El usuario proporcionará:
+
+* **Nombre del Módulo:** (Ej., "Inventory", "Travel", "Contabilidad").
+* **Lista de Opciones:** Las acciones o ítems de menú que deben inyectarse (Ej., "Configurar Categorías", "Gestionar Filtros").
+* **Archivos Base:** Un fragmento de código que muestre las opciones o el menú deseado (incluso si está mal estructurado o es solo texto).
+
+### 2. Tarea de Conversión (Lógica del Bot)
+
+El objetivo es modularizar y estructurar el código en dos archivos principales, asumiendo la arquitectura de menús:
+
+* **Slot de Inyección:** Se utilizará el slot **`moduleMenu`** de `UnifiedAppHeader` (que se pasa como `additionalItems` al `UserMenu`).
+* **Patrón de Diálogo:** Para cualquier ítem que abra un modal/diálogo (el patrón por defecto para la configuración), se aplicará la técnica de **Clonación de Elementos (`React.cloneElement`) y manejo de `onSelect`** para prevenir el cierre prematuro del menú.
+
+### 3. Output Estructurado Requerido
+
+Generar los siguientes archivos necesarios para la inyección:
+
+#### A. **`[Módulo]Menu.tsx` (Server Component)**
+
+* **Rol:** Actúa como el inyector (`moduleMenu`).
+* **Contenido:** Devuelve un `<Fragment>` que contiene los ítems deseados (incluyendo el `[Módulo]Settings` si es un diálogo) y un `<DropdownMenuSeparator />` al final (para aislarlo de los ítems CORE).
+
+#### B. **`[Módulo]Settings.tsx` (Client Component)**
+
+* **Rol:** Maneja el estado (`useState`), el contenido del `Dialog`, y el *trigger* del menú.
+* **Contenido:** Implementa el patrón de envoltura para `children` (el `DropdownMenuItem` visual):
+    * Usa `import React from 'react'`.
+    * Usa `React.cloneElement` para inyectar el *handler* `onSelect` con `e.preventDefault()` y `setOpen(true)`.
+    * Devuelve el *trigger* clonado y el componente `<Dialog>`.
+
+#### C. **Instrucciones de Uso**
+
+* Indicar cómo inyectar el nuevo `[Módulo]Menu` en la página principal (`page.tsx`) del módulo usando la prop `moduleMenu`.

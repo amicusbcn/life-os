@@ -1,3 +1,4 @@
+// app/inventory/page.tsx
 import { createClient } from '@/utils/supabase/server'
 import Link from 'next/link'
 import { Button } from "@/components/ui/button"
@@ -5,14 +6,19 @@ import { ArrowLeft } from 'lucide-react'
 
 // Componentes Locales
 // Asegúrate de que los nombres de archivo coinciden mayúsculas/minúsculas
-import { InventorySettingsDialog } from './InventorySettingsDialog'
-import { InventoryListView } from './InventoryListView'
-import { NewItemDialog } from './NewItemDialog'
+import { InventorySettingsDialog } from './components/InventorySettingsDialog'
+import { InventoryListView } from './components/InventoryListView'
+import { NewItemDialog } from './components/NewItemDialog'
+import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader'; 
+import { InventoryMenu } from './components/InventoryMenu';
 
 // ¡ESTA LÍNEA ES LA CLAVE! Debe ser 'export default' y 'async'
 export default async function InventoryPage() {
   const supabase = await createClient()
-
+  // 🚨 NUEVO: Obtener el usuario y el perfil
+	const { data: { user } } = await supabase.auth.getUser();
+	const { data: profile } = await supabase.from('profiles').select('role').eq('id', user?.id).single();
+	const userRole = profile?.role || 'user'; // Asumimos 'user' si no hay perfil
   // 1. Obtener Categorías
   const { data: categories } = await supabase
     .from('inventory_categories')
@@ -39,25 +45,19 @@ export default async function InventoryPage() {
     <div className="min-h-screen bg-slate-100 font-sans pb-24">
       
       {/* HEADER SUPERIOR */}
-      <div className="sticky top-0 z-10 bg-slate-100/90 backdrop-blur-sm border-b border-slate-200/50 px-4 py-3 shadow-sm">
-        <div className="max-w-xl mx-auto flex items-center justify-between">
-          
-          <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-200 -ml-2 rounded-full">
-                <ArrowLeft className="h-5 w-5 text-slate-600" />
-              </Button>
-            </Link>
-            <h1 className="text-xl font-bold text-slate-800">Inventario</h1>
-          </div>
-          
-          <InventorySettingsDialog
-            categories={categories || []} 
-            locations={locations || []} 
-          />
-          
-        </div>
-      </div>
+      <UnifiedAppHeader
+      				title="Inventario"
+      				backHref="/"
+      				userEmail={user?.email || ''} // Usamos el usuario obtenido
+      				userRole={userRole}
+      				maxWClass='max-w-xl'
+      				moduleMenu={
+      						<InventoryMenu 
+      								categories={categories || []} 
+      								locations={locations || []} 
+      						/>
+      				}
+      			/>
 
       {/* CONTENIDO PRINCIPAL */}
       <main className="max-w-xl mx-auto p-4">
