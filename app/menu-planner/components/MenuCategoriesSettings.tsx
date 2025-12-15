@@ -14,26 +14,11 @@ interface MenuRecipeCategoriesSettingsProps {
 
 export default function MenuCategoriesSettings({ children }: MenuRecipeCategoriesSettingsProps) {
   const [isOpen, setOpen] = useState(false);
-  
-  // 🚨 HANDLER CREADO EN EL CLIENTE (Serialización segura)
-  const handleSelect = (e: Event) => {
-    setOpen(true);
-  };
-  
-  // 🚨 CLONAMOS E INYECTAMOS EL HANDLER
-  const trigger = React.cloneElement(
-    children, 
-    { 
-      onSelect: handleSelect, // Inyectamos el handler (creado en el cliente)
-      asChild: true 
-    }
-  );
+
 
   return (
     // 🚨 El Dialog es el wrapper, y el 'trigger' es el elemento clonado que lo abre
     <Fragment> 
-            {trigger} 
-
       <Dialog open={isOpen} onOpenChange={setOpen}>
           <DialogContent className="sm:max-w-[425px]">
       <DialogHeader>

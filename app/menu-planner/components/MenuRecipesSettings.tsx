@@ -13,23 +13,8 @@ interface MenuRecipesSettingsProps {
 
 export default function MenuRecipesSettings({ children }: MenuRecipesSettingsProps) {
   const [isOpen, setOpen] = useState(false);
-  
-  const handleSelect = (e: Event) => {
-   // e.preventDefault(); 
-    setOpen(true);
-  };
-  
-  const trigger = React.cloneElement(
-    children, 
-    { 
-      onSelect: handleSelect, 
-      asChild: true 
-    } as any // Forzamos el tipo a 'any' en las props inyectadas
-  );
-
   return (
     <Fragment> 
-      {trigger}
       <Dialog open={isOpen} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-[800px]"> {/* Usamos un modal más grande para recetas */}
           <DialogHeader>
