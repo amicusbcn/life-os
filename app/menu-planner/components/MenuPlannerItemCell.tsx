@@ -1,46 +1,122 @@
-// app/menu-planner/components/MenuPlannerItemCell.tsx
+// app/menu-planner/components/MenuPlannerItemCell.tsx (Versión Final Corregida)
+
 'use client';
 
-import React,{useState}from 'react';
-import { MenuScheduleItem, MealType, TurnType,MenuPlannerItemCellProps, MenuPlanItemAutocompleteProps,SelectedMeal } from '@/types/menu-planner';
+import React from 'react';
+import { MenuScheduleItem, MealType, TurnType, MenuRecipeSimple, MenuRecipeCategory } from '@/types/menu-planner';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
-import MenuPlanItemAutocomplete from './MenuPlanItemAutocomplete'; // 🚨 Nuevo import
+import { Plus, Pencil } from 'lucide-react';
+import MenuPlanEditModal from './MenuPlanEditModal';
 
+interface MenuPlannerItemCellProps {
+    day: string;
+    mealType: MealType;
+    turnType: TurnType;
+    items: MenuScheduleItem[]; // Array de ítems para esta celda
+    allRecipes: MenuRecipeSimple[]; 
+    allCategories: MenuRecipeCategory[];
+}
 
-export default function MenuPlannerItemCell({ day, mealType, turnType, items }: MenuPlannerItemCellProps) {
-  // Aquí se construirá la UI de la celda, incluyendo el modal de edición/autocompletado.
-  const [isLoading, setIsLoading] = useState(false); // Para mostrar estado de guardado/carga
+// 🚨 FUNCIÓN DE AYUDA CORREGIDA: Ahora recibe 'items' como cuarto argumento.
+const getRecipeDisplayTrigger = (item: MenuScheduleItem, allRecipes: MenuRecipeSimple[], index: number, items: MenuScheduleItem[]) => {
+    const isOut = item.is_out;
+    // Buscamos la receta completa si tenemos el ID
+    const recipe = item.recipe_id ? allRecipes.find(r => r.id === item.recipe_id) : null;
     
-    // Obtener el plato principal para inicializar el autocompletado
-    const primaryItem = items.find(item => item.order_in_meal === 1); 
-    const initialName = primaryItem?.menu_recipes?.name || primaryItem?.free_text || null;
+    // Obtenemos los datos de la categoría para el color
+    const categoryLink = recipe?.menu_recipe_category_link?.[0];
+    const categoryColor = categoryLink?.menu_recipe_categories[0]?.color;
+    const categoryName = categoryLink?.menu_recipe_categories[0]?.name;
+    
+    // Determinamos el texto a mostrar
+    const displayText = isOut ? 'Comer fuera' : item.free_text || recipe?.name || 'Plato sin nombre';
 
-    // Función que se dispara cuando el usuario selecciona o introduce un valor
-      const handleSelectMeal = async (selected: SelectedMeal) => {
-        setIsLoading(true);
-        // 🚨 Aquí llamamos a la Server Action para GUARDAR la planificación
-        // (ej: saveMenuItem({day, mealType, turnType, selected}))
-        console.log("Planificando:", selected); 
-        
-        // Simulación:
-        await new Promise(resolve => setTimeout(resolve, 500)); 
-        setIsLoading(false);
-    };
-  return (
-    <div className="min-h-[100px] flex flex-col p-1">
-      {items.length === 0 ? (
-        <Button variant="ghost" size="sm" className="w-full h-8 text-gray-400 hover:text-indigo-600">
-          <Plus className="w-4 h-4 mr-1" />
-          Añadir {mealType === 'lunch' ? 'Comida' : 'Cena'}
-        </Button>
-      ) : (
-        items.map(item => (
-          <div key={item.id} className="text-sm border-b pb-1 mb-1">
-            {item.free_text || item.menu_recipes?.name || 'Item sin nombre'}
-          </div>
-        ))
-      )}
-    </div>
-  );
+    return (
+        <div 
+            className={`
+                text-sm p-1 my-0.5 rounded transition-colors duration-150 cursor-pointer 
+                hover:bg-indigo-50/70 flex items-center group
+                ${isOut ? 'text-red-500 italic bg-red-50 border border-red-200' : 'bg-white shadow-sm border border-gray-200'}
+            `}
+        >
+            
+            {/* ETIQUETA DE COLOR (Cuadro verde) */}
+            {!isOut && (
+                <div 
+                    className="w-2 h-4 rounded-sm mr-2 flex-shrink-0" 
+                    style={{ backgroundColor: categoryColor || '#ccc' }} 
+                    title={`Categoría: ${categoryName || 'Sin Categoría'}`}
+                />
+            )}
+            
+            {/* TEXTO DEL PLATO */}
+            <span className={`flex-1 truncate ${isOut ? 'line-through' : ''}`}>
+                 {/* 🚨 CORRECCIÓN TS2552: 'items' es accesible aquí */}
+                 {items.length > 1 ? `${index + 1}. ` : ''} 
+                 {displayText}
+            </span>
+
+            {/* ICONO DE EDICIÓN FLOTANTE */}
+            <Pencil className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity ml-2 flex-shrink-0" />
+        </div>
+    );
+};
+
+export default function MenuPlannerItemCell({ day, mealType, turnType, items, allRecipes, allCategories }: MenuPlannerItemCellProps) {
+    
+    const isCellEmpty = items.length === 0;
+    const isOutPlanned = items.some(item => item.is_out);
+    return (
+        <div className="min-h-[100px] flex flex-col p-1 relative">
+
+            {/* 1. RENDERIZAR TODOS LOS PLATOS EXISTENTES */}
+            {items.map((item: MenuScheduleItem, index: number) => {
+                
+                // 🚨 CORRECCIÓN TS2554: Pasamos el array 'items' completo
+                const displayTrigger = getRecipeDisplayTrigger(item, allRecipes, index, items);
+
+                return (
+                    <MenuPlanEditModal 
+                        key={item.id} 
+                        day={day}
+                        mealType={mealType}
+                        turnType={turnType}
+                        initialItems={[item]} 
+                        triggerType={'edit'} 
+                        allRecipes={allRecipes}
+                        allCategories={allCategories}
+                    >
+                        {displayTrigger}
+                    </MenuPlanEditModal>
+                );
+            })}
+
+            {/* 2. BOTÓN DE ADICIÓN (Clave corregida) */}
+            {!isOutPlanned && (
+                <MenuPlanEditModal 
+                    key={`add-${day}-${mealType}-${turnType}`}
+                    day={day}
+                    mealType={mealType}
+                    turnType={turnType}
+                    initialItems={[]}
+                    triggerType={'add'}
+                    allRecipes={allRecipes}
+                    allCategories={allCategories}
+                >
+                    {/* Este es el botón de trigger para añadir un nuevo plato */}
+                    <Button 
+                        variant={isCellEmpty ? "outline" : "ghost"} 
+                        size="sm" 
+                        className={`
+                            w-full h-8 mt-1
+                            ${isCellEmpty ? 'text-gray-500 hover:border-indigo-400' : 'text-indigo-600 hover:bg-indigo-50/50'}
+                        `}
+                    >
+                        <Plus className="w-4 h-4 mr-1" />
+                        {isCellEmpty ? `Añadir ${mealType === 'lunch' ? 'Comida' : 'Cena'}` : 'Añadir plato +'}
+                    </Button>
+                </MenuPlanEditModal>
+            )}
+        </div>
+    );
 }

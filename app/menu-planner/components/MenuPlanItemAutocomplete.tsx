@@ -1,134 +1,120 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useTransition, useCallback } from 'react';
-import { Check, ChevronsUpDown, Utensils, BookOpen, Search } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-// 🚨 Importar la Server Action y la interfaz de sugerencia
-import { searchSuggestions} from '@/app/menu-planner/actions'; 
-import { Suggestion, MenuPlanItemAutocompleteProps } from '@/types/menu-planner';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Input } from '@/components/ui/input';
+import { Suggestion, MenuRecipeSimple } from '@/types/menu-planner'; 
+import { searchSuggestions } from '@/app/menu-planner/actions';
+import { debounce } from 'lodash'; 
 
+interface AutocompleteProps {
+  initialValue: string | null;
+  // 🚨 CRÍTICO: Pasa el ID seleccionado y el texto escrito (query)
+  onSelect: (recipeId: string | null, currentQuery: string | null) => void; 
+  allRecipes: MenuRecipeSimple[]; 
+}
 
-export default function MenuPlanItemAutocomplete({ initialValue, onSelect, isLoading }: MenuPlanItemAutocompleteProps) {
-  const [open, setOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState(initialValue || '');
+// 🚨 COMPONENTE DE LISTA DE SUGERENCIAS
+const SuggestionList = ({ suggestions, onSelect }: { suggestions: Suggestion[], onSelect: (s: Suggestion) => void }) => {
+    if (suggestions.length === 0) return null;
+
+    return (
+        <ul className="absolute z-50 w-full bg-white border border-gray-200 shadow-lg mt-1 max-h-60 overflow-y-auto">
+            {suggestions.map(s => (
+                <li 
+                    key={s.id} 
+                    className="p-2 hover:bg-indigo-50 cursor-pointer text-sm flex justify-between items-center"
+                    onClick={() => onSelect(s)}
+                >
+                    {s.value} 
+                    <span className="text-xs text-gray-500 ml-2">({s.type === 'recipe' ? 'Receta' : 'Crear'})</span>
+                </li>
+            ))}
+        </ul>
+    );
+};
+
+export default function MenuPlanItemAutocomplete({ initialValue, onSelect, allRecipes }: AutocompleteProps) {
+  const [query, setQuery] = useState(initialValue || '');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [isSearching, startTransition] = useTransition();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
 
-  // --- Lógica de Búsqueda ---
-  const fetchSuggestions = useCallback((query: string) => {
-    if (!query || query.length < 2) { // Buscar solo si hay al menos 2 caracteres
-      setSuggestions([]);
-      return;
-    }
-
-    startTransition(async () => {
-      const results = await searchSuggestions(query);
-      setSuggestions(results);
-    });
-  }, []);
-
-  // Ejecutar búsqueda cuando el valor cambia (con debounce implícito por useTransition)
   useEffect(() => {
-    fetchSuggestions(searchValue);
-  }, [searchValue, fetchSuggestions]);
-  
-  // --- Lógica de Selección ---
-  const handleSelect = (selected: Suggestion | 'new') => {
-    let output: Parameters<typeof onSelect>[0];
-
-    if (selected === 'new') {
-      // Nueva entrada de texto libre
-      output = { id: null, name: searchValue.trim(), type: 'new' };
-    } else {
-      // Receta o Sugerencia histórica
-      output = { 
-        id: selected.type === 'recipe' ? selected.id : null, 
-        name: selected.value, 
-        type: selected.type 
-      };
+    // Lógica para resolver ID a nombre de receta
+    if (initialValue && initialValue.length === 36 && allRecipes.length > 0) { 
+        const recipe = allRecipes.find(r => r.id === initialValue);
+        if (recipe) {
+            setQuery(recipe.name);
+        } else {
+            setQuery('');
+        }
+    } else if (initialValue) {
+         setQuery(initialValue);
     }
+  }, [initialValue, allRecipes]);
 
-    onSelect(output);
-    setSearchValue(output.name || '');
-    setOpen(false);
+
+  const fetchSuggestions = useCallback(
+    debounce(async (searchValue: string) => {
+      if (searchValue.trim().length > 1) {
+        const results = await searchSuggestions(searchValue.trim());
+        setSuggestions(results);
+      } else {
+        setSuggestions([]);
+      }
+    }, 300), 
+    []
+  );
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setQuery(value);
+    
+    // 🚨 CRÍTICO: Devolvemos el valor actual del input (query) y anulamos el ID
+    onSelect(null, value); 
+
+    fetchSuggestions(value);
+  };
+
+  const handleSuggestionSelect = (suggestion: Suggestion) => {
+    setQuery(suggestion.value);
+    setSuggestions([]);
+    
+    if (suggestion.type === 'recipe') {
+      // Devolver ID y anular la query de texto
+      onSelect(suggestion.id, null); 
+    } else {
+        // En caso de que se haya escrito, devolver el texto
+        onSelect(null, suggestion.value); 
+    }
+    setIsFocused(false);
   };
   
-  // Icono para el tipo de sugerencia
-  const getTypeIcon = (type: 'recipe' | 'free_text') => {
-    return type === 'recipe' ? <BookOpen className="w-3 h-3 text-indigo-500 mr-2" /> : <Utensils className="w-3 h-3 text-gray-500 mr-2" />;
+  const handleBlur = () => {
+    setTimeout(() => setIsFocused(false), 200);
   };
-
-  const currentMatch = suggestions.find(s => s.value.toLowerCase() === searchValue.toLowerCase());
-  const isNewEntry = searchValue.trim() && !currentMatch;
+  
+  const handleFocus = () => {
+      setIsFocused(true);
+  };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="w-full justify-between h-9 text-left font-normal"
-          disabled={isLoading}
-        >
-          {initialValue || (
-            <span className="text-gray-500 flex items-center">
-              <Search className="w-4 h-4 mr-2" /> Buscar comida...
-            </span>
-          )}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start">
-        <Command shouldFilter={false} className="relative">
-          {/* Usamos el input del Popover para la búsqueda */}
-          <CommandInput
-            placeholder="Buscar recetas o platos..."
-            value={searchValue}
-            onValueChange={setSearchValue}
-            ref={inputRef}
-          />
-          {isSearching && (
-            <div className="absolute top-2 right-2 text-gray-400">...</div>
-          )}
+    <div className="relative w-full">
+      <Input
+        id="meal-input"
+        placeholder="Busca receta o escribe un plato..."
+        value={query}
+        onChange={handleInputChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+      />
+      
+      {isFocused && suggestions.length > 0 && (
+        <SuggestionList 
+            suggestions={suggestions} 
+            onSelect={handleSuggestionSelect} 
+        />
+      )}
 
-          <CommandList>
-            <CommandEmpty>No hay sugerencias que coincidan.</CommandEmpty>
-            <CommandGroup heading="Sugerencias">
-              {suggestions.map((suggestion) => (
-                <CommandItem
-                  key={suggestion.id + suggestion.type}
-                  value={suggestion.value}
-                  onSelect={() => handleSelect(suggestion)}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      initialValue === suggestion.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  {getTypeIcon(suggestion.type)}
-                  {suggestion.value}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-            
-            {/* 🚨 Opción de Entrada Nueva (si no coincide con nada) */}
-            {isNewEntry && (
-              <CommandGroup heading="Nueva entrada">
-                <CommandItem onSelect={() => handleSelect('new')} className="text-green-600">
-                  <Check className="mr-2 h-4 w-4 opacity-0" />
-                  <span className="font-semibold">{`Añadir: "${searchValue}"`}</span>
-                </CommandItem>
-              </CommandGroup>
-            )}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    </div>
   );
 }

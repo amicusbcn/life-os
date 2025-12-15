@@ -114,12 +114,6 @@ export interface Suggestion {
   value: string;          
   type: 'recipe' | 'free_text'; 
 }
-export interface MenuPlannerItemCellProps {
-  day: string; // Formato YYYY-MM-DD
-  mealType: MealType;
-  turnType: TurnType;
-  items: MenuScheduleItem[];
-}
 export interface MenuPlanItemAutocompleteProps {
   initialValue: string | null; // Valor actual del plato (nombre de receta o texto libre)
   onSelect: (value: { id: string | null; name: string | null; type: 'recipe' | 'free_text' | 'new' }) => void;
@@ -131,3 +125,32 @@ export type SelectedMeal = {
   name: string | null; 
   type: 'recipe' | 'free_text' | 'new' 
 };
+
+export interface EditScheduleItemFormProps {
+  scheduleDate: string;
+  mealType: MealType;
+  turnType: TurnType;
+  initialItems: MenuScheduleItem[];
+  allRecipes: MenuRecipeSimple[];
+  allCategories: MenuRecipeCategory[];
+  
+  // 🚨 Propiedad FALTANTE que el modal intenta pasar
+  onFinished: (refreshNeeded: boolean) => void; 
+}
+
+export interface MenuPlannerItemCellProps {
+  day: string; 
+  mealType: MealType;
+  turnType: TurnType;
+  items: MenuScheduleItem[];
+}
+
+export interface MenuPlanEditModalProps {
+  day: string;
+  mealType: MealType;
+  turnType: TurnType;
+  initialItems: MenuScheduleItem[];
+  triggerType: 'edit' | 'add';
+  allRecipes: any[]; // Asumimos que estos datos vendrán del servidor (page.tsx)
+  allCategories: any[]; // Asumimos que estos datos vendrán del servidor (page.tsx)
+}

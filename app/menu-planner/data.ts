@@ -1,6 +1,6 @@
 // app/menu-planner/data.ts
 import { createClient } from '@/utils/supabase/client'; // Asumimos esta ruta
-import { MenuSchedule,MenuRecipe, MenuRecipeCategory, MenuRecipeSimple } from '@/types/menu-planner'; // Importamos el tipo centralizado
+import { MenuSchedule, MenuRecipeCategory, MenuRecipeSimple } from '@/types/menu-planner'; // Importamos el tipo centralizado
 
 const supabase = createClient();
 

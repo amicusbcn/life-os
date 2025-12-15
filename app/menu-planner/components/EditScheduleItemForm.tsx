@@ -5,173 +5,163 @@
 import { useState } from 'react';
 import { MenuScheduleItem, MenuRecipeSimple, MenuRecipeCategory, TurnType, MealType } from '@/types/menu-planner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { upsertScheduleItem } from '@/app/menu-planner/actions';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from 'sonner'; // Asumimos que tienes configurado 'sonner' para notificaciones
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'; // 🚨 Imports Faltantes
+import { toast } from 'sonner';
+
+import MenuPlanItemAutocomplete from './MenuPlanItemAutocomplete'; 
+
 interface EditScheduleItemFormProps {
-  scheduleDate: string;
-  mealType: MealType;
-  turnType: TurnType;
-  initialItems: MenuScheduleItem[];
-  allRecipes: MenuRecipeSimple[];
-  allCategories: MenuRecipeCategory[];
+    scheduleDate: string;
+    mealType: MealType;
+    turnType: TurnType;
+    initialItems: MenuScheduleItem[];
+    allRecipes: MenuRecipeSimple[];
+    allCategories: MenuRecipeCategory[];
+    onFinished: (refreshNeeded: boolean) => void;
 }
+
 const DEFAULT_ITEM: MenuScheduleItem = {
-    // Estas propiedades DEBEN ser las que requiere tu interfaz MenuScheduleItem
-    id: 'new', // o cualquier valor placeholder
+    id: 'new', 
     schedule_id: 'temp',
-    meal_type: 'lunch', // Valor por defecto
-    turn_type: 'adults', // Valor por defecto
+    meal_type: 'lunch', 
+    turn_type: 'adults', 
     order_in_meal: 1,
-    recipe_id: null, // Propiedades clave inicializadas en null
-    free_text: null, // Propiedades clave inicializadas en null
+    recipe_id: null, 
+    free_text: null, 
     is_out: false,
-    // La interfaz debe ser compatible si hay más campos requeridos.
 };
+
 export default function EditScheduleItemForm({
-  scheduleDate,
-  mealType,
-  turnType,
-  initialItems,
-  allRecipes,
-  allCategories,
+    scheduleDate,
+    mealType,
+    turnType,
+    initialItems,
+    allRecipes,
+    allCategories,
+    onFinished,
 }: EditScheduleItemFormProps) {
-  
-  // Usaremos un estado para manejar el plato principal (order_in_meal: 1)
-  const primaryItem = initialItems.find(item => item.order_in_meal === 1) || DEFAULT_ITEM;
-  
-  const [recipeId, setRecipeId] = useState<string | undefined | null>(primaryItem.recipe_id);
-  const [freeText, setFreeText] = useState<string | undefined | null>(primaryItem.free_text);
-  const [isOut, setIsOut] = useState<boolean>(primaryItem.is_out || false);
-  const [isPending, setIsPending] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all'); // Estado para el filtro
-
-  const filteredRecipes = selectedCategory === 'all'
-    ? allRecipes
-    : allRecipes.filter(recipe => 
-        recipe.menu_recipe_category_link?.some(link => 
-          link.menu_recipe_categories.some(cat => cat.id === selectedCategory)
-        )
-      );
-
-  // Acción del formulario
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsPending(true);
-
-    const formData = new FormData();
     
-    // Datos de slot (Ocultos/Contexto)
-    formData.append('scheduleDate', scheduleDate);
-    formData.append('turnType', turnType);
-    formData.append('mealType', mealType);
-    formData.append('orderInMeal', '1'); // Solo manejamos el 1er plato por ahora
-
-    // Datos de contenido
-    formData.append('isOut', isOut ? 'true' : 'false');
+    const primaryItem = initialItems[0] || DEFAULT_ITEM; 
     
-    if (recipeId) {
-      formData.append('recipeId', recipeId);
-      formData.append('freeText', ''); // Limpiamos texto libre si hay receta
-    } else if (freeText && freeText.trim() !== '') {
-      formData.append('freeText', freeText.trim());
-      formData.append('recipeId', ''); // Limpiamos ID de receta si hay texto libre
-    } else {
-        // Si no hay nada, limpiamos el slot (usamos null en DB y la acción lo limpia)
-        formData.append('recipeId', ''); 
-        formData.append('freeText', '');
-    }
+    const initialInput = primaryItem.recipe_id || primaryItem.free_text || null;
 
-    const result = await upsertScheduleItem(formData);
+    const [recipeId, setRecipeId] = useState<string | undefined | null>(primaryItem.recipe_id);
+    // CRÍTICO: Estado para guardar el texto escrito por el usuario
+    const [queryText, setQueryText] = useState<string | null>(primaryItem.free_text || null); 
     
-    setIsPending(false);
+    const [isOut, setIsOut] = useState<boolean>(primaryItem.is_out || false);
+    const [isPending, setIsPending] = useState(false);
+    
+    // CRÍTICO: Acepta ID y el texto de la query
+    const handleAutocompleteSelect = (newRecipeId: string | null, currentQuery: string | null) => {
+        setRecipeId(newRecipeId);
+        setQueryText(currentQuery);
+    };
 
-    if (result.success) {
-      toast.success('Plato planificado correctamente.');
-      // Aquí se debería cerrar el modal. Asumimos que el padre lo gestiona al refrescar.
-      // Mejorar: usar un hook para forzar un refresh del router de Next.js
-      window.location.reload(); // FORZAR REFRESH temporalmente.
-    } else {
-      toast.error(result.error || 'Error desconocido al guardar la planificación.');
-    }
-  };
+    const handleIsOutChange = (checked: boolean | 'indeterminate') => {
+        const newIsOut = !!checked;
+        setIsOut(newIsOut);
+        if (newIsOut) {
+            setRecipeId(null);
+            setQueryText(null);
+        }
+    };
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      
-      {/* Opción: Comer fuera de casa */}
-      <div className="flex items-center space-x-2 p-3 bg-red-50 rounded-md">
-        <Checkbox 
-          id="isOut" 
-          checked={isOut} 
-          onCheckedChange={(checked) => setIsOut(!!checked)}
-        />
-        <Label htmlFor="isOut" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-          ¿Coméis/Cenáis fuera de casa? (Marca esto para no planificar)
-        </Label>
-      </div>
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsPending(true);
 
-      {!isOut && (
-        <Tabs defaultValue="recipe" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="recipe">Elegir Receta</TabsTrigger>
-            <TabsTrigger value="freetext">Texto Rápido/Idea</TabsTrigger>
-          </TabsList>
-          
-          {/* PESTAÑA 1: ELEGIR RECETA */}
-          <TabsContent value="recipe" className="space-y-4 pt-4">
-            <Label htmlFor="category-filter">Filtrar por Categoría</Label>
-            <Select onValueChange={setSelectedCategory} value={selectedCategory}>
-              <SelectTrigger id="category-filter">
-                <SelectValue placeholder="Todas las categorías" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas las Categorías</SelectItem>
-                {allCategories.map(cat => (
-                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        const formData = new FormData();
+        
+        // Datos de slot/contexto
+        formData.append('scheduleDate', scheduleDate);
+        formData.append('turnType', turnType);
+        formData.append('mealType', mealType);
+        
+        // CRÍTICO: Enviamos 'new' o el ID real
+        const itemToSubmitId = primaryItem.id === 'new' ? 'new' : primaryItem.id;
+        formData.append('itemId', itemToSubmitId); 
 
-            <Label htmlFor="recipe-select">Seleccionar Receta ({filteredRecipes.length} disponibles)</Label>
-            <Select onValueChange={setRecipeId} value={recipeId || ''}>
-              <SelectTrigger id="recipe-select">
-                <SelectValue placeholder="Selecciona una receta de la lista..." />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredRecipes.length === 0 && <SelectItem value="" disabled>No hay recetas en esta categoría.</SelectItem>}
-                {filteredRecipes.map(recipe => (
-                  <SelectItem key={recipe.id} value={recipe.id}>{recipe.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </TabsContent>
+        // Solo enviamos orderInMeal si NO es una inserción nueva (UPDATE)
+        if (itemToSubmitId !== 'new') {
+            formData.append('orderInMeal', primaryItem.order_in_meal.toString());
+        } else {
+             // Marcador para que la Server Action sepa que debe calcularlo
+            formData.append('orderInMeal', '1'); 
+        }
 
-          {/* PESTAÑA 2: TEXTO LIBRE / CREAR RECETA FUTURA */}
-          <TabsContent value="freetext" className="pt-4">
-            <Label htmlFor="free-text">Texto Libre o Enlace Futuro</Label>
-            <Input 
-              id="free-text" 
-              placeholder="Ej: Pollo al Curry (Crear Receta)" 
-              value={freeText || ''}
-              onChange={(e) => setFreeText(e.target.value)}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Si el texto coincide con una receta futura, al guardarlo se convertirá en un enlace de creación rápida.
-            </p>
-          </TabsContent>
-        </Tabs>
-      )}
+        // Datos de contenido
+        formData.append('isOut', isOut ? 'true' : 'false');
+        
+        // 1. Enviamos el ID de la receta seleccionada
+        formData.append('recipeId', recipeId || '');
+        
+        // 2. CRÍTICO: Si no hay ID de receta, enviamos el texto para que el backend lo cree.
+        const unresolvedText = (!recipeId && queryText && queryText.trim() !== '') ? queryText.trim() : null;
+        formData.append('unresolvedText', unresolvedText || '');
 
-      <div className="flex justify-end">
-        <Button type="submit" disabled={isPending}>
-          {isPending ? 'Guardando...' : 'Guardar Planificación'}
-        </Button>
-      </div>
-    </form>
-  );
+
+        const result = await upsertScheduleItem(formData);
+        
+        setIsPending(false);
+
+        if (result.success) {
+            toast.success('Plato planificado correctamente.');
+            onFinished(true); 
+        } else {
+            toast.error(result.error || 'Error desconocido al guardar la planificación.');
+            onFinished(false); 
+        }
+    };
+
+    const currentRecipe = recipeId && allRecipes.find(r => r.id === recipeId);
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4 h-full flex flex-col">
+            
+            {/* 1. Opción: Comer fuera de casa */}
+            <div className="flex items-center space-x-2 p-3 bg-red-50/50 rounded-md">
+                <Checkbox 
+                    id="isOut" 
+                    checked={isOut} 
+                    onCheckedChange={handleIsOutChange}
+                />
+                <Label htmlFor="isOut" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    ¿Coméis/Cenáis fuera de casa? (Marca esto para no planificar)
+                </Label>
+            </div>
+
+            {/* 2. Autocompletar Unificado (Solo si no comemos fuera) */}
+            {!isOut && (
+                <div className="space-y-2 pt-4 flex-1">
+                    <Label htmlFor="meal-input">Elige o escribe tu plato (Se creará como Receta si no existe)</Label>
+                    <MenuPlanItemAutocomplete
+                        initialValue={initialInput}
+                        onSelect={handleAutocompleteSelect}
+                        allRecipes={allRecipes}
+                    />
+                    
+                    {currentRecipe && (
+                        <p className="text-sm text-indigo-600 mt-1">
+                            Receta seleccionada: {currentRecipe.name}
+                        </p>
+                    )}
+                    
+                    {(!currentRecipe && queryText && queryText.trim() !== '') && (
+                        <p className="text-sm text-gray-500 mt-1 italic">
+                           **Creando placeholder:** Se guardará "{queryText.trim()}" como una nueva Receta en tu libro.
+                        </p>
+                    )}
+                </div>
+            )}
+            
+            <div className="flex justify-end pt-4 border-t border-gray-100">
+                <Button type="submit" disabled={isPending}>
+                    {isPending ? 'Guardando...' : 'Guardar Planificación'}
+                </Button>
+            </div>
+        </form>
+    );
 }
