@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { upsertScheduleItem } from '@/app/menu-planner/actions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner'; // Asumimos que tienes configurado 'sonner' para notificaciones
-
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'; // 🚨 Imports Faltantes
 interface EditScheduleItemFormProps {
   scheduleDate: string;
   mealType: MealType;
@@ -20,7 +20,18 @@ interface EditScheduleItemFormProps {
   allRecipes: MenuRecipeSimple[];
   allCategories: MenuRecipeCategory[];
 }
-
+const DEFAULT_ITEM: MenuScheduleItem = {
+    // Estas propiedades DEBEN ser las que requiere tu interfaz MenuScheduleItem
+    id: 'new', // o cualquier valor placeholder
+    schedule_id: 'temp',
+    meal_type: 'lunch', // Valor por defecto
+    turn_type: 'adults', // Valor por defecto
+    order_in_meal: 1,
+    recipe_id: null, // Propiedades clave inicializadas en null
+    free_text: null, // Propiedades clave inicializadas en null
+    is_out: false,
+    // La interfaz debe ser compatible si hay más campos requeridos.
+};
 export default function EditScheduleItemForm({
   scheduleDate,
   mealType,
@@ -31,7 +42,7 @@ export default function EditScheduleItemForm({
 }: EditScheduleItemFormProps) {
   
   // Usaremos un estado para manejar el plato principal (order_in_meal: 1)
-  const primaryItem = initialItems.find(item => item.order_in_meal === 1) || {};
+  const primaryItem = initialItems.find(item => item.order_in_meal === 1) || DEFAULT_ITEM;
   
   const [recipeId, setRecipeId] = useState<string | undefined | null>(primaryItem.recipe_id);
   const [freeText, setFreeText] = useState<string | undefined | null>(primaryItem.free_text);
