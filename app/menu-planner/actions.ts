@@ -2,7 +2,7 @@
 'use server';
 
 import { createClient } from '@/utils/supabase/client'; // Asumimos esta ruta
-import { TurnType, MealType } from '@/types/menu-planner';
+import { TurnType, MealType, Suggestion } from '@/types/menu-planner';
 
 const supabase = createClient();
 
@@ -109,4 +109,59 @@ export async function upsertScheduleItem(
     console.error('Unexpected error in upsertScheduleItem:', err);
     return { success: false, error: errorMessage };
   }
+}
+
+
+
+
+/**
+ * Busca sugerencias de comidas por un término de búsqueda.
+ * Combina resultados de recetas y textos libres históricos.
+ * @param query Término de búsqueda (ej: 'torti').
+ * @returns Array de Suggestion.
+ */
+export async function searchSuggestions(query: string): Promise<Suggestion[]> {
+  const supabase = createClient();
+  const normalizedQuery = `%${query.toLowerCase()}%`;
+  
+  // 1. Búsqueda de Recetas (Recipes)
+  const { data: recipesData } = await supabase
+    .from('menu_recipes')
+    .select('id, name')
+    .ilike('name', normalizedQuery) 
+    .limit(5);
+
+  const recipeSuggestions: Suggestion[] = (recipesData || []).map(r => ({
+    id: r.id,
+    value: r.name,
+    type: 'recipe',
+  }));
+
+  // 2. Búsqueda de Textos Libres Históricos (Free Text)
+  // Usamos un RPC para obtener los textos libres únicos coincidentes.
+  const { data: freeTextData } = await supabase.rpc('get_unique_free_texts', {
+    search_query: query,
+  });
+  
+  const freeTextSuggestions: Suggestion[] = (freeTextData || [])
+    .filter((text: unknown) => text && typeof text === 'string') // 🚨 TIPADO: 'text' es 'unknown' o 'string'
+    .map((text: string) => ({                                   // 🚨 TIPADO: 'text' es 'string'
+      id: text, 
+      value: text,
+      type: 'free_text',
+    }));
+
+  // 3. Combinar y Devolver (Eliminar duplicados)
+  const combinedSuggestions: Suggestion[] = [...recipeSuggestions];
+  
+  const recipeNames = new Set(recipeSuggestions.map(s => s.value.toLowerCase()));
+  
+  for (const ft of freeTextSuggestions) {
+    if (!recipeNames.has(ft.value.toLowerCase())) {
+      combinedSuggestions.push(ft);
+    }
+  }
+
+  // Ordenar alfabéticamente
+  return combinedSuggestions.sort((a, b) => a.value.localeCompare(b.value));
 }

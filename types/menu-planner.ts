@@ -108,3 +108,26 @@ export interface MenuSettingsProps {
     // El children debe aceptar las props de clonación, además de las props de un div HTML.
     children: React.ReactElement<CloneableElementProps & React.HTMLAttributes<HTMLDivElement>>;
 }
+
+export interface Suggestion {
+  id: string;             
+  value: string;          
+  type: 'recipe' | 'free_text'; 
+}
+export interface MenuPlannerItemCellProps {
+  day: string; // Formato YYYY-MM-DD
+  mealType: MealType;
+  turnType: TurnType;
+  items: MenuScheduleItem[];
+}
+export interface MenuPlanItemAutocompleteProps {
+  initialValue: string | null; // Valor actual del plato (nombre de receta o texto libre)
+  onSelect: (value: { id: string | null; name: string | null; type: 'recipe' | 'free_text' | 'new' }) => void;
+  isLoading: boolean;
+}
+
+export type SelectedMeal = { 
+  id: string | null; 
+  name: string | null; 
+  type: 'recipe' | 'free_text' | 'new' 
+};

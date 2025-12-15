@@ -1,21 +1,32 @@
 // app/menu-planner/components/MenuPlannerItemCell.tsx
 'use client';
 
-import React from 'react';
-import { MenuScheduleItem, MealType, TurnType } from '@/types/menu-planner';
+import React,{useState}from 'react';
+import { MenuScheduleItem, MealType, TurnType,MenuPlannerItemCellProps, MenuPlanItemAutocompleteProps,SelectedMeal } from '@/types/menu-planner';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
+import MenuPlanItemAutocomplete from './MenuPlanItemAutocomplete'; // 🚨 Nuevo import
 
-interface MenuPlannerItemCellProps {
-  day: string; // Formato YYYY-MM-DD
-  mealType: MealType;
-  turnType: TurnType;
-  items: MenuScheduleItem[]; // Items de planificación para esta celda
-}
 
 export default function MenuPlannerItemCell({ day, mealType, turnType, items }: MenuPlannerItemCellProps) {
   // Aquí se construirá la UI de la celda, incluyendo el modal de edición/autocompletado.
+  const [isLoading, setIsLoading] = useState(false); // Para mostrar estado de guardado/carga
+    
+    // Obtener el plato principal para inicializar el autocompletado
+    const primaryItem = items.find(item => item.order_in_meal === 1); 
+    const initialName = primaryItem?.menu_recipes?.name || primaryItem?.free_text || null;
 
+    // Función que se dispara cuando el usuario selecciona o introduce un valor
+      const handleSelectMeal = async (selected: SelectedMeal) => {
+        setIsLoading(true);
+        // 🚨 Aquí llamamos a la Server Action para GUARDAR la planificación
+        // (ej: saveMenuItem({day, mealType, turnType, selected}))
+        console.log("Planificando:", selected); 
+        
+        // Simulación:
+        await new Promise(resolve => setTimeout(resolve, 500)); 
+        setIsLoading(false);
+    };
   return (
     <div className="min-h-[100px] flex flex-col p-1">
       {items.length === 0 ? (
