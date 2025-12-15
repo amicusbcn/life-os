@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from 'next/link'
-import { Briefcase, ShoppingCart, Box, Clock } from 'lucide-react'
+import { Briefcase, ShoppingCart, Box, ToolCase,Utensils, Clock } from 'lucide-react'
 import { redirect } from 'next/navigation'
 // IMPORTAMOS EL HEADER UNIFICADO
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader'
@@ -11,8 +11,8 @@ import { AppModule } from '@/types/settings'
 
 const iconMap: Record<string, any> = {
 	travel: Briefcase,
-	inventory: Box,
-	shopping: ShoppingCart,
+	inventory: ToolCase,
+	menuPlanner: Utensils,
 	timeline: Clock
 }
 
@@ -21,7 +21,7 @@ const routeMap: Record<string, string> = {
 	travel: '/travel',
 	timeline: '/timeline',
 	inventory: '/inventory',
-	shopping: '/shopping' 	
+	menuPlanner: '/menu-planner' 	
 }
 
 export default async function Dashboard() {

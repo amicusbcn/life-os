@@ -1,12 +1,5 @@
 // app/inventory/page.tsx
 import { createClient } from '@/utils/supabase/server'
-import Link from 'next/link'
-import { Button } from "@/components/ui/button"
-import { ArrowLeft } from 'lucide-react'
-
-// Componentes Locales
-// Asegúrate de que los nombres de archivo coinciden mayúsculas/minúsculas
-import { InventorySettingsDialog } from './components/InventorySettingsDialog'
 import { InventoryListView } from './components/InventoryListView'
 import { NewItemDialog } from './components/NewItemDialog'
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader'; 
