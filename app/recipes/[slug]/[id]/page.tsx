@@ -50,7 +50,9 @@ export default async function RecipeViewPage({ params }: RecipeViewPageProps) {
         ...recipeData, 
         ingredients: ingredients || [],
         labels: Array.isArray(recipeData.labels) 
-             ? recipeData.labels.map((l: string) => l.trim()).filter(l => l) 
+             ? (recipeData.labels as string[]) // 👈 Opcional: Castear el array entero
+               .map((l: string) => l.trim())   // 👈 ¡SOLUCIÓN! Declarar 'l' como string
+               .filter(l => l) 
              : [],
     };
     
