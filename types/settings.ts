@@ -30,6 +30,7 @@ export interface AppModule {
     key: string;
     name: string;
     description: string | null;
+    route?: string;
     icon: string | null;
     is_active: boolean;
 }

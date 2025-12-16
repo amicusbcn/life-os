@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from 'next/link'
-import { Briefcase, ShoppingCart, Box, ToolCase,Utensils, Clock } from 'lucide-react'
+import { Briefcase, ShoppingCart, Box, ToolCase,Utensils, Clock,ChefHat,Wallet, type LucideIcon } from 'lucide-react'
 import { redirect } from 'next/navigation'
 // IMPORTAMOS EL HEADER UNIFICADO
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader'
@@ -9,20 +9,16 @@ import { SettingsMenu } from './settings/components/SettingsMenu'
 // IMPORTAMOS EL TIPO DE LA ENTIDAD APP_MODULES
 import { AppModule } from '@/types/settings' 
 
-const iconMap: Record<string, any> = {
-	travel: Briefcase,
-	inventory: ToolCase,
-	menuPlanner: Utensils,
-	timeline: Clock
-}
-
-// Mapeo de rutas: Clave del módulo -> Ruta de la web
-const routeMap: Record<string, string> = {
-	travel: '/travel',
-	timeline: '/timeline',
-	inventory: '/inventory',
-	menuPlanner: '/menu-planner' 	
-}
+const LucideIconMap: Record<string, LucideIcon> = {
+    Briefcase: Briefcase,
+    ShoppingCart: ShoppingCart,
+    Box: Box,
+    ToolCase: ToolCase,
+    Utensils: Utensils,
+    Clock: Clock,
+    ChefHat: ChefHat,
+	Wallet: Wallet,
+};
 
 export default async function Dashboard() {
 	const supabase = await createClient()
@@ -40,14 +36,16 @@ export default async function Dashboard() {
 		.eq('id', user.id)
 		.single()
 	
-	console.log('ROL OBTENIDO DE LA BBDD:', profile?.role);
-	
-	// Usamos el tipo AppModule
-	const { data: modules } = await supabase.from('app_modules').select('*').eq('is_active', true).returns<AppModule[]>()
+	const { data: modules } = await supabase
+        .from('app_modules')
+        // Asumiendo que tu tabla tiene 'route' y 'icon_name'
+        .select('id, key, name, description, icon') 
+        .eq('is_active', true)
+        .returns<AppModule[]>()
 
-	// Datos necesarios para el Header
-	const userEmail = user.email || '';
-	const userRole = profile?.role || null;
+    const userEmail = user.email || '';
+    const userRole = profile?.role || null;
+
 	
 	return (
 		<div className="min-h-screen bg-slate-50 font-sans">
@@ -68,10 +66,12 @@ export default async function Dashboard() {
 				
 				<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
 					{(modules || []).map((mod) => {
-						const IconComponent = iconMap[mod.key] || Box
-						
+						const IconName = mod.icon || 'Box';
+                        
+                        // Buscamos el componente usando el nombre (o Box si el nombre no está en el mapa)
+                        const IconComponent = LucideIconMap[IconName] || Box						
 						// BUSCAMOS LA RUTA EN EL MAPA
-						const href = routeMap[mod.key] || '#' 
+						const href = mod.key || '#'
 						
 						return (
 							<Link href={href} key={mod.id}>

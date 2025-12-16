@@ -63,3 +63,4 @@ export interface UserMenuProps {
   additionalItems?: React.ReactNode[]; 
   currentPath?: string;
 }
+
