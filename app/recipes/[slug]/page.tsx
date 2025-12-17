@@ -31,6 +31,7 @@ export default async function CategoryRecipePage({ params }: { params: { slug: s
         const { data: category, error: categoryError } = await supabase
             .from('menu_recipe_categories')
             .select('*')
+            .eq('slug', slug) 
             .single();
         
         if (categoryError && categoryError.code !== 'PGRST116') { // 116 = No rows found
