@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { upsertScheduleItem } from '@/app/menu-planner/actions';
 import { toast } from 'sonner';
-
+import Link from 'next/link';
 import MenuPlanItemAutocomplete from './MenuPlanItemAutocomplete'; 
 
 interface EditScheduleItemFormProps {
@@ -117,7 +117,14 @@ export default function EditScheduleItemForm({
     };
 
     const currentRecipe = recipeId && allRecipes.find(r => r.id === recipeId);
+    let categorySlug: string | null = null;
+    let href: string | null = null;
 
+    if (currentRecipe) {
+        // Aseguramos el acceso a category_id y usamos 'all' como fallback
+        categorySlug = currentRecipe.category_id?.slug || 'all';
+        href = `/recipes/${categorySlug}/${currentRecipe.id}`;
+    }
     return (
         <form onSubmit={handleSubmit} className="space-y-4 h-full flex flex-col">
             
@@ -143,9 +150,16 @@ export default function EditScheduleItemForm({
                         allRecipes={allRecipes}
                     />
                     
-                    {currentRecipe && (
-                        <p className="text-sm text-indigo-600 mt-1">
-                            Receta seleccionada: {currentRecipe.name}
+                    {currentRecipe && href && ( // 🚨 Añadimos validación de href
+                        <p className="text-sm mt-1">
+                            Receta seleccionada: 
+                            <Link 
+                                href={href} // 🚨 Usamos la variable global
+                                target="_blank"
+                                className="text-indigo-600 hover:underline font-semibold ml-1"
+                            >
+                                {currentRecipe.name}
+                            </Link>
                         </p>
                     )}
                     

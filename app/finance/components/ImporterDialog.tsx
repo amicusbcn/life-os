@@ -1,196 +1,258 @@
-'use client'
+// app/finance/components/ImporterDialog.tsx
 
-import React, { useState, useActionState } from "react"
-import { importC43Action, ImportResult } from "@/app/finance/actions" 
-import { FinanceAccount } from "@/types/finance" 
+'use client';
 
-// UI Components
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogHeader, DialogTitle} from "@/components/ui/dialog"
+import { useState, useRef, useMemo } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-
-// Icons & Hooks
-import {  useFormStatus } from 'react-dom';
-import { Loader2, Upload, FileText, Banknote } from "lucide-react"
+import { ImporterTemplate } from '@/types/finance';
+import { importCsvTransactionsAction } from '../actions'; // Aún no existe, la crearemos en el paso 4
 import { toast } from 'sonner';
 
-// --- Global/Shared Types ---
-interface CloneableElementProps {
-    onSelect?: (e: Event) => void;
-    onClick?: (e: React.MouseEvent) => void;
-}
-interface ImporterDialogProps {
-    accounts: FinanceAccount[]; // Lista de cuentas disponibles para cargar el archivo
-    children: React.ReactElement<CloneableElementProps>;
-}
+// Definición de los campos que el usuario debe mapear
+const REQUIRED_FIELDS = [
+  { key: 'operation_date', label: 'Fecha de Operación (dd/mm/yyyy o yyyy-mm-dd)' },
+  { key: 'concept', label: 'Concepto / Descripción' },
+  { key: 'amount', label: 'Importe (columna que contiene el valor)' },
+];
 
-// --- SUB-COMPONENTE: BOTÓN DE SUBIDA ---
-function SubmitButton() {
-    const { pending } = useFormStatus();
+type Mapping = {
+    [key: string]: string; // {operation_date: 'Mi Encabezado de Fecha'}
+};
 
-    return (
-        <Button type="submit" disabled={pending} className="w-full bg-indigo-600 hover:bg-indigo-700">
-            {pending ? (
-                <Loader2 className="h-5 w-5 animate-spin mr-2"/>
-            ) : (
-                <Upload className="h-5 w-5 mr-2"/>
-            )}
-            {pending ? 'Procesando archivo...' : 'Importar y Clasificar'}
-        </Button>
-    );
-}
+export function ImporterDialog() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [delimiter, setDelimiter] = useState<string>(';');
+  const [step, setStep] = useState<'upload' | 'mapping'>('upload');
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [mapping, setMapping] = useState<Mapping>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Lógica de Mapeo
+  const handleMappingChange = (key: string, header: string) => {
+    setMapping(prev => ({ ...prev, [key]: header }));
+  };
 
-// --- SUB-COMPONENTE: FORMULARIO DE IMPORTACIÓN ---
-function ImporterForm({ accounts, onImported }: { accounts: FinanceAccount[], onImported: (count: number) => void }) {
-    
-    // El estado inicial debe coincidir con la interfaz ImportResult
-    const initialState: ImportResult = {}; 
-    
-    // La acción es importC43Action, que espera (_prevState, formData)
-    const [state, formAction] = useActionState(importC43Action, initialState);
-    
-    const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(accounts.length > 0 ? accounts[0].id : undefined);
+  // Previsualización de CSV (solo lee los encabezados)
+const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const uploadedFile = e.target.files?.[0] || null;
+    if (uploadedFile) {
+        setFile(uploadedFile);
+        
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const content = event.target?.result as string;
+            const lines = content.split('\n');
+            let detectedHeaders: string[] = [];
+            let dataStartIndex = -1; // Índice de la línea donde comienzan los datos
 
-    React.useEffect(() => {
-        if (state.success === true) {
-            const count = state.data?.count || 0;
-            toast.success(`🎉 ¡Importación completada!`, {
-                description: `Se han añadido ${count} movimientos a tu cuenta.`,
-            });
-            onImported(count); 
-        } else if (state.success === false && state.error) {
-            toast.error('Error al importar C43', {
-                description: state.error,
-                duration: 5000,
-            });
-        }
-    }, [state, onImported]);
+            // --- CORRECCIÓN: Bucle para encontrar la cabecera real ---
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                // Si la línea está vacía o es muy corta, continuamos.
+                if (line.length < 10 || line.startsWith('---')) continue; 
 
-    // La función 'ResetFormOnSuccess' es un buen patrón, pero simplificamos con el estado
-    
-    if (accounts.length === 0) {
-        return (
-            <div className="text-center p-4 border border-red-300 rounded-lg bg-red-50">
-                <p className="text-sm font-semibold text-red-800">No puedes importar.</p>
-                <p className="text-sm text-red-600">Por favor, crea primero una cuenta financiera (Ej: Banco BBVA) en la configuración de Cuentas.</p>
-            </div>
-        );
+                // Dividimos la línea por el delimitador actual (ej: ';')
+                const potentialHeaders = line.split(delimiter).map(h => h.trim().replace(/"/g, ''));
+                
+                // Criterio de Búsqueda: Buscar una línea que contenga la palabra "importe" o "fecha"
+                const containsRequiredField = potentialHeaders.some(h => 
+                    h.toLowerCase().includes('importe') || h.toLowerCase().includes('fecha')
+                );
+
+                if (containsRequiredField && potentialHeaders.length > 2) {
+                    // Hemos encontrado la línea de cabeceras.
+                    detectedHeaders = potentialHeaders.filter(h => h.length > 0); 
+                    dataStartIndex = i + 1; // La línea siguiente es donde empiezan los datos
+                    break;
+                }
+            }
+            // --------------------------------------------------------
+
+            if (detectedHeaders.length > 1) {
+                setHeaders(detectedHeaders);
+                
+                // Guardar la línea de inicio de datos para que la Server Action la sepa
+                // (Esto requiere un campo oculto en el formulario, ¡Ver Paso 4!)
+                // setStartingLine(dataStartIndex); 
+
+                // Intentar un mapeo automático (más inteligente)
+                const initialMapping: Mapping = {};
+                REQUIRED_FIELDS.forEach(field => {
+                    const match = detectedHeaders.find(h => 
+                        h.toLowerCase().includes(field.key.split('_')[0]) // Busca 'fecha' o 'concepto' o 'amount'
+                    );
+                    initialMapping[field.key] = match || 'none';
+                });
+
+                // Inicializar los no mapeados a "none"
+                REQUIRED_FIELDS.forEach(field => {
+                    if (!initialMapping[field.key] || initialMapping[field.key] === '') {
+                        initialMapping[field.key] = 'none';
+                    }
+                });
+
+                setMapping(initialMapping);
+                setStep('mapping');
+            } else {
+                toast.error("No se pudieron detectar los encabezados válidos. Comprueba el delimitador.");
+                setFile(null);
+            }
+        };
+        reader.readAsText(uploadedFile);
+    }
+};
+  
+  // Validar que todos los campos requeridos han sido mapeados
+  const isMappingValid = useMemo(() => {
+    return REQUIRED_FIELDS.every(field => mapping[field.key] && mapping[field.key] !== '');
+  }, [mapping]);
+  
+  const handleSubmit = async () => {
+    if (!file || !isMappingValid) {
+        toast.error("Por favor, sube un archivo y completa el mapeo.");
+        return;
     }
 
-
-    return (
-        <form action={formAction} className="space-y-4">
-            
-            {/* 1. Nombre de la Importación */}
-            <div className="space-y-1">
-                <Label htmlFor="importer_name">Nombre de la Importación</Label>
-                <Input 
-                    id="importer_name" 
-                    name="importer_name" 
-                    placeholder="Ej: BBVA Noviembre 2025" 
-                    required 
-                    defaultValue={`Importación C43 - ${new Date().toLocaleDateString('es-ES')}`}
-                />
-            </div>
-
-            {/* 2. Cuenta Destino */}
-            <div className="space-y-1">
-                <Label htmlFor="account_id_select">Cuenta Bancaria Destino</Label>
-                <Select 
-                    onValueChange={setSelectedAccountId} 
-                    defaultValue={selectedAccountId}
-                >
-                    <SelectTrigger id="account_id_select">
-                        <SelectValue placeholder="Selecciona la cuenta destino" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {accounts.map((acc) => (
-                            <SelectItem key={acc.id} value={acc.id}>
-                                {acc.name} ({acc.currency})
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-                {/* INPUT OCULTO para el FormData */}
-                <input type="hidden" name="account_id" value={selectedAccountId} /> 
-            </div>
-
-
-            {/* 3. Archivo C43 */}
-            <div className="space-y-1 pt-2">
-                <Label htmlFor="c43_file" className="flex items-center">
-                    <FileText className="h-4 w-4 mr-2"/> Selecciona Archivo Cuaderno 43
-                </Label>
-                <Input 
-                    id="c43_file" 
-                    name="c43_file" 
-                    type="file" 
-                    accept=".txt,.c43" // Aunque es un formato de texto, sugerimos extensiones comunes
-                    required 
-                />
-                <p className="text-xs text-slate-500 mt-1">El archivo debe estar en formato N43 (Longitud fija, 160 bytes/línea).</p>
-            </div>
-
-            <SubmitButton />
-        </form>
-    );
-}
-
-// --- COMPONENTE PRINCIPAL ---
-
-export function ImporterDialog({ accounts, children }: ImporterDialogProps) {
-    const [open, setOpen] = useState(false)
-    const [lastImportCount, setLastImportCount] = useState<number | null>(null);
-
-    // Lógica para el Trigger (Patrón de Life-OS)
-    const childElement = children as React.ReactElement<CloneableElementProps>;
-    const newOnSelect = (e: Event) => {
-        e.preventDefault(); 
-        const originalOnSelect = (childElement.props as CloneableElementProps).onSelect;
-        if (typeof originalOnSelect === 'function') {
-            originalOnSelect(e);
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // Crear el objeto de plantilla para enviarlo al servidor
+        const template: Partial<ImporterTemplate> = {
+            name: file.name, // Usamos el nombre del archivo como plantilla temporal
+            delimiter: delimiter,
+            mapping: mapping as ImporterTemplate['mapping'],
+        };
+        
+        // El servidor recibirá el archivo y la configuración
+        const result = await importCsvTransactionsAction(formData, template);
+        
+        if (result.success) {
+            toast.success(`🎉 Importación exitosa! ${result.transactionsCount} transacciones añadidas.`);
+            setIsOpen(false);
+            // Recargar la página o los datos de Finanzas
+            // router.refresh() si usas app router de Next.js
+        } else {
+            toast.error(`❌ Error al importar: ${result.error}`);
         }
-        setOpen(true); 
-    };
-    const trigger = React.cloneElement(childElement, {
-        onSelect: newOnSelect,
-        onClick: (e: React.MouseEvent) => e.stopPropagation(), 
-    } as React.PropsWithChildren<CloneableElementProps>);
-
-    const handleImported = (count: number) => {
-        setLastImportCount(count);
-        // Podríamos decidir cerrar el diálogo o mantenerlo abierto
-        // setOpen(false); 
+    } catch (error) {
+        toast.error(`Error desconocido: ${(error as Error).message}`);
     }
+  };
 
+  const resetDialog = () => {
+    setFile(null);
+    setHeaders([]);
+    setMapping({});
+    setDelimiter(';');
+    setStep('upload');
+  }
 
-    return (
-        <>
-            {trigger}
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => {
+        setIsOpen(open);
+        if (!open) resetDialog();
+    }}>
+      <DialogTrigger asChild>
+        <Button>Importar CSV</Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[425px] md:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Importar Transacciones (CSV)</DialogTitle>
+          <DialogDescription>
+            {step === 'upload' 
+                ? 'Sube el archivo CSV de tu banco. Asegúrate de que está exportado en formato CSV o de texto plano.'
+                : 'Mapea los encabezados de tu archivo a los campos de Life-OS.'}
+          </DialogDescription>
+        </DialogHeader>
 
-            <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="max-w-md flex flex-col rounded-xl p-0 overflow-hidden bg-white">
-                    <DialogHeader className="p-4 pb-2 border-b border-slate-100">
-                        <DialogTitle className="flex items-center">
-                            <Banknote className="w-5 h-5 mr-2 text-indigo-600"/> Importación Bancaria (C43)
-                        </DialogTitle>
-                    </DialogHeader>
+        {/* --- PASO 1: SUBIDA Y DELIMITADOR --- */}
+        {step === 'upload' && (
+            <div className="grid gap-4 py-4">
+                <div className="flex items-center space-x-2">
+                    <label htmlFor="delimiter" className="w-1/3 text-right">Delimitador</label>
+                    <Select value={delimiter} onValueChange={setDelimiter}>
+                        <SelectTrigger className="w-2/3">
+                            <SelectValue placeholder="Seleccionar delimitador" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value=",">Coma ( , )</SelectItem>
+                            <SelectItem value=";">Punto y Coma ( ; )</SelectItem>
+                            <SelectItem value="\t">Tabulación ( TAB )</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <Input
+                    id="file"
+                    type="file"
+                    accept=".csv, .txt"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    className="col-span-3"
+                />
+                {file && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                        Archivo cargado: **{file.name}**. Pulsa siguiente para mapear.
+                    </p>
+                )}
+            </div>
+        )}
 
-                    <div className="p-4 space-y-4">
-                        <ImporterForm accounts={accounts} onImported={handleImported} />
-
-                        {lastImportCount !== null && (
-                            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
-                                Última importación: **{lastImportCount}** movimientos añadidos.
-                            </div>
-                        )}
-                        
+        {/* --- PASO 2: MAPEO DE COLUMNAS --- */}
+        {step === 'mapping' && (
+            <div className="grid gap-4 py-4">
+                <p className="text-sm font-semibold">Encabezados detectados: {headers.join(' | ')}</p>
+                
+                {REQUIRED_FIELDS.map(field => (
+                    <div key={field.key} className="flex items-center space-x-2">
+                        <label htmlFor={field.key} className="w-1/3 text-right">{field.label} *</label>
+                        <Select 
+                            value={mapping[field.key] || ''} 
+                            onValueChange={(value) => handleMappingChange(field.key, value)}
+                        >
+                            <SelectTrigger className="w-2/3">
+                                <SelectValue placeholder={`Mapear a columna para ${field.label}`} />
+                            </SelectTrigger>
+                            <SelectContent>
+    {/* Opción vacía para deseleccionar (CORRECCIÓN: Cambiar value="" a value="none") */}
+    <SelectItem value="none">-- Seleccionar --</SelectItem> 
+    {headers.map(header => (
+        <SelectItem key={header} value={header}>{header}</SelectItem>
+    ))}
+</SelectContent>
+                        </Select>
                     </div>
-                </DialogContent>
-            </Dialog>
-        </>
-    )
+                ))}
+            </div>
+        )}
+
+        {/* Botones de Navegación */}
+        <div className="flex justify-end pt-4 space-x-2">
+            {step === 'mapping' && (
+                <Button variant="outline" onClick={() => setStep('upload')}>Anterior</Button>
+            )}
+            {step === 'upload' && file && (
+                <Button onClick={() => setStep('mapping')}>Siguiente</Button>
+            )}
+            {step === 'mapping' && (
+                <Button onClick={handleSubmit} disabled={!isMappingValid}>
+                    {isMappingValid ? 'Importar Transacciones' : 'Mapeo Incompleto'}
+                </Button>
+            )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }

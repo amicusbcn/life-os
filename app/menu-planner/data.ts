@@ -12,38 +12,40 @@ const supabase = createClient();
  * @returns Un array de objetos MenuSchedule, incluyendo sus platos (items).
  */
 export async function getWeeklySchedule(
-  startDate: string,
-  endDate: string,
+  startDate: string,
+  endDate: string,
 ): Promise<MenuSchedule[] | { error: string }> {
-  try {
-    
-    const { data, error } = await supabase
-      .from('menu_schedule')
-      .select(
-        `
-        *,
-        menu_schedule_items (
-          *,
-          menu_recipes ( 
-            id,
-            name,
-            menu_recipe_category_link (
-                category_id,
-                menu_recipe_categories (id, name, color, icon)
-            )
-          )
-        )
-      `
-      )
-      .gte('schedule_date', startDate)
+  try {
+    
+    const { data, error } = await supabase
+      .from('menu_schedule')
+      .select(
+        `
+        *,
+        menu_schedule_items (
+          *,
+          menu_recipes ( 
+            id,
+            name,
+            category_id:menu_recipe_categories (id, name, color, icon,slug) 
+          )
+        )
+        `
+      )
+      .gte('schedule_date', startDate)
       .lte('schedule_date', endDate)
       .order('schedule_date', { ascending: true })
       .order('meal_type', { foreignTable: 'menu_schedule_items', ascending: true })
       .order('turn_type', { foreignTable: 'menu_schedule_items', ascending: true });
 
     if (error) {
-      console.error('Database Error fetching weekly schedule:', error);
-      return { error: 'Error al cargar la planificación semanal.' };
+// 🚨 CAMBIO CRÍTICO: Log más explícito y lanzamiento de error.
+        const errorDetail = JSON.stringify(error, null, 2);
+        console.error('Database Error fetching weekly schedule:', errorDetail);
+        
+        // 🚨 Lanzamos el error para que la pila de Next.js lo muestre.
+        // Esto debería revelar si hay un código de error de red o de PostgREST.
+        throw new Error(`SUPABASE FETCH FAILED: ${errorDetail}`);
     }
 
     // 🚨 CORRECCIÓN TS2352: Doble casting para asegurar el tipado.
@@ -53,6 +55,7 @@ export async function getWeeklySchedule(
     console.error('Unexpected error in getWeeklySchedule:', err);
     return { error: errorMessage };
   }
+  
 }
 
 /**
@@ -65,31 +68,31 @@ export async function getAllRecipes(): Promise<MenuRecipeSimple[] | { error: str
       .from('menu_recipes')
       .select(
         `
-        id, 
-        created_at,
-        updated_at,
-        user_id,
-        name,
-        menu_recipe_category_link (
-            category_id,
-            menu_recipe_categories (
-                id,
-                name,
-                icon,
-                color
-            )
-        )
-      `
+        id, 
+        created_at,
+        updated_at,
+        user_id,
+        name,
+        category_id (
+            id,
+            name,
+            icon,
+            color,
+            slug
+        )
+        
+      `
       )
       .order('name', { ascending: true });
 
-    if (error) {
-      console.error('Database Error fetching recipes with categories:', error);
-      return { error: 'Error al cargar las recetas y sus categorías.' };
-    }
-    
-    // Casting seguro. El resultado tendrá el formato de Recipe con las categorías anidadas.
-    return data as MenuRecipeSimple[];
+if (error) {
+      // 🚨 Implementación del Log Detallado
+      const errorDetail = JSON.stringify(error, null, 2);
+      console.error('Database Error fetching recipes with categories:', errorDetail);
+      throw new Error(`SUPABASE FETCH ALL RECIPES FAILED: ${errorDetail}`); 
+    }
+ 
+    return data as unknown as MenuRecipeSimple[];
     
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Error desconocido al obtener las recetas.';

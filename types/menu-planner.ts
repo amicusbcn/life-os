@@ -79,19 +79,14 @@ export interface MenuRecipeCategory {
   name: string;
   icon?: string;
   color?: string;
-}
-
-export interface MenuRecipeCategoryLink {
-    category_id: string;
-    // ¡CORRECCIÓN! Lo definimos como un array de una única categoría.
-    menu_recipe_categories: MenuRecipeCategory[]; 
+  slug?:string;
 }
 
 export interface MenuRecipeSimple {
   id: string;
   name: string;
   // Usamos el tipo Link que acabamos de definir
-  menu_recipe_category_link?: MenuRecipeCategoryLink[]; 
+  category_id?: MenuRecipeCategory | null; 
 }
 
 

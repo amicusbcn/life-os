@@ -260,12 +260,7 @@ import { FinanceTransaction } from '@/types/finance';
 // UTILITY: C43 PARSER (Implementación simple)
 // ==========================================
 
-interface ParsedTransaction {
-    date: string; // YYYY-MM-DD
-    concept: string;
-    amount: number;
-    importer_notes: string;
-}
+
 
 /**
  * Parser simple para el formato Cuaderno 43 (Norma 43).
@@ -451,4 +446,190 @@ let parsedTransactions: ParsedTransaction[];
         // Podríamos intentar borrar el registro de Importer si falla la transacción...
         return { success: false, error: `Error al guardar movimientos en la base de datos: ${(e as Error).message}` };
     }
+}
+
+// app/finance/actions.ts (Nueva Server Action)
+
+import { ImporterTemplate, ParsedTransaction } from '@/types/finance'; // Asegúrate de importar ParsedTransaction
+import * as csv from 'csv-parser'; // Importar la librería
+import { Readable } from 'stream'; // Requerido para manejar el archivo en Node.js
+
+
+export async function importCsvTransactionsAction(
+  formData: FormData,
+  template: Partial<ImporterTemplate>,
+): Promise<{ success: boolean; error?: string; transactionsCount?: number }> {
+  
+  // Capturar errores generales de Server Action
+  try {
+    const file = formData.get('file') as File | null;
+    if (!file) {
+      return { success: false, error: 'No se ha subido ningún archivo.' };
+    }
+    
+    // 1. AUTENTICACIÓN Y CUENTA
+    const supabase = await createClient();
+    const { data: userData, error: authError } = await supabase.auth.getUser();
+    if (authError || !userData.user) {
+      return { success: false, error: 'Usuario no autenticado.' };
+    }
+    const user_id = userData.user.id;
+    
+    const { data: accounts, error: accountError } = await supabase
+      .from('finance_accounts')
+      .select('id')
+      .eq('user_id', user_id)
+      .limit(1);
+
+    if (accountError || accounts.length === 0) {
+      return { success: false, error: 'No se encontró ninguna cuenta de destino.' };
+    }
+    const account_id = accounts[0].id;
+    
+    // 2. PROCESAMIENTO DEL CSV
+    const { delimiter, mapping } = template as ImporterTemplate;
+
+    // --- Lectura, Limpieza y Parsing Síncrono ---
+    
+    // a) Leer archivo
+    const buffer = await file.arrayBuffer();
+    const fileContent = Buffer.from(buffer).toString('utf8');
+    
+    // b) Limpieza robusta de líneas (para eliminar basura bancaria)
+    const allLines = fileContent.split(/\r?\n|\r/g);
+    const cleanedLines = allLines.filter(line => {
+        const trimmedLine = line.trim();
+        if (trimmedLine.length === 0) return false;
+        
+        // Comprobar contenido y encabezados inútiles
+        const fields = trimmedLine.split(delimiter);
+        const hasContent = fields.some(field => field.trim().length > 0);
+        const isUselessHeader = trimmedLine.toLowerCase().includes('movimientos de cuenta') 
+                                || trimmedLine.startsWith('----')
+                                || trimmedLine.includes('saldo inicial');
+        
+        return hasContent && !isUselessHeader;
+    });
+
+    // c) Convertir a un string limpio para el parser síncrono
+    const cleanedStreamContent = cleanedLines.join('\n'); 
+
+    const transactions: ParsedTransaction[] = [];
+    
+    // d) Ejecutar el parsing SÍNCRONO (usando .write())
+try {
+        const parser = csv.default({ // <-- Usamos csv.default() o solo csv() si funciona
+            separator: delimiter || ';', 
+            mapHeaders: ({ header }: { header: string }) => header.trim().replace(/"/g, ''), // <-- Tipado: { header: string }
+        });
+
+        parser
+            .on('data', (row: Record<string, string>) => { // <-- Tipado: row: Record<string, string>
+                // Mapear cada fila
+                const mappedRow = mapCsvRow(row, mapping, account_id, user_id);
+                if (mappedRow) {
+                    transactions.push(mappedRow);
+                }
+            })
+            .on('error', (error: Error) => { // <-- Tipado: error: Error
+                // Capturar error del parser
+                throw new Error(`Error al parsear el CSV: ${error.message}`);
+            });
+
+        // La clave del parseo síncrono: Escribir el contenido completo y terminar.
+        parser.write(cleanedStreamContent);
+        parser.end(); // Indica que no hay más datos
+
+    } catch (e) {
+        return { success: false, error: `Error al procesar el archivo CSV: ${(e as Error).message}` };
+    }
+    
+    // 3. VALIDACIÓN E INSERCIÓN
+    if (transactions.length === 0) {
+        return { success: false, error: 'No se pudieron extraer transacciones. Revisa el delimitador y el mapeo de columnas.' };
+    }
+    
+    // 4. Insertar en la base de datos (mismo código)
+    const { error: insertError } = await supabase
+      .from('finance_transactions')
+      .insert(transactions.map(t => ({
+          ...t,
+          account_id: account_id,
+          user_id: user_id,
+          created_at: new Date().toISOString()
+      })));
+    
+    if (insertError) {
+      console.error('Error al insertar transacciones:', insertError);
+      return { success: false, error: `Error al guardar transacciones: ${insertError.message}` };
+    }
+    
+    // 5. Devolver éxito
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/finance');
+    return { success: true, transactionsCount: transactions.length };
+  } catch (e) {
+    // Captura errores generales de la Server Action
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    console.error("ERROR CRÍTICO EN importCsvTransactionsAction:", e);
+    return { success: false, error: `Error interno del servidor: ${errorMessage}. Intenta revisar el delimitador.` };
+  }
+}
+
+// Función auxiliar para mapear una fila CSV a una transacción válida
+function mapCsvRow(
+  row: { [key: string]: string },
+  mapping: ImporterTemplate['mapping'],
+  account_id: string,
+  user_id: string,
+): ParsedTransaction | null {
+  
+  const { operation_date, concept, amount, sign_column } = mapping;
+  
+  // 1. Obtener valores crudos
+  const rawDate = row[operation_date]?.trim();
+  const rawConcept = row[concept]?.trim();
+  const rawAmount = row[amount]?.trim().replace(',', '.'); // Reemplazar coma por punto decimal
+  const rawSign = sign_column ? row[sign_column]?.trim() : null;
+
+  if (!rawDate || !rawAmount || !rawConcept) {
+      // Ignorar filas incompletas o sin mapear
+      return null;
+  }
+  
+  let finalAmount: number;
+  let numericAmount = parseFloat(rawAmount);
+
+  // 2. Manejar el signo
+  if (sign_column && rawSign) {
+    // Escenario 1: Hay columna de signo o de tipo (ej: "D" o "C")
+    if (rawSign.toLowerCase().includes('d') || rawSign.includes('-')) {
+        finalAmount = -Math.abs(numericAmount); // Convertir a negativo (Gasto)
+    } else {
+        finalAmount = Math.abs(numericAmount); // Mantener positivo (Ingreso)
+    }
+  } else {
+    // Escenario 2: El importe es positivo/negativo en una sola columna
+    finalAmount = numericAmount;
+  }
+  
+  // 3. Formatear fecha (simplificado, esto puede ser un punto de fallo si el formato es raro)
+  let dateForDb = rawDate;
+  
+  // Si la fecha es dd/mm/yyyy, la convertimos a yyyy-mm-dd
+  const dateParts = rawDate.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (dateParts) {
+    const [, day, month, year] = dateParts;
+    // Esto asume que el formato es dd/mm/yyyy
+    dateForDb = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+
+  // 4. Devolver la transacción parseada
+  return {
+    date: dateForDb,
+    amount: finalAmount,
+    concept: rawConcept,
+    importer_notes: `Importado de CSV: ${rawDate}`,
+  };
 }
