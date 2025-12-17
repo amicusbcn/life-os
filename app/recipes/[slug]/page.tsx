@@ -2,7 +2,7 @@
 
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
-import { fetchAllCategories, fetchRecipeListByCategoryId } from '../data'; 
+import { fetchAllCategoriesWithCount, fetchRecipeListByCategoryId } from '../data'; 
 import RecipeList from '../components/RecipeList'; // Tu componente cliente de lista
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
 
@@ -49,7 +49,7 @@ export default async function CategoryRecipePage({ params }: { params: { slug: s
     // --- 3. Obtención de Datos de Recetas y Categorías ---
     
     const [allCategories, allRecipes] = await Promise.all([
-        fetchAllCategories(),
+        fetchAllCategoriesWithCount(),
         // 🚨 Fetch de recetas: Si el slug es 'all', traemos todas las recetas (ID = null).
         // Si es un slug real, traemos las recetas de esa categoría.
         fetchRecipeListByCategoryId(activeCategory?.id || null), 
