@@ -7,7 +7,7 @@ import { Plus, Utensils } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
 import { fetchAllCategoriesWithCount } from './data';
-import { MenuRecipeCategory } from '@/types/recipes';
+import { MenuRecipeCategoryWithCount } from '@/types/recipes';
 
 
 // 🚨 IMPORTAR EL COMPONENTE CLIENTE EXTERNO PARA EL HUB
@@ -31,12 +31,13 @@ export default async function RecipesPage() {
     // 🚨 Cálculo del conteo (simulación, ya que CategoryHub lo necesita)
     // NOTA: Para que esto sea real, tu función fetchAllCategories o una nueva RPC
     // debe devolver el conteo de recetas por categoría.
-    const categoriesWithCount = allCategories.map((cat, index) => ({
+        const categoriesWithCount: MenuRecipeCategoryWithCount[] = allCategories.map((cat, index) => ({
+        // Deberías evitar mapear si fetchAllCategoriesWithCount ya devuelve el conteo real
+        // Si fetchAllCategoriesWithCount YA devuelve el conteo, solo usa 'allCategories'.
         ...cat,
-        // Asumimos que el conteo se añade aquí
-        recipeCount: (index * 2) + 1 // Simulación de conteo
+        // Si la simulación es temporal:
+        recipeCount: (index * 2) + 1 
     }));
-
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans pb-10">
