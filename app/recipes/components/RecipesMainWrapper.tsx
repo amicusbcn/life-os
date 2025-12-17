@@ -1,50 +1,40 @@
 // app/recipes/components/RecipesMainWrapper.tsx
 'use client';
 
-import { useState } from 'react';
-import { MenuRecipeWithDetails, MenuRecipeCategory } from '@/types/recipes';
+// Eliminamos useState y los handlers, ya no son necesarios
+import { MenuRecipeWithDetails, MenuRecipeCategoryWithCount } from '@/types/recipes';
 import RecipeList from './RecipeList';
-import CategoryHub from './CategoryHub';
+// Eliminamos CategoryHub si solo se usa RecipeList
 
 interface RecipesMainWrapperProps {
-    initialRecipes: MenuRecipeWithDetails[];
-    categories: MenuRecipeCategory[];
+    initialRecipes: MenuRecipeWithDetails[];
+    categories: MenuRecipeCategoryWithCount[];
+    // Corregimos la desestructuración de props que causaba el error anterior
+    initialActiveCategoryId: string; 
+    slug: string;
 }
 
-export default function RecipesMainWrapper({ initialRecipes, categories }: RecipesMainWrapperProps) {
-    // Si es 'all', mostramos la lista completa. Si es 'null', mostramos el hub.
-    const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+// 🚨 COMPONENTE SIMPLIFICADO: Solo desestructura y pasa las props al RecipeList
+export default function RecipesMainWrapper({ 
+    initialRecipes, 
+    categories, 
+    initialActiveCategoryId, // 🚨 Añadido initialActiveCategoryId
+    slug // 🚨 Añadido slug
+}: RecipesMainWrapperProps) {
+    
+    // NOTA: Si este componente solo se usa en [slug]/page.tsx, NO DEBERÍA haber lógica de estado (useState) 
+    // para decidir si mostrar el Hub. El routing de Next.js se encarga de eso.
 
-    const handleCategorySelect = (categoryId: string) => {
-        if (categoryId === 'all') {
-            setActiveCategoryId('all');
-        } else {
-            setActiveCategoryId(categoryId);
-        }
-    };
-    
-    const handleBackToHub = () => {
-        setActiveCategoryId(null);
-    };
+    // 🚨 Eliminamos toda la lógica de estado y condicional
 
-    if (activeCategoryId === null) {
-        // Muestra el Hub de Categorías si no se ha seleccionado ninguna
-        return (
-            <CategoryHub 
-                categories={categories} 
-                onSelectCategory={handleCategorySelect} 
-            />
-        );
-    }
-
-    // Muestra la Lista de Recetas (RecipeList) si se seleccionó 'all' o un ID
-    return (
-        <RecipeList 
-            initialRecipes={initialRecipes} 
-            categories={categories}
-            // 🚨 Pasamos la categoría activa para que RecipeList la use como filtro inicial
-            initialActiveCategoryId={activeCategoryId === 'all' ? null : activeCategoryId}
-            onBackToHub={handleBackToHub}
-        />
-    );
+    // Muestra directamente la Lista de Recetas (RecipeList)
+    return (
+        <RecipeList 
+            initialRecipes={initialRecipes} 
+            categories={categories}
+            // Usamos la prop activa pasada por el Server Component
+            initialActiveCategoryId={initialActiveCategoryId} 
+            slug={slug} 
+        />
+    );
 }
