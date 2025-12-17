@@ -24,9 +24,8 @@ const getRecipeDisplayTrigger = (item: MenuScheduleItem, allRecipes: MenuRecipeS
     const recipe = item.recipe_id ? allRecipes.find(r => r.id === item.recipe_id) : null;
     
     // Obtenemos los datos de la categoría para el color
-    const categoryLink = recipe?.menu_recipe_category_link?.[0];
-    const categoryColor = categoryLink?.menu_recipe_categories[0]?.color;
-    const categoryName = categoryLink?.menu_recipe_categories[0]?.name;
+    const categoryColor = recipe?.category_id?.color;
+    const categoryName = recipe?.category_id?.name;
     
     // Determinamos el texto a mostrar
     const displayText = isOut ? 'Comer fuera' : item.free_text || recipe?.name || 'Plato sin nombre';
