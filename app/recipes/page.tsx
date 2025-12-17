@@ -6,8 +6,9 @@ import Link from 'next/link';
 import { Plus, Utensils } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
-import { fetchAllCategories } from './data';
+import { fetchAllCategoriesWithCount } from './data';
 import { MenuRecipeCategory } from '@/types/recipes';
+
 
 // 🚨 IMPORTAR EL COMPONENTE CLIENTE EXTERNO PARA EL HUB
 import CategoryHub from './components/CategoryHub'; 
@@ -25,7 +26,7 @@ export default async function RecipesPage() {
     const userRole = profile?.role || 'user';
 
     // 2. OBTENCIÓN DE DATOS
-    const allCategories = await fetchAllCategories();
+    const allCategories = await fetchAllCategoriesWithCount();
     
     // 🚨 Cálculo del conteo (simulación, ya que CategoryHub lo necesita)
     // NOTA: Para que esto sea real, tu función fetchAllCategories o una nueva RPC

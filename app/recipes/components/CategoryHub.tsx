@@ -1,7 +1,7 @@
 // app/recipes/components/CategoryHub.tsx
 'use client';
 
-import { MenuRecipeCategory } from '@/types/recipes';
+import { MenuRecipeCategoryWithCount } from '@/types/recipes';
 import { Card, CardContent, CardTitle } from '@/components/ui/card';
 import { Utensils, FolderOpen } from 'lucide-react'; // Usamos FolderOpen como fallback
 import Link from 'next/link'; // 🚨 IMPORTANTE: Usamos Next Link
@@ -10,7 +10,7 @@ import LoadIcon from '@/utils/LoadIcon'; // Componente dinámico de iconos
 // 🚨 MODIFICACIÓN: Ya no se necesita onSelectCategory
 interface CategoryHubProps {
 	// Asumimos que MenuRecipeCategory ahora tiene el campo 'slug' y 'recipeCount' (o se lo pasamos)
-    categories: (MenuRecipeCategory & { recipeCount: number })[];
+    categories: (MenuRecipeCategoryWithCount)[];
 }
 
 export default function CategoryHub({ categories }: CategoryHubProps) {

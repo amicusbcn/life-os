@@ -1,6 +1,42 @@
 // app/recipes/data.ts
 import { createClient } from '@/utils/supabase/server';
-import { MenuRecipeWithDetails, MenuRecipeCategory, MenuRecipeIngredient,MenuRecipeFullData } from '@/types/recipes'; // Importar el nuevo tipo
+import { MenuRecipeCategory, MenuRecipeWithDetails, MenuRecipeCategoryWithCount, MenuRecipeIngredient,MenuRecipeFullData } from '@/types/recipes'; // Importar el nuevo tipo
+
+
+/**
+ * Obtiene todas las categorías y el número de recetas asociadas a cada una.
+ */
+export async function fetchAllCategoriesWithCount(): Promise<MenuRecipeCategoryWithCount[]> {
+    const supabase = await createClient();
+
+    // 🚨 LLAMADA RPC
+    // El método .rpc() llama a la función PostgreSQL
+    const { data, error } = await supabase.rpc('get_categories_with_recipe_count'); 
+
+    if (error) {
+        console.error('Error fetching categories with count (RPC):', error);
+        // Lanzamos el error para que Next.js lo capture si es crítico
+        throw new Error(error.message); 
+    }
+    
+    // Aseguramos que data sea del tipo esperado.
+    const categoriesWithCount = (data as MenuRecipeCategoryWithCount[]) || [];
+
+    // --- Manejar la categoría "Todas las Recetas" (Total) ---
+    const totalRecipes = categoriesWithCount.reduce((sum, cat) => sum + cat.recipeCount, 0);
+    
+    const allCategory = {
+        id: 'all', // Usamos 'all' como ID de convención
+        name: 'Todas las Recetas',
+        color: '#f8f9fa',
+        icon: 'utensils',
+        slug: 'all', // Usamos 'all' como slug de convención
+        recipeCount: totalRecipes,
+    } as MenuRecipeCategoryWithCount;
+
+    // Devolvemos la lista incluyendo la categoría "all"
+    return [allCategory, ...categoriesWithCount];
+}
 
 // Esta función obtiene la lista completa de categorías (ya existía)
 export async function fetchAllCategories(): Promise<MenuRecipeCategory[]> {

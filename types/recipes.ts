@@ -46,6 +46,10 @@ export interface MenuRecipe {
     labels: string[] | null;
 }
 
+export interface MenuRecipeCategoryWithCount extends MenuRecipeCategory {
+    recipeCount: number; 
+}
+
 /**
  * Tipo que representa una Receta con los JOINS expandidos para la UI.
  */

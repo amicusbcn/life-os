@@ -46,7 +46,8 @@ export default function RecipeCreateForm({ categories, initialData }: RecipeCrea
 		register, 
 		control, 
 		handleSubmit, 
-		formState: { errors } 
+		formState: { errors },
+		getValues 
 	} = useForm<RecipeFormInput>({
 		defaultValues: initialData ? {
             // Campos base y Conversión de null -> valor seguro
@@ -114,13 +115,17 @@ export default function RecipeCreateForm({ categories, initialData }: RecipeCrea
 		setIsSubmitting(false);
 
 		if (result.success && result.recipeId) {
-            // Si creamos, redirigimos a la edición, si editamos, recargamos
-            if (!isEditing) {
-			    router.push(`/recipes/${result.recipeId}/edit`); 
-            } else {
-                router.refresh(); // Recarga los datos de la misma página de edición
-                alert('Receta actualizada con éxito.');
-            }
+            
+            // 1. Obtener el ID de categoría seleccionado en el formulario
+            const selectedCategoryId = getValues('category_id'); 
+            
+            // 2. Buscar el slug usando el ID de categoría y la lista de categorías
+            const categorySlug = categories.find(c => c.id === selectedCategoryId)?.slug || 'all'; 
+
+            let redirectPath;
+
+            redirectPath = `/recipes/${categorySlug}/${result.recipeId}`;
+			router.push(redirectPath);
 		} else {
 			alert(`Error al guardar: ${result.error}`);
 		}

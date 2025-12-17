@@ -141,12 +141,20 @@ export default function RecipeList({ initialRecipes, categories, initialActiveCa
 
 					{/* Botón de Filtro (Mobile/Tablet) */}
 					<Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-                        <SheetTrigger>
-							<Button variant="outline" className="md:hidden flex items-center gap-1">
-								<Filter className="w-4 h-4" />
-								Categorías
+                        <SheetTrigger asChild>
+							{/* 2. El Button debe tener asChild para renderizar un div/span en su lugar */}
+							<Button 
+								variant="outline" 
+								className="md:hidden flex items-center gap-1"
+								asChild // 🚨 ASEGÚRATE DE QUE ESTA PROP ESTÁ AQUÍ
+							>
+								{/* 3. Debe haber UN ÚNICO elemento interno si Button no soporta asChild en su raíz */}
+								<div className="flex items-center gap-1"> 
+									<Filter className="w-4 h-4" />
+									Categorías
+								</div>
 							</Button>
-                        </SheetTrigger>
+						</SheetTrigger>
 						<SheetContent side="left" className="w-[280px] sm:w-[350px] p-4 pt-12">
 							<div className="pt-4">
 								{GeneralFilterPanel()}

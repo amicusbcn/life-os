@@ -127,24 +127,25 @@ export async function saveRecipe(formData: FormData): Promise<RecipeActionRespon
         return { success: false, error: errorMessage };
     }
 }
-
 export async function deleteRecipe(formData: FormData): Promise<void> {
     const supabase = await createClient();
+    
     const recipeId = formData.get('id') as string;
+    // 🚨 NUEVO: Obtenemos el slug de la categoría del formulario
+    const categorySlug = formData.get('categorySlug') as string; 
 
     if (!recipeId) return;
 
     try {
-        // En Supabase, para mantener la integridad, normalmente se requiere:
         // 1. Eliminar primero los registros en la tabla hija (ingredientes)
+        // Nota: Si tienes configurado ON DELETE CASCADE en la BD, esta consulta es opcional.
         const { error: ingredientsError } = await supabase
             .from('menu_recipe_ingredients')
             .delete()
             .eq('recipe_id', recipeId);
         
         if (ingredientsError) {
-             // Si fallamos al borrar ingredientes, lanzamos el error, pero no bloqueamos
-             console.error("Error deleting related ingredients:", ingredientsError.message);
+            console.error("Error deleting related ingredients:", ingredientsError.message);
         }
 
         // 2. Eliminar el registro principal
@@ -155,12 +156,20 @@ export async function deleteRecipe(formData: FormData): Promise<void> {
 
         if (recipeError) throw recipeError;
         
-        // Revalidamos la lista principal y redirigimos al Hub
-        revalidatePath('/recipes');
-        redirect('/recipes'); 
+        // --- Redirección y Revalidación ---
+        
+        // 🚨 3. Revalidamos la ruta de la lista filtrada
+        // Esto asegura que la lista de recetas (ej: /recipes/salads) se actualice.
+        const redirectPath = categorySlug ? `/recipes/${categorySlug}` : '/recipes';
+
+        revalidatePath(redirectPath); 
+        
+        // 🚨 4. Redirigimos a la lista filtrada
+        redirect(redirectPath); 
 
     } catch (err) {
         console.error("Error deleting recipe:", err);
-        // Podrías lanzar el error o registrarlo
+        // Si el borrado falla por completo, redirigimos al Hub principal
+        redirect('/recipes'); 
     }
 }
