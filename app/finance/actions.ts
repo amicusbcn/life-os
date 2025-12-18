@@ -115,6 +115,33 @@ export async function deleteAccount(accountId: string): Promise<CreateAccountRes
     }
 }
 
+export async function updateAccount(_prevState: ActionResult, formData: FormData): Promise<ActionResult> {
+    const supabase = await createClient();
+    const { revalidatePath } = await import('next/cache');
+
+    const id = formData.get('id') as string;
+    const name = formData.get('name') as string;
+    const initialBalance = parseFloat(formData.get('initial_balance') as string);
+    const accountType = formData.get('account_type') as any;
+
+    try {
+        const { error } = await supabase
+            .from('finance_accounts')
+            .update({
+                name: name.trim(),
+                initial_balance: initialBalance,
+                account_type: accountType
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        revalidatePath('/finance');
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
 // ==========================================
 // 3. CREATE CATEGORY (Nueva)
 // ==========================================
@@ -124,53 +151,43 @@ export interface CreateCategoryResult extends ActionResult {
 }
 
 export async function createCategory(
-    _prevState: ActionResult, // <--- ¡ARGUMENTO AÑADIDO Y TIPADO!
+    _prevState: ActionResult, 
     formData: FormData
 ): Promise<CreateCategoryResult> {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     const { revalidatePath } = await import('next/cache');
     
-    if (!user) {
-        return { success: false, error: 'Acceso denegado.' };
-    }
+    if (!user) return { success: false, error: 'Acceso denegado.' };
 
     const name = formData.get('name') as string;
-    const isIncomeStr = formData.get('is_income') as string; // 'true' o 'false'
+    const isIncomeStr = formData.get('is_income') as string;
     const parentId = formData.get('parent_id') as string | null;
-    const icon = formData.get('icon') as string;
+    const iconName = formData.get('icon_name') as string; // Capturamos icon_name
 
-    if (!name) {
-        return { success: false, error: 'El nombre de la categoría es obligatorio.' };
-    }
-
-    const isIncome = isIncomeStr === 'true';
+    if (!name) return { success: false, error: 'El nombre es obligatorio.' };
 
     try {
-        const { data,error } = await supabase
+        const { data, error } = await supabase
             .from('finance_categories')
             .insert({
                 user_id: user.id,
                 name: name.trim(),
-                is_income: isIncome,
+                is_income: isIncomeStr === 'true',
                 parent_id: parentId && parentId !== 'no-parent' ? parentId : null,
-                icon: icon || null,
+                icon_name: iconName || 'Tag',
+                // Si es raíz, le asignamos un color neutro inicial
+                color: (!parentId || parentId === 'no-parent') ? '#64748b' : null,
             })
             .select('*')
-            .single()
+            .single();
 
-        if (error) {
-            console.error('Supabase error creating category:', error);
-            return { success: false, error: `Error de base de datos: ${error.message}` };
-        }
+        if (error) throw error;
 
         revalidatePath('/finance');
-        return { success: true, 
-            data: { id: data.id, category: data as FinanceCategory } };
-
-    } catch (e) {
-        console.error('Unexpected error in createCategory:', e);
-        return { success: false, error: 'Ocurrió un error inesperado.' };
+        return { success: true, data: { id: data.id, category: data as FinanceCategory } };
+    } catch (e: any) {
+        return { success: false, error: e.message || 'Error inesperado' };
     }
 }
 
@@ -178,7 +195,7 @@ export async function createCategory(
 // 4. UPDATE CATEGORY (Nueva)
 // ==========================================
 export async function updateCategory(
-  _prevState: ActionResult, // <--- ¡AÑADIR ESTE ARGUMENTO!
+  _prevState: ActionResult, 
   formData: FormData
 ): Promise<ActionResult> {
     const supabase = await createClient();
@@ -186,32 +203,27 @@ export async function updateCategory(
 
     const id = formData.get('id') as string;
     const name = formData.get('name') as string;
-    const icon = formData.get('icon') as string;
+    const iconName = formData.get('icon_name') as string;
+    const color = formData.get('color') as string;
 
-    if (!id || !name) {
-        return { success: false, error: 'ID y Nombre son obligatorios para actualizar.' };
-    }
+    if (!id || !name) return { success: false, error: 'Faltan datos obligatorios.' };
 
     try {
         const { error } = await supabase
             .from('finance_categories')
             .update({
                 name: name.trim(),
-                icon: icon || null,
+                icon_name: iconName,
+                color: color || null,
             })
-            .eq('id', id); // RLS asegura que solo el propietario pueda actualizar
+            .eq('id', id);
 
-        if (error) {
-            console.error('Supabase error updating category:', error);
-            return { success: false, error: `Error de base de datos: ${error.message}` };
-        }
+        if (error) throw error;
 
         revalidatePath('/finance');
         return { success: true };
-
-    } catch (e) {
-        console.error('Unexpected error in updateCategory:', e);
-        return { success: false, error: 'Ocurrió un error inesperado.' };
+    } catch (e: any) {
+        return { success: false, error: e.message || 'Error inesperado' };
     }
 }
 
@@ -454,15 +466,15 @@ import { ImporterTemplate, ParsedTransaction } from '@/types/finance'; // Asegú
 import * as csv from 'csv-parser'; // Importar la librería
 import { Readable } from 'stream'; // Requerido para manejar el archivo en Node.js
 
-
 export async function importCsvTransactionsAction(
-  formData: FormData,
-  template: Partial<ImporterTemplate>,
-): Promise<{ success: boolean; error?: string; transactionsCount?: number }> {
+  formData: FormData,
+  template: Partial<ImporterTemplate>,
+): Promise<{ success: boolean; error?: string; transactionsCount?: number; autoCategorizedCount?: number }> {
   
   // Capturar errores generales de Server Action
   try {
     const file = formData.get('file') as File | null;
+    const account_id = formData.get('accountId') as string; // <-- Recibimos el ID
     if (!file) {
       return { success: false, error: 'No se ha subido ningún archivo.' };
     }
@@ -483,9 +495,7 @@ export async function importCsvTransactionsAction(
 
     if (accountError || accounts.length === 0) {
       return { success: false, error: 'No se encontró ninguna cuenta de destino.' };
-    }
-    const account_id = accounts[0].id;
-    
+    }    
     // 2. PROCESAMIENTO DEL CSV
     const { delimiter, mapping } = template as ImporterTemplate;
 
@@ -543,40 +553,68 @@ try {
     } catch (e) {
         return { success: false, error: `Error al procesar el archivo CSV: ${(e as Error).message}` };
     }
+// --- 2.5 OBTENER REGLAS DE AUTO-CATEGORIZACIÓN ---
+    const { data: rules } = await supabase
+        .from('finance_rules')
+        .select('pattern, category_id');
+
+    // 3. VALIDACIÓN
+    if (transactions.length === 0) {
+        return { success: false, error: 'No se pudieron extraer transacciones.' };
+    }
     
-    // 3. VALIDACIÓN E INSERCIÓN
-    if (transactions.length === 0) {
-        return { success: false, error: 'No se pudieron extraer transacciones. Revisa el delimitador y el mapeo de columnas.' };
-    }
-    
-    // 4. Insertar en la base de datos (mismo código)
-    const { error: insertError } = await supabase
-      .from('finance_transactions')
-      .insert(transactions.map(t => ({
-          ...t,
-          account_id: account_id,
-          user_id: user_id,
-          created_at: new Date().toISOString()
-      })));
-    
-    if (insertError) {
-      console.error('Error al insertar transacciones:', insertError);
-      return { success: false, error: `Error al guardar transacciones: ${insertError.message}` };
-    }
-    
-    // 5. Devolver éxito
+    // --- 4. APLICAR REGLAS E INSERTAR ---
+    let autoCategorizedCount = 0;
+
+    const finalTransactions = transactions.map(t => {
+        let category_id = null;
+
+        // Si existen reglas, buscamos coincidencia en el concepto
+        if (rules && rules.length > 0) {
+            const matchingRule = rules.find(rule => 
+                t.concept.toUpperCase().includes(rule.pattern.toUpperCase())
+            );
+            if (matchingRule) {
+                category_id = matchingRule.category_id;
+                autoCategorizedCount++;
+            }
+        }
+
+        return {
+            ...t,
+            account_id: account_id,
+            user_id: user_id,
+            category_id: category_id, // 🪄 Aplicación de la regla
+            created_at: new Date().toISOString()
+        };
+    });
+
+    const { error: insertError } = await supabase
+      .from('finance_transactions')
+      .insert(finalTransactions);
+    
+    if (insertError) {
+      console.error('Error al insertar transacciones:', insertError);
+      return { success: false, error: `Error al guardar: ${insertError.message}` };
+    }
+    
+    // 5. Devolver éxito con contadores
     const { revalidatePath } = await import('next/cache');
     revalidatePath('/finance');
-    return { success: true, transactionsCount: transactions.length };
-  } catch (e) {
-    // Captura errores generales de la Server Action
-    const errorMessage = e instanceof Error ? e.message : String(e);
-    console.error("ERROR CRÍTICO EN importCsvTransactionsAction:", e);
-    return { success: false, error: `Error interno del servidor: ${errorMessage}. Intenta revisar el delimitador.` };
-  }
+    
+    return { 
+        success: true, 
+        transactionsCount: transactions.length,
+        autoCategorizedCount: autoCategorizedCount // Devolvemos cuántas se categorizaron solas
+    };
+
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    return { success: false, error: `Error interno: ${errorMessage}` };
+  }
 }
 
-// Función auxiliar para mapear una fila CSV a una transacción válida
+
 function mapCsvRow(
   row: { [key: string]: string },
   mapping: ImporterTemplate['mapping'],
@@ -589,41 +627,46 @@ function mapCsvRow(
   // 1. Obtener valores crudos
   const rawDate = row[operation_date]?.trim();
   const rawConcept = row[concept]?.trim();
-  const rawAmount = row[amount]?.trim().replace(',', '.'); // Reemplazar coma por punto decimal
+  const rawAmountStr = row[amount]?.trim() || "";
   const rawSign = sign_column ? row[sign_column]?.trim() : null;
 
-  if (!rawDate || !rawAmount || !rawConcept) {
-      // Ignorar filas incompletas o sin mapear
+  // --- CORRECCIÓN CLAVE PARA FORMATO ESPAÑOL ---
+  // Ejemplo: "1.910,45" -> "1910.45"
+  const sanitizedAmount = rawAmountStr
+    .replace(/\./g, '')  // 1. Eliminamos todos los puntos de miles
+    .replace(',', '.');  // 2. Cambiamos la coma decimal por punto
+  
+  const numericAmount = parseFloat(sanitizedAmount);
+  // --------------------------------------------
+
+  if (!rawDate || isNaN(numericAmount) || !rawConcept) {
+      // Ignorar si la fecha falta, el concepto es vacío o el importe es inválido (NaN)
       return null;
   }
   
   let finalAmount: number;
-  let numericAmount = parseFloat(rawAmount);
 
   // 2. Manejar el signo
   if (sign_column && rawSign) {
-    // Escenario 1: Hay columna de signo o de tipo (ej: "D" o "C")
+    // Si hay columna de signo (D/C, +/-), forzamos la polaridad
     if (rawSign.toLowerCase().includes('d') || rawSign.includes('-')) {
-        finalAmount = -Math.abs(numericAmount); // Convertir a negativo (Gasto)
+        finalAmount = -Math.abs(numericAmount); 
     } else {
-        finalAmount = Math.abs(numericAmount); // Mantener positivo (Ingreso)
+        finalAmount = Math.abs(numericAmount); 
     }
   } else {
-    // Escenario 2: El importe es positivo/negativo en una sola columna
+    // Si no hay columna de signo, confiamos en el signo que ya traiga el número parseado
     finalAmount = numericAmount;
   }
   
-  // 3. Formatear fecha (simplificado, esto puede ser un punto de fallo si el formato es raro)
+  // 3. Formatear fecha a ISO (yyyy-mm-dd) para la base de datos
   let dateForDb = rawDate;
-  
-  // Si la fecha es dd/mm/yyyy, la convertimos a yyyy-mm-dd
   const dateParts = rawDate.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  
   if (dateParts) {
     const [, day, month, year] = dateParts;
-    // Esto asume que el formato es dd/mm/yyyy
     dateForDb = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
-
 
   // 4. Devolver la transacción parseada
   return {
@@ -632,4 +675,75 @@ function mapCsvRow(
     concept: rawConcept,
     importer_notes: `Importado de CSV: ${rawDate}`,
   };
+}
+
+export async function updateTransactionCategoryAction(transactionId: string, categoryId: string) {
+    const supabase = await createClient();
+
+    const { error } = await supabase
+        .from('finance_transactions')
+        .update({ category_id: categoryId === 'pending' ? null : categoryId })
+        .eq('id', transactionId);
+
+    if (error) {
+        console.error('Error updating category:', error);
+        return { success: false, error: error.message };
+    }
+
+    // Importamos revalidatePath de 'next/cache' para refrescar los datos
+    return { success: true };
+}
+
+// app/finance/actions.ts
+
+export async function createRule(prevState: any, formData: FormData) {
+    const supabase = await createClient();
+    const pattern = (formData.get('pattern') as string).toUpperCase();
+    const category_id = formData.get('category_id') as string;
+    
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: 'No user' };
+
+    const { error } = await supabase
+        .from('finance_rules')
+        .insert({ pattern, category_id, user_id: user.id });
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+}
+
+export async function deleteRule(id: string) {
+    const supabase = await createClient();
+    const { error } = await supabase.from('finance_rules').delete().eq('id', id);
+    if (error) return { error: error.message };
+    return { success: true };
+}
+
+export async function applyRuleRetroactively(ruleId: string) {
+    const supabase = await createClient();
+    const { revalidatePath } = await import('next/cache');
+
+    // 1. Obtener los detalles de la regla
+    const { data: rule, error: ruleError } = await supabase
+        .from('finance_rules')
+        .select('*')
+        .eq('id', ruleId)
+        .single();
+
+    if (ruleError || !rule) return { success: false, error: 'Regla no encontrada' };
+
+    // 2. Actualizar transacciones que coincidan con el patrón y NO tengan categoría
+    // Usamos ilike para que no importe mayúsculas/minúsculas
+    const { data, error: updateError, count } = await supabase
+        .from('finance_transactions')
+        .update({ category_id: rule.category_id })
+        .ilike('concept', `%${rule.pattern}%`)
+        .is('category_id', null); // Solo a las pendientes para no sobreescribir manuales
+
+    if (updateError) {
+        return { success: false, error: updateError.message };
+    }
+
+    revalidatePath('/finance');
+    return { success: true, count: count || 0 };
 }

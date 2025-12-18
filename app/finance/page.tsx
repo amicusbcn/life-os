@@ -1,3 +1,4 @@
+// app/finance/page.tsx
 import { redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server'; 
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
@@ -29,11 +30,12 @@ export default async function FinancePage() {
     const userRole = profile?.role || 'user';
 
     // 3. Obtener todos los datos del Dashboard
-    const { accounts, categories, transactions } = await getFinanceDashboardData();
+    const { accounts, categories, transactions,rules } = await getFinanceDashboardData();
     
     // 4. Calcular el Saldo Total Global (Simple suma de initial_balance)
-    // NOTA: El saldo real requiere sumar todas las transacciones. Esto es solo inicial.
-    const totalBalance = accounts.reduce((sum, acc) => sum + acc.initial_balance, 0);
+    
+    const totalBalance = accounts.reduce((acc, account) => acc + (account.current_balance || 0), 0);
+
 
     // 5. Renderizar la UI
     return (
@@ -49,26 +51,19 @@ export default async function FinancePage() {
                     <FinanceMenu 
                         accounts={accounts} 
                         categories={categories}
+                        rules={rules}
                     />
                 } 
             />
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-                <div className="bg-white p-6 rounded-xl shadow">
-                    <h2 className="text-xl font-semibold text-slate-800 flex items-center">
-                        <Banknote className="w-5 h-5 mr-2 text-green-600"/> Resumen Global
-                    </h2>
-                    <p className="mt-2 text-3xl font-bold text-slate-900">
-                        {totalBalance.toFixed(2)} €
-                    </p>
-                    <p className="text-sm text-slate-500">Saldo inicial total de {accounts.length} cuentas</p>
-                </div>
-
                 {/* 6. Delegamos el renderizado de la tabla al componente cliente */}
                 <FinanceDashboardView 
                     accounts={accounts}
                     categories={categories}
                     transactions={transactions}
+                    rules={rules}
+                    totalBalance={totalBalance}
                 />
             </div>
         </div>

@@ -1,309 +1,390 @@
 'use client'
 
-import React, { useState, useMemo, useEffect, useRef } from "react"
-import { useRouter } from 'next/navigation'; // Necesario para router.refresh()
-import { 
-    createCategory, 
-    deleteCategory, 
-    updateCategory, 
-    ActionResult, 
-} from "@/app/finance/actions" 
-import { FinanceCategory } from "@/types/finance" 
+import React, { useState, useMemo, useEffect } from "react"
+import { useRouter } from 'next/navigation'
+import { createCategory, deleteCategory, updateCategory, createRule, deleteRule, ActionResult,applyRuleRetroactively } from "@/app/finance/actions" 
+import { FinanceCategory, FinanceRule } from "@/types/finance" 
 
-// UI Components & Hooks
+// UI Components
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogHeader, DialogTitle} from "@/components/ui/dialog"
-import { Loader2, Tag, CornerDownRight, Pencil, Check, X, Trash2, Plus } from "lucide-react"
-import { toast } from 'sonner';
-import { useFormStatus } from 'react-dom'; 
-import { useActionState } from 'react'; 
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { toast } from 'sonner'
+import LoadIcon from "@/utils/LoadIcon"
 
-// --- Global/Shared Types ---
-interface CloneableElementProps {
-    onSelect?: (e: Event) => void;
-    onClick?: (e: React.MouseEvent) => void;
-}
-interface CategorySettingsDialogProps {
-    initialCategories: FinanceCategory[];
-    children: React.ReactElement<CloneableElementProps>;
-}
+// Icons
+import { 
+    Tag, CornerDownRight, Trash2, Plus, Zap, Settings, X, Check, ChevronRight, Loader2, Palette, Search
+} from "lucide-react"
+import { cn } from "@/lib/utils"
 
-// --- TIPO AUXILIAR (Para la jerarquía) ---
-interface CategoryWithLevel extends FinanceCategory {
-    level: number;
-}
+const QUICK_ICONS = ['Tag', 'ShoppingCart', 'Utensils', 'Car', 'Home', 'Zap', 'HeartPulse', 'Plane', 'Gift', 'Smartphone', 'Banknote', 'Pizza'];
 
-// --- SUB-COMPONENTE: FILA DE CATEGORÍA (Lectura/Edición) ---
-function CategoryRow({ category, categories }: { category: CategoryWithLevel, categories: FinanceCategory[] }) {
+// --- FILA DE CATEGORÍA ---
+function CategoryRow({ category, categories }: { category: any, categories: FinanceCategory[] }) {
     const [isEditing, setIsEditing] = useState(false)
-    const [loading, setLoading] = useState(false)
-    const [tempName, setTempName] = useState(category.name)
-    const [tempIcon, setTempIcon] = useState(category.icon || (category.is_income ? '➕' : '➖'))
-    
-    const router = useRouter(); 
+    const [name, setName] = useState(category.name)
+    const [icon, setIcon] = useState(category.icon_name || 'Tag')
+    const [color, setColor] = useState(category.color || '#64748b')
+    const [isChanged, setIsChanged] = useState(false)
+    const router = useRouter()
 
-    // updateCategory usa la firma (prevState, formData)
     const handleSave = async () => {
-        setLoading(true)
         const formData = new FormData()
         formData.append('id', category.id)
-        formData.append('name', tempName)
-        formData.append('icon', tempIcon)
-
-        try {
-            // Se usa un objeto vacío como prevState si no se necesita
-            const res = await updateCategory({} as ActionResult, formData) 
-            if (res.success) {
-                toast.success('Categoría actualizada.');
-                setIsEditing(false)
-                router.refresh(); // <-- Aún necesario
-            } else {
-                toast.error('Error al actualizar.', { description: res.error })
-            }
-        } catch (e) { 
-            console.error(e) 
-        } 
-        finally { 
-            setLoading(false) 
+        formData.append('name', name)
+        formData.append('icon_name', icon)
+        formData.append('color', color)
+        
+        const res = await updateCategory({} as ActionResult, formData)
+        if (res.success) {
+            toast.success('Guardado')
+            setIsChanged(false)
+            setIsEditing(false)
+            router.refresh()
         }
     }
 
-    const handleDelete = async () => {
-        const childCount = categories.filter(c => c.parent_id === category.id).length;
-        
-        if(!confirm(`¿Borrar categoría "${category.name}"? ${childCount > 0 ? `Tiene ${childCount} subcategoría(s) asociada(s).` : ''} Asegúrate de que no tiene transacciones asociadas.`)) return
-        
-        setLoading(true)
-        const res = await deleteCategory(category.id)
-        if (res.error) {
-            toast.error('Error al borrar categoría.', { description: res.error });
-        } else {
-            toast.success('Categoría eliminada.');
-            router.refresh(); // <-- Aún necesario
-        }
-        setLoading(false)
-    }
-
-    // El resto del JSX se mantiene igual
     return (
-        <div 
-            className="flex items-center gap-3 p-2 rounded-lg border border-slate-100 bg-white shadow-sm group hover:border-indigo-100 transition-all min-h-[50px]"
-            style={{ paddingLeft: `${category.level * 16 + 12}px` }} 
-        >
-            <div className="flex items-center shrink-0">
-                {category.level > 0 ? (
-                    <CornerDownRight className="h-4 w-4 text-slate-300 mr-2" />
-                ) : (
-                    <Tag className="h-4 w-4 text-slate-500 mr-2" />
+        <div className="group mb-2">
+            <div 
+                className={cn(
+                    "flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-white shadow-sm transition-all",
+                    isEditing ? "ring-2 ring-indigo-500/20 border-indigo-200" : ""
                 )}
+                style={{ marginLeft: `${category.level * 20}px` }}
+            >
+                {category.level === 0 ? (
+                    <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-md border shadow-sm">
+                        <input 
+                            type="color" 
+                            value={color} 
+                            onChange={(e) => { setColor(e.target.value); setIsChanged(true) }}
+                            className="absolute inset-0 scale-150 cursor-pointer"
+                        />
+                    </div>
+                ) : (
+                    <CornerDownRight className="h-4 w-4 text-slate-300 ml-2 shrink-0" />
+                )}
+
+                <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8 bg-slate-50 shrink-0"
+                    onClick={() => setIsEditing(!isEditing)}
+                >
+                    <LoadIcon name={icon} className="h-4 w-4" style={{ color: category.level === 0 ? color : '#64748b' }} />
+                </Button>
+
+                <Input 
+                    value={name} 
+                    onChange={(e) => { setName(e.target.value); setIsChanged(true) }} 
+                    className="flex-1 h-8 text-sm border-transparent focus:border-slate-200 bg-transparent"
+                />
+
+                <div className="flex gap-1">
+                    {(isChanged || isEditing) && (
+                        <Button size="icon" variant="ghost" onClick={handleSave} className="h-8 w-8 text-green-600 hover:bg-green-50">
+                            <Check className="h-4 w-4" />
+                        </Button>
+                    )}
+                    <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        onClick={() => deleteCategory(category.id).then(() => router.refresh())}
+                        className="h-8 w-8 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
 
-            {isEditing ? (
-                <>
-                    <Input 
-                        value={tempIcon}
-                        onChange={(e) => setTempIcon(e.target.value)}
-                        className="h-8 w-10 text-center px-0 text-lg bg-slate-50"
-                        maxLength={2}
-                        autoFocus
-                    />
-                    <Input 
-                        value={tempName}
-                        onChange={(e) => setTempName(e.target.value)}
-                        className="flex-1 h-8 text-sm"
-                    />
-                    <div className="flex gap-1 shrink-0">
-                        <Button size="icon" variant="ghost" onClick={handleSave} disabled={loading} className="h-8 w-8 text-green-600 hover:bg-green-50">
-                            {loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4" />}
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => setIsEditing(false)} disabled={loading} className="h-8 w-8 text-slate-400 hover:bg-slate-100">
-                            <X className="h-4 w-4" />
-                        </Button>
+            {isEditing && (
+                <div className="mt-2 ml-10 p-3 bg-white rounded-xl border border-slate-200 shadow-md animate-in slide-in-from-top-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Seleccionar Icono</p>
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                        {QUICK_ICONS.map(i => (
+                            <Button 
+                                key={i} 
+                                size="icon" 
+                                variant={icon === i ? 'default' : 'outline'} 
+                                className={cn("h-8 w-8", icon === i ? "bg-indigo-600" : "")}
+                                onClick={() => { setIcon(i); setIsChanged(true) }}
+                            >
+                                <LoadIcon name={i} className={cn("h-3.5 w-3.5", icon === i ? "text-white" : "")} />
+                            </Button>
+                        ))}
                     </div>
-                </>
-            ) : (
-                <>
-                    <div className={`h-8 w-8 rounded-full bg-slate-50 flex items-center justify-center text-lg border border-slate-100 shadow-sm shrink-0 ${category.is_income ? 'text-green-600' : 'text-red-600'}`}>
-                        {category.icon || (category.is_income ? '➕' : '➖')}
+                    <div className="relative">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
+                        <Input 
+                            placeholder="Nombre icono Lucide..." 
+                            value={icon} 
+                            onChange={(e) => { setIcon(e.target.value); setIsChanged(true) }}
+                            className="h-8 pl-7 text-[10px]"
+                        />
                     </div>
-                    <span className="flex-1 text-sm font-medium text-slate-700 truncate">{category.name}</span>
-                    <span className={`text-xs font-semibold shrink-0 w-12 text-center rounded-full py-0.5 ${category.is_income ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {category.is_income ? 'Ingreso' : 'Gasto'}
-                    </span>
-                    
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                        <Button size="icon" variant="ghost" onClick={() => setIsEditing(true)} className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50">
-                            <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={handleDelete} disabled={loading} className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50">
-                            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Trash2 className="h-3.5 w-3.5" />}
-                        </Button>
-                    </div>
-                </>
+                </div>
             )}
         </div>
     )
 }
 
-// --- SUB-COMPONENTE: FORMULARIO DE CREACIÓN DE CATEGORÍA ---
-function NewCategoryCreator({ categories }: { categories: FinanceCategory[] }) {
-    
-    const initialState: ActionResult = {}; 
-    const [state, formAction] = useActionState(createCategory, initialState); 
-
-    const { pending } = useFormStatus();
-    const router = useRouter(); 
-    const formRef = useRef<HTMLFormElement>(null);
-
-    // useEffect para manejar el éxito y forzar la recarga
-    useEffect(() => {
-        if (state.success) {
-            toast.success('Categoría creada con éxito.');
-            formRef.current?.reset();
-            router.refresh(); // <-- Recargar para que el componente padre envíe la nueva lista
-        } else if (state.error) {
-            toast.error('Error al crear categoría', { description: state.error });
-        }
-    }, [state, router]);
-
-    // Lógica para ordenar las categorías de forma jerárquica para el Select
-    const sortedCategories = useMemo(() => {
-        const roots = categories.filter((c) => !c.parent_id)
-        const buildTree = (parentId: string, level: number): CategoryWithLevel[] => {
-            const children = categories
-                .filter(c => c.parent_id === parentId)
-                .sort((a, b) => a.name.localeCompare(b.name)); 
-            let result: CategoryWithLevel[] = [];
-            for (const child of children) {
-                result.push({ ...child, level });
-                result = [...result, ...buildTree(child.id, level + 1)]; 
-            }
-            return result;
-        }
-        let result: CategoryWithLevel[] = []
-        roots.sort((a, b) => a.name.localeCompare(b.name)).forEach(root => {
-            result.push({ ...root, level: 0 });
-            result = [...result, ...buildTree(root.id, 1)];
-        });
-        return result
-    }, [categories])
-
-    return (
-        <form ref={formRef} action={formAction} className="flex flex-col gap-2"> 
-            <p className="text-xs font-semibold text-slate-400 uppercase ml-1">Nueva Categoría</p>
-            
-            <div className="flex gap-2">
-                <Input name="icon" placeholder="💸" className="w-12 text-center bg-white h-10 px-0 shrink-0" maxLength={2} />
-                <Input name="name" placeholder="Ej: Hipoteca, Sueldo, Supermercado" required disabled={pending} className="flex-1 bg-white h-10" />
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-                <select 
-                    name="is_income" 
-                    disabled={pending}
-                    className="col-span-1 h-10 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-                    defaultValue="false"
-                >
-                    <option value="false">Gasto ➖</option>
-                    <option value="true">Ingreso ➕</option>
-                </select>
-
-                <select 
-                    name="parent_id" 
-                    disabled={pending}
-                    className="col-span-2 h-10 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-                    defaultValue="no-parent"
-                >
-                    <option value="no-parent">📁 Categoría Raíz</option>
-                    {sortedCategories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                            {"\u00A0\u00A0".repeat(cat.level)} ↳ {cat.name}
-                        </option>
-                    ))}
-                </select>
-            </div>
-            
-            <Button type="submit" disabled={pending} className="bg-slate-900 h-10">
-                {pending ? <Loader2 className="h-5 w-5 animate-spin"/> : <Plus className="h-5 w-5 mr-2"/>}
-                Crear Categoría
-            </Button>
-        </form>
-    );
-}
-
 // --- COMPONENTE PRINCIPAL ---
-
-export function CategorySettingsDialog({ initialCategories, children }: CategorySettingsDialogProps) {
+export function CategorySettingsDialog({ initialCategories, initialRules, children }: any) {
     const [open, setOpen] = useState(false)
-    
-    // --- CORRECCIÓN CLAVE: Usamos la prop directamente. ---
-    const categories = initialCategories; 
-    // ----------------------------------------------------
-    
-    // Lógica de árbol para renderizar las categorías (usa la prop 'categories')
-    const sortedCategories = useMemo(() => {
-        // ... misma lógica de construcción de árbol que NewCategoryCreator
-        const roots = categories.filter((c) => !c.parent_id)
-        const buildTree = (parentId: string, level: number): CategoryWithLevel[] => {
-            const children = categories
-                .filter(c => c.parent_id === parentId)
-                .sort((a, b) => a.name.localeCompare(b.name)); 
-            let result: CategoryWithLevel[] = [];
-            for (const child of children) {
-                result.push({ ...child, level });
-                result = [...result, ...buildTree(child.id, level + 1)]; 
+    const [showNewForm, setShowNewForm] = useState(false)
+    const router = useRouter()
+
+    // 🚨 CORRECCIÓN TRIGGER: Lógica de apertura integrada
+    const childElement = children as React.ReactElement;
+    const trigger = React.cloneElement(childElement as React.ReactElement<any>, {
+        onSelect: (e: Event) => {
+            e.preventDefault();
+            setOpen(true);
+        },
+        onClick: (e: React.MouseEvent) => {
+            e.stopPropagation();
+            if (typeof (childElement.props as any).onClick === 'function') {
+                (childElement.props as any).onClick(e);
             }
-            return result;
+            setOpen(true);
         }
-        let result: CategoryWithLevel[] = []
-        roots.sort((a, b) => a.name.localeCompare(b.name)).forEach(root => {
-            result.push({ ...root, level: 0 });
-            result = [...result, ...buildTree(root.id, 1)];
-        });
+    });
+
+    const sortedCategories = useMemo(() => {
+        const roots = initialCategories.filter((c: any) => !c.parent_id).sort((a: any, b: any) => a.name.localeCompare(b.name))
+        const result: any[] = []
+        const walk = (pid: string, lvl: number) => {
+            initialCategories.filter((c: any) => c.parent_id === pid).forEach((c: any) => {
+                result.push({ ...c, level: lvl })
+                walk(c.id, lvl + 1)
+            })
+        }
+        roots.forEach((r: any) => { result.push({ ...r, level: 0 }); walk(r.id, 1) })
         return result
-    }, [categories]) // Dependencia: categories (la prop)
-
-
-    const childElement = children as React.ReactElement<CloneableElementProps>;
-    const newOnSelect = (e: Event) => {
-        e.preventDefault(); 
-        const originalOnSelect = (childElement.props as CloneableElementProps).onSelect;
-        if (typeof originalOnSelect === 'function') {
-            originalOnSelect(e);
-        }
-        setOpen(true); 
-    };
-    const trigger = React.cloneElement(childElement, {
-        onSelect: newOnSelect,
-        onClick: (e: React.MouseEvent) => e.stopPropagation(), 
-    } as React.PropsWithChildren<CloneableElementProps>);
-
+    }, [initialCategories])
 
     return (
         <>
             {trigger}
-
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="max-w-md h-[550px] flex flex-col rounded-xl p-0 overflow-hidden bg-white">
-                    <DialogHeader className="p-4 pb-2 border-b border-slate-100">
-                        <DialogTitle>Gestión de Categorías</DialogTitle>
+                <DialogContent className="sm:max-w-[450px] h-[85vh] flex flex-col bg-slate-50 p-0 overflow-hidden border-none shadow-2xl">
+                    <DialogHeader className="p-6 pb-2 bg-white border-b">
+                        <DialogTitle className="flex items-center gap-2">
+                            <Settings className="h-5 w-5 text-slate-500" /> Configuración Finanzas
+                        </DialogTitle>
                     </DialogHeader>
 
-                    <div className="flex-1 flex flex-col gap-0 overflow-hidden">
-                        <div className="flex-1 overflow-y-auto p-4 space-y-2 relative">
-                            {sortedCategories.length === 0 && <p className="text-center text-sm text-slate-400 mt-10">Sin categorías definidas</p>}
-                            {sortedCategories.map((cat) => (
-                                <CategoryRow key={cat.id} category={cat} categories={categories} />
-                            ))}
-                        </div>
-                        
-                        <div className="p-3 border-t border-slate-100 bg-slate-50">
-                            <NewCategoryCreator categories={categories} /> 
-                        </div>
-                    </div>
+                    <Tabs defaultValue="categories" className="flex-1 flex flex-col overflow-hidden">
+                        <TabsList className="grid w-[90%] mx-auto grid-cols-2 mt-4 bg-slate-200/50 p-1">
+                            <TabsTrigger value="categories" className="gap-2 text-xs data-[state=active]:bg-white shadow-none">
+                                <Tag className="h-3.5 w-3.5"/> Categorías
+                            </TabsTrigger>
+                            <TabsTrigger value="rules" className="gap-2 text-xs data-[state=active]:bg-white shadow-none">
+                                <Zap className="h-3.5 w-3.5"/> Reglas Auto
+                            </TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="categories" className="flex-1 flex flex-col overflow-hidden p-4 pt-2">
+                            <Button 
+                                variant="outline" 
+                                className="w-full mb-4 border-dashed border-slate-300 bg-white hover:bg-slate-50 text-slate-500 gap-2 h-11"
+                                onClick={() => setShowNewForm(!showNewForm)}
+                            >
+                                <Plus className="h-4 w-4" /> Nueva Categoría
+                            </Button>
+
+                            {showNewForm && (
+                                <div className="mb-6 p-4 bg-white rounded-xl border border-indigo-100 shadow-md">
+                                    <NewCategoryForm categories={initialCategories} onSuccess={() => setShowNewForm(false)} />
+                                </div>
+                            )}
+
+                            <div className="flex-1 overflow-y-auto pr-2 space-y-1">
+                                {sortedCategories.length === 0 && <p className="text-center text-sm text-slate-400 mt-10 italic">Crea tu primera categoría para empezar</p>}
+                                {sortedCategories.map(cat => (
+                                    <CategoryRow key={cat.id} category={cat} categories={initialCategories} />
+                                ))}
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="rules" className="flex-1 overflow-hidden">
+                            <RulesManager rules={initialRules} categories={initialCategories} />
+                        </TabsContent>
+                    </Tabs>
                 </DialogContent>
             </Dialog>
         </>
+    )
+}
+
+// --- RESTO DE SUB-COMPONENTES (RulesManager, NewRuleForm, NewCategoryForm) ---
+
+function RulesManager({ rules, categories }: { rules: FinanceRule[], categories: FinanceCategory[] }) {
+    const router = useRouter();
+    const handleDelete = async (id: string) => {
+        if (!confirm('¿Eliminar esta regla?')) return;
+        const res = await deleteRule(id);
+        if (res.success) {
+            toast.success("Regla eliminada");
+            router.refresh();
+        }
+    };
+    const [isRunning, setIsRunning] = useState<string | null>(null);
+
+    const handleRunRetroactive = async (ruleId: string) => {
+        setIsRunning(ruleId);
+        const res = await applyRuleRetroactively(ruleId);
+        
+        if (res.success) {
+            toast.success(`¡Magia hecha!`, { 
+                description: `Se han categorizado ${res.count} movimientos antiguos.` 
+            });
+            router.refresh();
+        } else {
+            toast.error("Error al aplicar la regla");
+        }
+        setIsRunning(null);
+    };
+    return (
+        <div className="flex flex-col h-full bg-slate-50">
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {rules.length === 0 && <p className="text-center text-sm text-slate-400 mt-10">No hay reglas definidas.</p>}
+                {rules.map(rule => {
+                    const category = categories.find(c => c.id === rule.category_id);
+                    // Buscamos el color del padre si es subcategoría, si no el propio
+                    const displayColor = category?.parent?.color || category?.color || '#94a3b8';
+
+                    return (
+                        <div key={rule.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm group hover:border-indigo-200 transition-all">
+                            <div className="flex items-center gap-4 overflow-hidden">
+                                
+                                {/* 2. DISPARADOR: Patrón estilo Código */}
+                                <code className="px-2 py-1 rounded bg-slate-100 text-slate-500 text-[10px] font-mono border border-slate-200 truncate italic">
+                                    {rule.pattern}
+                                </code>
+                                <ChevronRight className="h-3 w-3 text-slate-300 shrink-0" />
+                                {/* 1. DESTINO: Categoría Pill */}
+                                <div 
+                                    className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold border shrink-0"
+                                    style={{ 
+                                        backgroundColor: displayColor + '20', // Opacidad suave
+                                        borderColor: displayColor + '40',
+                                        color: displayColor
+                                    }}
+                                >
+                                    <LoadIcon name={category?.icon_name || 'Tag'} className="w-3.5 h-3.5" />
+                                    <span className="truncate max-w-[120px]">{category?.name || 'S/C'}</span>
+                                </div>
+                                
+                            </div>
+
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    onClick={() => handleRunRetroactive(rule.id)}
+                                    disabled={isRunning === rule.id}
+                                    className="h-8 w-8 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                    title="Aplicar a movimientos pasados"
+                                >
+                                    {isRunning === rule.id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                        <Zap className="h-3.5 w-3.5" />
+                                    )}
+                                </Button>
+
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    onClick={() => handleDelete(rule.id)} 
+                                    className="h-8 w-8 text-slate-300 hover:text-red-500 hover:bg-red-50"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="p-4 bg-white border-t border-slate-200">
+                <NewRuleForm categories={categories} />
+            </div>
+        </div>
+    );
+}
+
+function NewRuleForm({ categories }: { categories: FinanceCategory[] }) {
+    const router = useRouter();
+    const [pending, setPending] = useState(false);
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        setPending(true);
+        const fd = new FormData(e.currentTarget);
+        const res = await createRule({}, fd);
+        if (res.success) {
+            toast.success("Regla creada");
+            router.refresh();
+            (e.target as HTMLFormElement).reset();
+        }
+        setPending(false);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-3">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nueva Regla de Auto-Clasificación</p>
+            <div className="flex flex-col gap-2 p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                <Input name="pattern" placeholder="PATRÓN (Ej: MERCADONA)" required className="h-9 text-xs uppercase bg-white border-none shadow-sm" />
+                <div className="flex gap-2">
+                    <Select name="category_id" required>
+                        <SelectTrigger className="h-9 text-xs bg-white flex-1 border-none shadow-sm"><SelectValue placeholder="Categoría..." /></SelectTrigger>
+                        <SelectContent>
+                            {categories.map(c => <SelectItem key={c.id} value={c.id} className="text-xs">{c.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                    <Button type="submit" disabled={pending} size="sm" className="bg-slate-900 h-9 px-4">
+                        {pending ? <Loader2 className="h-4 w-4 animate-spin"/> : <Plus className="h-4 w-4" />}
+                    </Button>
+                </div>
+            </div>
+        </form>
+    );
+}
+
+function NewCategoryForm({ categories, onSuccess }: { categories: any[], onSuccess: () => void }) {
+    const router = useRouter()
+    const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault()
+        const fd = new FormData(e.currentTarget)
+        const res = await createCategory({} as any, fd)
+        if (res.success) {
+            toast.success("Creada")
+            router.refresh()
+            onSuccess()
+        }
+    }
+
+    return (
+        <form onSubmit={handleCreate} className="space-y-3">
+            <div className="flex gap-2">
+                <Input name="icon_name" placeholder="Tag" defaultValue="Tag" className="w-20 text-xs bg-slate-50 border-none" />
+                <Input name="name" placeholder="Nombre de categoría..." required className="flex-1 bg-slate-50 border-none font-medium" />
+            </div>
+            <div className="flex gap-2">
+                <Select name="parent_id" defaultValue="no-parent">
+                    <SelectTrigger className="flex-1 text-xs bg-slate-50 border-none"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="no-parent">📁 Categoría Raíz</SelectItem>
+                        {categories.filter(c => !c.parent_id).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+                <Button type="submit" size="sm" className="bg-indigo-600 px-6">Crear</Button>
+            </div>
+        </form>
     )
 }

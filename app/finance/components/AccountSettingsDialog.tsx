@@ -1,23 +1,20 @@
+// app/finance/components/AccountSettingsDialog.tsx
 'use client'
 
 import React, { useState, useEffect, useRef } from "react"
-import { useRouter } from 'next/navigation'; // Necesario para router.refresh()
-// Usamos useActionState en lugar de useFormState
+import { useRouter } from 'next/navigation';
 import { useActionState } from 'react'; 
 import { useFormStatus } from 'react-dom';
 
-// Solo importamos las acciones de mutación
-import { deleteAccount, createAccount, ActionResult, CreateAccountResult } from "@/app/finance/actions" 
-import { FinanceAccount, FinanceAccountType } from "@/types/finance" 
+import { deleteAccount, createAccount, updateAccount, ActionResult, CreateAccountResult } from "@/app/finance/actions" 
+import { FinanceAccount, FinanceAccountType } from "@/types/finance" 
 
-// UI Components
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle} from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-// Icons & Hooks
-import { Loader2, CreditCard, Wallet, Trash2, Plus } from "lucide-react"
+import { Loader2, CreditCard, Wallet, Trash2, Plus, Pencil, Check, X } from "lucide-react"
 import { toast } from 'sonner';
 
 // --- Global/Shared Types ---
@@ -42,57 +39,107 @@ const ACCOUNT_TYPES: { value: FinanceAccountType, label: string }[] = [
 
 // --- SUB-COMPONENTE: FILA DE CUENTA (Lectura/Edición) ---
 function AccountRow({ account }: { account: FinanceAccount }) {
-	const [loading, setLoading] = useState(false)
-	const router = useRouter(); // Necesario para el refetch
+    const [isEditing, setIsEditing] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [tempName, setTempName] = useState(account.name);
+    const [tempBalance, setTempBalance] = useState(account.initial_balance.toString());
+    const router = useRouter();
 
-	// deleteAccount llama a revalidatePath
-	const handleDelete = async () => {
-		if(!confirm(`¿Borrar la cuenta "${account.name}"? ¡Esto puede fallar si tiene movimientos!`)) return
-		setLoading(true)
-		const res = await deleteAccount(account.id)
-		if (res.error) {
-			toast.error('Error al borrar cuenta', { description: res.error });
-		} else {
-			toast.success('Cuenta eliminada con éxito.');
-			router.refresh(); // <-- FORZAR RECARGA
-		}
-		setLoading(false)
-	}
+    const handleSave = async () => {
+        setLoading(true);
+        const formData = new FormData();
+        formData.append('id', account.id);
+        formData.append('name', tempName);
+        formData.append('initial_balance', tempBalance);
+        formData.append('account_type', account.account_type);
 
-	const getAccountIcon = (type: FinanceAccountType) => {
-		switch(type) {
-			case 'credit_card': return <CreditCard className="h-4 w-4 text-indigo-600" />;
-			case 'investment': return <Loader2 className="h-4 w-4 text-green-600" />;
-			case 'loan': return <Wallet className="h-4 w-4 text-red-600" />; 
-			default: return <Wallet className="h-4 w-4 text-blue-600" />;
-		}
-	}
+        const res = await updateAccount({} as ActionResult, formData);
+        if (res.success) {
+            toast.success('Cuenta actualizada');
+            setIsEditing(false);
+            router.refresh();
+        } else {
+            toast.error('Error al actualizar', { description: res.error });
+        }
+        setLoading(false);
+    };
 
-	return (
-		<div className="flex items-center gap-3 p-2 rounded-lg border border-slate-100 bg-white shadow-sm group hover:border-indigo-100 transition-all min-h-[50px]">
-			<div className="h-8 w-8 rounded-full bg-slate-50 flex items-center justify-center border border-slate-100 shadow-sm shrink-0">
-				{getAccountIcon(account.account_type)}
-			</div>
-			<span className="flex-1 text-sm font-medium text-slate-700 truncate">{account.name}</span>
-		    
-			<div className="text-right shrink-0">
-				<p className={`text-sm font-semibold ${account.initial_balance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-					{account.initial_balance.toFixed(2)} {account.currency}
-				</p>
-				<p className="text-xs text-slate-500">
-					{ACCOUNT_TYPES.find(t => t.value === account.account_type)?.label}
-				</p>
-			</div>
-		    
-			<div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-				{/* Botón de Edición (Placeholder) */}
-				{/* ... */}
-				<Button size="icon" variant="ghost" onClick={handleDelete} disabled={loading} className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50">
-					{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Trash2 className="h-3.5 w-3.5" />}
-				</Button>
-			</div>
-		</div>
-	)
+    const handleDelete = async () => {
+        if(!confirm(`¿Borrar la cuenta "${account.name}"?`)) return;
+        setLoading(true);
+        const res = await deleteAccount(account.id);
+        if (res.error) {
+            toast.error('Error al borrar', { description: res.error });
+        } else {
+            toast.success('Cuenta eliminada');
+            router.refresh();
+        }
+        setLoading(false);
+    }
+
+    const getAccountIcon = (type: FinanceAccountType) => {
+        switch(type) {
+            case 'credit_card': return <CreditCard className="h-4 w-4 text-indigo-600" />;
+            case 'investment': return <Loader2 className="h-4 w-4 text-green-600" />;
+            case 'loan': return <Wallet className="h-4 w-4 text-red-600" />; 
+            default: return <Wallet className="h-4 w-4 text-blue-600" />;
+        }
+    }
+
+    return (
+        <div className="flex items-center gap-3 p-2 rounded-lg border border-slate-100 bg-white shadow-sm group hover:border-indigo-100 transition-all min-h-[50px]">
+            {isEditing ? (
+                // --- VISTA EDICIÓN ---
+                <div className="flex-1 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
+                    <Input 
+                        value={tempName} 
+                        onChange={(e) => setTempName(e.target.value)}
+                        className="h-8 text-xs flex-1 bg-slate-50"
+                        autoFocus
+                    />
+                    <Input 
+                        value={tempBalance} 
+                        onChange={(e) => setTempBalance(e.target.value)}
+                        className="h-8 text-xs w-20 text-right bg-slate-50 font-mono"
+                    />
+                    <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" onClick={handleSave} disabled={loading} className="h-8 w-8 text-green-600 hover:bg-green-50">
+                            {loading ? <Loader2 className="h-3 w-3 animate-spin"/> : <Check className="h-4 w-4" />}
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => setIsEditing(false)} disabled={loading} className="h-8 w-8 text-slate-400">
+                            <X className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
+            ) : (
+                // --- VISTA LECTURA ---
+                <>
+                    <div className="h-8 w-8 rounded-full bg-slate-50 flex items-center justify-center border border-slate-100 shadow-sm shrink-0">
+                        {getAccountIcon(account.account_type)}
+                    </div>
+                    <span className="flex-1 text-sm font-medium text-slate-700 truncate">{account.name}</span>
+                    
+                    <div className="text-right shrink-0 mr-2">
+                        <p className={`text-sm font-semibold ${account.initial_balance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                            {account.initial_balance.toFixed(2)} {account.currency}
+                        </p>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">
+                            {ACCOUNT_TYPES.find(t => t.value === account.account_type)?.label}
+                        </p>
+                    </div>
+                    
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <Button size="icon" variant="ghost" onClick={() => setIsEditing(true)} className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50">
+                            <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={handleDelete} disabled={loading} className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50">
+                            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Trash2 className="h-3.5 w-3.5" />}
+                        </Button>
+                    </div>
+                </>
+            )}
+        </div>
+    )
 }
 
 // --- SUB-COMPONENTE: FORMULARIO DE CREACIÓN (NewAccountCreator) ---

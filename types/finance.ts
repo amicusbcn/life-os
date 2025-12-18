@@ -3,6 +3,12 @@ import { Json, Profile } from './inventory'; // Importamos Json y Profile desde 
 // Definición de Tipos ENUM usados en la BBDD
 export type FinanceAccountType = 'checking' | 'savings' | 'credit_card' | 'loan' | 'investment' | 'cash';
 
+export interface FinanceDashboardData {
+    accounts: FinanceAccount[];
+    categories: FinanceCategory[];
+    transactions: FinanceTransaction[];
+    rules: FinanceRule[]; // 👈 Añade esta línea
+}
 
 export interface FinanceAccount {
   id: string;
@@ -13,16 +19,21 @@ export interface FinanceAccount {
   initial_balance: number;
   is_active: boolean;
   user_id: string;
+  current_balance:number;
+  color_theme?:string;
+  icon_name?:string;
 }
 
 export interface FinanceCategory {
   id: string;
   created_at: string;
   name: string;
-  icon?: string;
+  icon_name?: string;
+  color:string;
   is_income: boolean; // true para ingresos, false para gastos
   user_id: string;
   parent_id?: string | null; // Para subcategorías
+  parent?:FinanceCategory|null;
 }
 
 export interface FinanceImporter {
@@ -85,4 +96,13 @@ export interface FinanceTransaction {
   category?: FinanceCategory;
   account?: FinanceAccount;
   splits?: FinanceTransactionSplit[]; 
+}
+
+export interface FinanceRule {
+    id: string;
+    user_id: string;
+    pattern: string;
+    category_id: string;
+    created_at: string;
+    category?: FinanceCategory; // Relación opcional
 }
