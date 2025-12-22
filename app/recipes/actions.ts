@@ -182,7 +182,7 @@ interface UpsertCategoryData {
     icon_name: string; // 👈 Añadido para resolver el error 2353
 }
 
-export async function upsertCategoryAction(data: { id?: string, name: string, color: string }) {
+export async function upsertCategoryAction(data: { id?: string, name: string, color: string, icon?: string }) {
     const supabase = await createClient();
     
     // Obtenemos el usuario para el user_id
@@ -194,7 +194,7 @@ export async function upsertCategoryAction(data: { id?: string, name: string, co
         color: data.color,
         slug: data.name.toLowerCase().replace(/\s+/g, '-'),
         user_id: user.id,
-        icon: data.icon_name || 'Utensils'
+        icon: data.icon || 'Utensils'
     };
 
     const { error } = data.id 
