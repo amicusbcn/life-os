@@ -110,7 +110,7 @@ export function FinanceDashboardView({ accounts, categories, transactions, rules
                     return s.category_id === categoryFilter || splitCat?.parent_id === categoryFilter;
                 });
                 
-                matchesCategory = matchesPrimary || matchesInSplits;
+                matchesCategory = !!(matchesPrimary || matchesInSplits);
             }
             return matchesSearch && matchesCategory && matchesAccount;
         });
