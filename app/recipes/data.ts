@@ -4,38 +4,56 @@ import { MenuRecipeCategory, MenuRecipeWithDetails, MenuRecipeCategoryWithCount,
 
 
 /**
- * Obtiene todas las categorías y el número de recetas asociadas a cada una.
+ * Obtiene todas las categorías y el número de recetas asociadas a cada una,
+ * incluyendo el total global y las recetas sin categoría.
  */
 export async function fetchAllCategoriesWithCount(): Promise<MenuRecipeCategoryWithCount[]> {
     const supabase = await createClient();
 
-    // 🚨 LLAMADA RPC
-    // El método .rpc() llama a la función PostgreSQL
-    const { data, error } = await supabase.rpc('get_categories_with_recipe_count'); 
+    // 1. Obtenemos el conteo total REAL de la tabla de recetas (incluyendo las que tienen category_id = null)
+    const { count: totalRealCount, error: countError } = await supabase
+        .from('menu_recipes')
+        .select('*', { count: 'exact', head: true });
 
-    if (error) {
-        console.error('Error fetching categories with count (RPC):', error);
-        // Lanzamos el error para que Next.js lo capture si es crítico
-        throw new Error(error.message); 
+    // 2. Llamada al RPC para obtener conteos por categoría existente
+    const { data: categoriesFromRPC, error: rpcError } = await supabase.rpc('get_categories_with_recipe_count'); 
+
+    if (rpcError || countError) {
+        console.error('Error fetching categories with count:', rpcError || countError);
+        return []; 
     }
     
-    // Aseguramos que data sea del tipo esperado.
-    const categoriesWithCount = (data as MenuRecipeCategoryWithCount[]) || [];
+    const categoriesFromDB = (categoriesFromRPC as MenuRecipeCategoryWithCount[]) || [];
 
-    // --- Manejar la categoría "Todas las Recetas" (Total) ---
-    const totalRecipes = categoriesWithCount.reduce((sum, cat) => sum + cat.recipeCount, 0);
-    
+    // 3. Crear categoría virtual "Todas las Recetas"
     const allCategory = {
-        id: 'all', // Usamos 'all' como ID de convención
+        id: 'all', 
         name: 'Todas las Recetas',
-        color: '#f8f9fa',
+        color: '#6366f1', 
         icon: 'utensils',
-        slug: 'all', // Usamos 'all' como slug de convención
-        recipeCount: totalRecipes,
-    } as MenuRecipeCategoryWithCount;
+        slug: 'all', 
+        recipeCount: totalRealCount || 0,
+    } as MenuRecipeCategoryWithCount; // 👈 Aserción para evitar error 2739
 
-    // Devolvemos la lista incluyendo la categoría "all"
-    return [allCategory, ...categoriesWithCount];
+    // 4. Calcular si hay recetas "huérfanas" (sin categoría)
+    const categorizedSum = categoriesFromDB.reduce((sum, cat) => sum + Number(cat.recipeCount), 0);
+    const orphanCount = (totalRealCount || 0) - categorizedSum;
+
+    const finalResult = [allCategory, ...categoriesFromDB];
+
+    // 5. Si hay recetas sin categoría, añadimos la tarjeta virtual "Sin Categoría"
+    if (orphanCount > 0) {
+        finalResult.push({
+            id: 'none',
+            name: 'Sin Categoría',
+            color: '#f59e0b',
+            icon: 'alert-circle',
+            slug: 'none',
+            recipeCount: orphanCount,
+        } as MenuRecipeCategoryWithCount); // 👈 Aserción para evitar error 2345
+    }
+
+    return finalResult;
 }
 
 // Esta función obtiene la lista completa de categorías (ya existía)
@@ -92,12 +110,11 @@ export async function fetchRecipeListByCategoryId(categoryId: string | null): Pr
             servings,
             image_url,
             source_url,
-            labels,                   
-            category_id ( id, name, color, icon )
-        `)
+            labels,
+            category_id ( id, name, color, icon, slug )
+        `) // ✅ Consulta limpia sin comentarios
         .order('name', { ascending: true });
         
-    // 🚨 Aplicar el filtro si se proporciona un categoryId válido
     if (categoryId && categoryId !== 'all') {
         query = query.eq('category_id', categoryId);
     }
@@ -108,23 +125,20 @@ export async function fetchRecipeListByCategoryId(categoryId: string | null): Pr
         console.error('Error fetching filtered recipes:', error);
         return [];
     }
-    const cleanedData = (data as any[]).map(recipe => ({
-        ...recipe,
-        // Si category_id es un array, tomamos el primer elemento (el objeto categoría). 
-        // Si no existe o es nulo, lo dejamos como null.
-        category_id: Array.isArray(recipe.category_id) && recipe.category_id.length > 0 
-            ? recipe.category_id[0] 
-            : null,
-    }));
-    
-    return cleanedData as MenuRecipeWithDetails[]; 
+
+    // ✅ Uso de unknown para conversión segura si el tipado de Supabase es complejo
+    return data as unknown as MenuRecipeWithDetails[]; 
 }
+
 // NOTA: La función getRecipeById ya no es necesaria con el patrón Promise.all,
 // ya que la consulta principal del item se hace directamente en page.tsx
 
 /**
  * Obtiene todas las recetas principales con su información de categoría,
  * utilizando la nueva relación Uno a Muchos (category_id directamente en menu_recipes).
+ */
+/**
+ * Obtiene todas las recetas con detalles.
  */
 export async function fetchAllRecipesWithDetails(): Promise<MenuRecipeWithDetails[]> {
     const supabase = await createClient();
@@ -140,25 +154,18 @@ export async function fetchAllRecipesWithDetails(): Promise<MenuRecipeWithDetail
             servings,
             image_url,
             source_url,
-            labels,                   
-            category_id ( id, name, color, icon )
-        `)
+            labels,
+            category_id ( id, name, color, icon, slug )
+        `) // ✅ Eliminados comentarios que causaban ParserError
         .order('name', { ascending: true });
 
     if (error) {
         console.error('Error fetching recipes:', error);
         return [];
     }
-    const cleanedData = (data as any[]).map(recipe => ({
-        ...recipe,
-        // Si category_id es un array, tomamos el primer elemento (el objeto categoría). 
-        // Si no existe o es nulo, lo dejamos como null.
-        category_id: Array.isArray(recipe.category_id) && recipe.category_id.length > 0 
-            ? recipe.category_id[0] 
-            : null,
-    }));
-    
-    return cleanedData as MenuRecipeWithDetails[]; 
+
+    // ✅ Doble casteo para evitar el error de solapamiento de tipos
+    return data as unknown as MenuRecipeWithDetails[]; 
 }
 
 // Esta es la estructura que debe devolver tu fetch
@@ -174,7 +181,14 @@ export async function getRecipeById(recipeId: string): Promise<MenuRecipeFullDat
     // 1. Fetch de la receta principal
     const { data: recipeData, error: recipeError } = await supabase
         .from('menu_recipes')
-        .select(`*`)
+        .select(`*,
+            category_id (
+            id,
+            name,
+            color,
+            icon,
+            slug
+            )`)
         .eq('id', recipeId)
         .single();
 

@@ -5,7 +5,7 @@ import { createClient } from '@/utils/supabase/server';
 import { fetchAllCategoriesWithCount, fetchRecipeListByCategoryId } from '../data'; 
 import RecipeList from '../components/RecipeList'; // Tu componente cliente de lista
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
-
+import {RecipesMenu} from '../components/RecipesMenu';
 // 🚨 NOTA: Asegúrate de que las props de RecipeList ahora son:
 // initialRecipes: MenuRecipeWithDetails[]
 // categories: MenuRecipeCategory[]
@@ -61,10 +61,13 @@ export default async function CategoryRecipePage({ params }: { params: { slug: s
         <div className="min-h-screen bg-slate-50 font-sans">
             
             <UnifiedAppHeader
-                title={pageTitle} 
-                backHref="/recipes" // Vuelve al Hub principal
+                title="Mi Libro de Recetas"
+                backHref="/recipes"
                 userEmail={user.email || ''} 
                 userRole={userRole}
+                moduleMenu={
+                    <RecipesMenu categories={allCategories} />
+                }
             />
             
             <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">

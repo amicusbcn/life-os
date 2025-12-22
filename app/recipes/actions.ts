@@ -173,3 +173,49 @@ export async function deleteRecipe(formData: FormData): Promise<void> {
         redirect('/recipes'); 
     }
 }
+
+// Tipado explícito para la acción
+interface UpsertCategoryData {
+    id?: string;
+    name: string;
+    color: string;
+    icon_name: string; // 👈 Añadido para resolver el error 2353
+}
+
+export async function upsertCategoryAction(data: { id?: string, name: string, color: string }) {
+    const supabase = await createClient();
+    
+    // Obtenemos el usuario para el user_id
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "No autorizado" };
+
+    const payload = {
+        name: data.name,
+        color: data.color,
+        slug: data.name.toLowerCase().replace(/\s+/g, '-'),
+        user_id: user.id,
+        icon: data.icon_name || 'Utensils'
+    };
+
+    const { error } = data.id 
+        ? await supabase.from('menu_recipe_categories').update(payload).eq('id', data.id)
+        : await supabase.from('menu_recipe_categories').insert(payload);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath('/recipes');
+    return { success: true };
+}
+
+export async function deleteCategoryAction(id: string) {
+    const supabase = await createClient();
+    const { error } = await supabase
+        .from('menu_recipe_categories')
+        .delete()
+        .eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath('/recipes');
+    return { success: true };
+}

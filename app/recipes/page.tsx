@@ -6,8 +6,10 @@ import Link from 'next/link';
 import { Plus, Utensils } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
-import { fetchAllCategoriesWithCount } from './data';
+import { fetchAllCategoriesWithCount, fetchAllCategories } from './data';
 import { MenuRecipeCategoryWithCount } from '@/types/recipes';
+import { RecipesMenu } from './components/RecipesMenu';
+
 
 
 // 🚨 IMPORTAR EL COMPONENTE CLIENTE EXTERNO PARA EL HUB
@@ -18,26 +20,17 @@ import CategoryHub from './components/CategoryHub';
 export default async function RecipesPage() {
     const supabase = await createClient();
     
-    // 1. AUTENTICACIÓN
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) redirect('/login'); 
     
+    // 1. OBTENCIÓN DE DATOS REALES DESDE DATA.TS
+    // Esta función ya devuelve [Todas las recetas, ...categorías] con sus conteos correctos
+    const categoriesWithCount = await fetchAllCategoriesWithCount(); 
+    const categoriesRaw = await fetchAllCategories();
+
+    // Obtenemos el perfil para el header
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
     const userRole = profile?.role || 'user';
-
-    // 2. OBTENCIÓN DE DATOS
-    const allCategories = await fetchAllCategoriesWithCount();
-    
-    // 🚨 Cálculo del conteo (simulación, ya que CategoryHub lo necesita)
-    // NOTA: Para que esto sea real, tu función fetchAllCategories o una nueva RPC
-    // debe devolver el conteo de recetas por categoría.
-        const categoriesWithCount: MenuRecipeCategoryWithCount[] = allCategories.map((cat, index) => ({
-        // Deberías evitar mapear si fetchAllCategoriesWithCount ya devuelve el conteo real
-        // Si fetchAllCategoriesWithCount YA devuelve el conteo, solo usa 'allCategories'.
-        ...cat,
-        // Si la simulación es temporal:
-        recipeCount: (index * 2) + 1 
-    }));
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans pb-10">
@@ -46,6 +39,9 @@ export default async function RecipesPage() {
                 backHref="/"
                 userEmail={user.email || ''} 
                 userRole={userRole}
+                moduleMenu={
+                    <RecipesMenu categories={categoriesRaw} />
+                }
             />
 
             <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
@@ -70,7 +66,6 @@ export default async function RecipesPage() {
                         <p className="text-sm text-gray-500 mt-1">Empieza creando una receta para generar tu primera categoría.</p>
                     </div>
                 ) : (
-                    // 🚨 CAMBIO CLAVE: Usar el componente CategoryHub
                     <CategoryHub 
                         // Pasamos las categorías con el conteo simulado
                         categories={categoriesWithCount} 

@@ -6,6 +6,7 @@ import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
 
 import { fetchAllCategories, fetchRecipeIngredients } from '@/app/recipes/data'; 
 import { MenuRecipeFullData, MenuRecipe } from '@/types/recipes'; 
+import {RecipesMenu} from '@/app/recipes/components/RecipesMenu';
 
 interface EditRecipePageProps { 
     params: Promise<{ id: string }> 
@@ -51,10 +52,13 @@ export default async function EditRecipePage({ params }: EditRecipePageProps) {
             <div className="min-h-screen bg-slate-50 font-sans">
                  <UnifiedAppHeader
                     title={`Editar Receta: ${recipe.name}`} 
-                    backHref={`/recipes/${recipe.id}`}
+                    backHref={`/recipes/all/${recipe.id}`}
                     maxWClass='max-w-4xl' 
                     userEmail={user.email || ''} 
                     userRole={userRole} 
+                    moduleMenu={
+                        <RecipesMenu categories={categories} />
+                    }
                     
                 />
                 <main className="max-w-4xl mx-auto p-6">

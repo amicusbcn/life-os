@@ -71,6 +71,7 @@ export interface MenuRecipeWithDetails {
         name: string;
         color: string | null;
         icon: string | null;
+        sulg: string | null;
     } | null;
 
     ingredients?: MenuRecipeIngredient[]; 

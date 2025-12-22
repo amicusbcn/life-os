@@ -11,6 +11,7 @@ import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
 import { fetchAllCategories, fetchRecipeIngredients } from '../../data'; 
 import { MenuRecipeFullData } from '@/types/recipes'; 
 import { deleteRecipe } from '../../actions'; 
+import {RecipesMenu} from '../../components/RecipesMenu';
 
 interface RecipeViewPageProps { 
     params: { slug: string; id: string } 
@@ -67,12 +68,14 @@ export default async function RecipeViewPage({ params }: RecipeViewPageProps) {
         <div className="min-h-screen bg-slate-50 font-sans pb-10">
             {/* Header de ancho completo (Mobile-First) */}
             <UnifiedAppHeader
-                title={recipe.name} 
+                title="Mi Libro de Recetas"
                 backHref={backToCategoryHref}
                 userEmail={user.email || ''} 
                 userRole={userRole}
+                moduleMenu={
+                    <RecipesMenu categories={categories} />
+                }
             />
-
             {/* Contenedor central (max-w-4xl en pantallas grandes) */}
             <main className="max-w-4xl mx-auto p-4 space-y-6">
                 

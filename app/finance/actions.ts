@@ -1,7 +1,8 @@
 // app/finance/actions.ts
 'use server'
 import { createClient } from '@/utils/supabase/server'
-import { FinanceAccountType, FinanceCategory } from '@/types/finance'; 
+import { revalidatePath } from 'next/cache'
+import { FinanceAccountType, FinanceCategory, FinanceTransactionSplit } from '@/types/finance'; 
 
 // Interfaz para resultados
 export interface ActionResult {
@@ -690,7 +691,8 @@ export async function updateTransactionCategoryAction(transactionId: string, cat
         return { success: false, error: error.message };
     }
 
-    // Importamos revalidatePath de 'next/cache' para refrescar los datos
+    // ✅ IMPORTANTE: Descomentar para que Next.js refresque el cache
+    revalidatePath('/finance'); 
     return { success: true };
 }
 
@@ -746,4 +748,101 @@ export async function applyRuleRetroactively(ruleId: string) {
 
     revalidatePath('/finance');
     return { success: true, count: count || 0 };
+}
+
+/**
+ * Registra o ACTUALIZA el desglose de una transacción existente.
+ * 1. Borra cualquier split previo de esta transacción.
+ * 2. Inserta los nuevos registros en finance_transaction_splits.
+ * 3. Asegura que la transacción principal tenga is_split = true y category_id = null.
+ */
+export async function splitTransactionAction(
+  transactionId: string,
+  splits: Omit<FinanceTransactionSplit, 'id' | 'user_id' | 'transaction_id'>[]
+) {
+  const supabase = await createClient();
+
+  try {
+    // 🛡️ Validación de seguridad: no permitir categorías vacías
+    if (splits.some(s => !s.category_id || s.category_id.trim() === "")) {
+      throw new Error("Una o más categorías no son válidas.");
+    }
+
+    // --- PASO 1: LIMPIEZA ---
+    // Borramos los splits actuales para evitar duplicados al editar
+    const { error: deleteError } = await supabase
+      .from('finance_transaction_splits')
+      .delete()
+      .eq('transaction_id', transactionId);
+
+    if (deleteError) throw new Error(`Error limpiando desgloses previos: ${deleteError.message}`);
+
+    // --- PASO 2: INSERCIÓN ---
+    const splitsToInsert = splits.map(split => ({
+      ...split,
+      transaction_id: transactionId,
+      amount: Number(split.amount)
+    }));
+
+    const { error: insertError } = await supabase
+      .from('finance_transaction_splits')
+      .insert(splitsToInsert);
+
+    if (insertError) throw new Error(`Error insertando nuevos desgloses: ${insertError.message}`);
+
+    // --- PASO 3: ACTUALIZACIÓN PADRE ---
+    const { error: updateError } = await supabase
+      .from('finance_transactions')
+      .update({
+        is_split: true,
+        category_id: null 
+      })
+      .eq('id', transactionId);
+
+    if (updateError) throw new Error(`Error actualizando transacción principal: ${updateError.message}`);
+
+    revalidatePath('/finance');
+    return { success: true };
+
+  } catch (error: any) {
+    console.error('Action Error [splitTransactionAction]:', error.message);
+    return { 
+      success: false, 
+      error: error.message || 'Error inesperado al procesar el desglose' 
+    };
+  }
+}
+
+/**
+ * Elimina todos los desgloses de una transacción y la devuelve a su estado original.
+ */
+export async function removeSplitsAction(transactionId: string) {
+  const supabase = await createClient();
+  
+  try {
+    // 1. Borramos todos los splits asociados
+    const { error: deleteError } = await supabase
+      .from('finance_transaction_splits')
+      .delete()
+      .eq('transaction_id', transactionId);
+
+    if (deleteError) throw deleteError;
+
+    // 2. Restauramos la transacción original: is_split a false
+    const { error: updateError } = await supabase
+      .from('finance_transactions')
+      .update({ 
+        is_split: false,
+        category_id: null // Opcional: podrías intentar restaurar una categoría por defecto
+      })
+      .eq('id', transactionId);
+
+    if (updateError) throw updateError;
+
+    revalidatePath('/finance');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error removing splits:', error.message);
+    return { success: false, error: error.message };
+  }
 }

@@ -51,6 +51,7 @@ export interface FinanceTransactionSplit {
   category_id: string;
   notes?: string;
   user_id: string;
+  category?: FinanceCategory; // 👈 AÑADE ESTA LÍNEA para corregir errores 347, 350, 352, 356
 }
 
 // src/types/finance.ts (Añadir a los tipos existentes)
