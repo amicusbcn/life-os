@@ -35,7 +35,7 @@ function CategoryRow({ category }: { category: MenuRecipeCategory }) {
         const result = await upsertCategoryAction({
             id: category.id,
             name,
-            icon_name: icon, // Asegúrate de que tu acción acepte icon_name o icon
+            icon: icon, // Asegúrate de que tu acción acepte icon_name o icon
             color
         })
         
@@ -146,16 +146,16 @@ export function RecipeCategorySettingsDialog({ initialCategories, children }: an
 
     // Clonamos el trigger para manejar la apertura desde el menú dropdown
     const childElement = children as React.ReactElement;
-    const trigger = React.cloneElement(childElement, {
-        onSelect: (e: Event) => {
-            e.preventDefault();
-            setOpen(true);
-        },
-        onClick: (e: React.MouseEvent) => {
-            e.stopPropagation();
-            setOpen(true);
-        }
-    });
+    const trigger = React.cloneElement(childElement as React.ReactElement<any>, {
+            onSelect: (e: Event) => {
+                e.preventDefault();
+                setOpen(true);
+            },
+            onClick: (e: React.MouseEvent) => {
+                e.stopPropagation();
+                setOpen(true);
+            }
+        });
 
     return (
         <>
@@ -208,7 +208,7 @@ function NewCategoryForm({ onSuccess }: { onSuccess: () => void }) {
         const fd = new FormData(e.currentTarget)
         const result = await upsertCategoryAction({
             name: fd.get('name') as string,
-            icon_name: fd.get('icon_name') as string,
+            icon: fd.get('icon_name') as string, // ✅ Cambiado a 'icon'
             color: fd.get('color') as string
         })
 
