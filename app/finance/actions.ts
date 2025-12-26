@@ -758,29 +758,36 @@ export async function applyRuleRetroactively(ruleId: string) {
  */
 export async function splitTransactionAction(
   transactionId: string,
-  splits: Omit<FinanceTransactionSplit, 'id' | 'user_id' | 'transaction_id'>[]
+  // 🪄 Actualizamos el tipo para aceptar la cuenta destino opcional
+  splits: (Omit<FinanceTransactionSplit, 'id' | 'user_id' | 'transaction_id'> & { target_account_id?: string })[]
 ) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "No autorizado" };
+
+  const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
 
   try {
-    // 🛡️ Validación de seguridad: no permitir categorías vacías
+    // 🛡️ Validación de seguridad
     if (splits.some(s => !s.category_id || s.category_id.trim() === "")) {
       throw new Error("Una o más categorías no son válidas.");
     }
 
     // --- PASO 1: LIMPIEZA ---
-    // Borramos los splits actuales para evitar duplicados al editar
     const { error: deleteError } = await supabase
       .from('finance_transaction_splits')
       .delete()
       .eq('transaction_id', transactionId);
 
-    if (deleteError) throw new Error(`Error limpiando desgloses previos: ${deleteError.message}`);
+    if (deleteError) throw new Error(`Error limpiando desgloses: ${deleteError.message}`);
 
-    // --- PASO 2: INSERCIÓN ---
-    const splitsToInsert = splits.map(split => ({
+    // --- PASO 2: INSERCIÓN DE SPLITS ---
+    // Quitamos el target_account_id antes de insertar en la tabla de splits 
+    // porque esa tabla no tiene esa columna (solo nos sirve para la lógica de la acción)
+    const splitsToInsert = splits.map(({ target_account_id, ...split }) => ({
       ...split,
       transaction_id: transactionId,
+      user_id: user.id,
       amount: Number(split.amount)
     }));
 
@@ -788,28 +795,58 @@ export async function splitTransactionAction(
       .from('finance_transaction_splits')
       .insert(splitsToInsert);
 
-    if (insertError) throw new Error(`Error insertando nuevos desgloses: ${insertError.message}`);
+    if (insertError) throw new Error(`Error insertando desgloses: ${insertError.message}`);
 
-    // --- PASO 3: ACTUALIZACIÓN PADRE ---
-    const { error: updateError } = await supabase
+    // --- PASO 3: ACTUALIZACIÓN TRANSACCIÓN PADRE ---
+    await supabase
       .from('finance_transactions')
-      .update({
-        is_split: true,
-        category_id: null 
-      })
+      .update({ is_split: true, category_id: null })
       .eq('id', transactionId);
 
-    if (updateError) throw new Error(`Error actualizando transacción principal: ${updateError.message}`);
+    // --- PASO 4: LÓGICA DE TRANSFERENCIA (LA MAGIA) ---
+    // Buscamos si alguna línea del desglose es una transferencia con destino
+    const transferSplit = splits.find(s => s.category_id === TRANSFER_CAT_ID && s.target_account_id);
+
+    if (transferSplit) {
+      // 1. Obtenemos la transacción original para copiar fecha y concepto
+      const { data: original } = await supabase
+        .from('finance_transactions')
+        .select('*')
+        .eq('id', transactionId)
+        .single();
+
+      if (original) {
+        // 2. Creamos el movimiento espejo en la cuenta destino (ej. Hipoteca)
+        // Usamos solo el importe de esa línea del desglose
+        const { data: mirror } = await supabase
+          .from('finance_transactions')
+          .insert({
+            account_id: transferSplit.target_account_id,
+            amount: Math.abs(Number(transferSplit.amount)), // Positivo (amortización)
+            concept: `AMORT: ${original.concept}`,
+            date: original.date,
+            category_id: TRANSFER_CAT_ID,
+            user_id: user.id,
+            transfer_id: transactionId // Vinculamos al padre
+          })
+          .select().single();
+
+        // 3. Vinculamos el padre al hijo (opcional, para trazabilidad doble)
+        if (mirror) {
+            await supabase
+              .from('finance_transactions')
+              .update({ transfer_id: mirror.id })
+              .eq('id', transactionId);
+        }
+      }
+    }
 
     revalidatePath('/finance');
     return { success: true };
 
   } catch (error: any) {
-    console.error('Action Error [splitTransactionAction]:', error.message);
-    return { 
-      success: false, 
-      error: error.message || 'Error inesperado al procesar el desglose' 
-    };
+    console.error('Action Error:', error.message);
+    return { success: false, error: error.message };
   }
 }
 
@@ -845,4 +882,62 @@ export async function removeSplitsAction(transactionId: string) {
     console.error('Error removing splits:', error.message);
     return { success: false, error: error.message };
   }
+}
+
+// app/finance/actions.ts
+
+export async function handleTransferAction(sourceTxId: string, targetAccountId: string) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "No autorizado" };
+
+    const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
+
+    // 1. Obtener transacción origen y datos de la cuenta destino
+    const [{ data: source }, { data: targetAccount }] = await Promise.all([
+        supabase.from('finance_transactions').select('*').eq('id', sourceTxId).single(),
+        supabase.from('finance_accounts').select('account_type').eq('id', targetAccountId).single()
+    ]);
+
+    if (!source || !targetAccount) return { success: false, error: "Datos no encontrados" };
+
+    // 2. Lógica de decisión según tipo de cuenta
+    // Cuentas que NO suelen estar conectadas (Manuales)
+    const manualTypes = ['investment', 'loan', 'mortgage', 'other_asset', 'other_liability'];
+    const isTargetManual = manualTypes.includes(targetAccount.account_type);
+
+    if (isTargetManual) {
+        // CREAMOS ESPEJO: Porque estas cuentas no cargan movimientos solas
+        const { data: mirror, error: mirrorError } = await supabase
+            .from('finance_transactions')
+            .insert({
+                account_id: targetAccountId,
+                amount: -source.amount, 
+                concept: `VÍNCULO: ${source.concept}`,
+                date: source.date,
+                category_id: TRANSFER_CAT_ID,
+                user_id: user.id,
+                transfer_id: source.id 
+            })
+            .select().single();
+
+        if (mirrorError) return { success: false, error: mirrorError.message };
+
+        // Actualizamos origen con el link
+        await supabase.from('finance_transactions')
+            .update({ transfer_id: mirror.id, category_id: TRANSFER_CAT_ID })
+            .eq('id', source.id);
+            
+        revalidatePath('/finance');
+        return { success: true, message: "Movimiento espejo creado en cuenta manual" };
+    } else {
+        // NO CREAMOS ESPEJO: Porque la otra cuenta ya tendrá su propio movimiento cargado
+        // Solo actualizamos la categoría en la cuenta origen
+        await supabase.from('finance_transactions')
+            .update({ category_id: TRANSFER_CAT_ID })
+            .eq('id', source.id);
+
+        revalidatePath('/finance');
+        return { success: true, message: "Categorizado como transferencia (sin duplicar)" };
+    }
 }

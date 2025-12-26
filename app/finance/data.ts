@@ -18,8 +18,9 @@ export async function getAccounts(): Promise<FinanceAccount[]> {
     }
 
     return data.map(item => ({
-        ...item,
-        initial_balance: parseFloat(item.initial_balance.toString()), 
+    ...item,
+        initial_balance: parseFloat(item.initial_balance.toString()),
+        current_balance: parseFloat((item.current_balance || 0).toString()), // ✨ Limpieza del saldo actual
     }));
 }
 
@@ -50,7 +51,7 @@ export async function getFinanceDashboardData(): Promise<FinanceDashboardData> {
 
     // 1. Ejecutamos todas las promesas base en paralelo
     const [
-        accountsBase,
+        accounts,
         categories,
         { data: transactionsData, error: txError },
         { data: rulesData, error: rulesError }
@@ -79,15 +80,7 @@ export async function getFinanceDashboardData(): Promise<FinanceDashboardData> {
     if (txError) console.error('Error fetching transactions:', txError);
     if (rulesError) console.error('Error fetching rules:', rulesError);
 
-    // 2. Obtener los balances reales (RPC)
-    const accountsWithRealBalance = await Promise.all(
-        accountsBase.map(async (acc) => {
-            const balance = await getAccountRealBalance(acc.id);
-            return { ...acc, current_balance: balance };
-        })
-    );
-
-    // 3. Mapeo tipado de transacciones incluyendo desgloses
+    // 2. Mapeo tipado de transacciones incluyendo desgloses
     const transactions: FinanceTransaction[] = (transactionsData || []).map((t) => ({
         ...t,
         amount: Number(t.amount),
@@ -106,7 +99,7 @@ export async function getFinanceDashboardData(): Promise<FinanceDashboardData> {
     }));
 
     return {
-        accounts: accountsWithRealBalance,
+        accounts,
         categories,
         transactions,
         rules: rulesData || [],
@@ -115,7 +108,7 @@ export async function getFinanceDashboardData(): Promise<FinanceDashboardData> {
 
 /**
  * Obtiene el saldo calculado (Real) de una cuenta específica llamando al RPC de Postgres.
- */
+
 export async function getAccountRealBalance(accountId: string): Promise<number> {
     const supabase = await createClient();
     
@@ -128,7 +121,7 @@ export async function getAccountRealBalance(accountId: string): Promise<number> 
     }
 
     return parseFloat(data.toString());
-}
+} */
 
 export async function getRules(): Promise<FinanceRule[]> {
     const supabase = await createClient();

@@ -19,7 +19,9 @@ export interface FinanceAccount {
   initial_balance: number;
   is_active: boolean;
   user_id: string;
+  account_number?: string;
   current_balance:number;
+  balance_updadet_at?:string;
   color_theme?:string;
   icon_name?:string;
 }

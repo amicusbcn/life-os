@@ -1,0 +1,439 @@
+// app/finance/components/TransactionList.tsx
+'use client'
+
+import React, { useState, useMemo } from 'react';
+import { FinanceTransaction, FinanceCategory, FinanceTransactionSplit,FinanceAccount,FinanceAccountType } from '@/types/finance';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { 
+    Search, FilterX, ChevronDown, ChevronRight, ChevronLeft, 
+    Check, ChevronsUpDown, Tag, EyeOff, Split, ChevronsRight,ChevronsLeft
+} from 'lucide-react';
+import LoadIcon from '@/utils/LoadIcon';
+import { cn } from "@/lib/utils";
+import { TransactionSplitDialog } from "./TransactionSplitDialog";
+import { handleTransferAction } from '../actions';
+import { toast } from 'sonner';
+
+const ITEMS_PER_PAGE = 25;
+
+interface TransactionListProps {
+    transactions: FinanceTransaction[];
+    categories: FinanceCategory[];
+    accounts: FinanceAccount[]; 
+    accountFilter: string;
+    onCategoryChange: (id: string, catId: string, concept: string) => void;
+    isPrivate: boolean;
+}
+
+export function TransactionList({ 
+    transactions, 
+    categories, 
+    accounts, 
+    accountFilter, 
+    onCategoryChange, 
+    isPrivate 
+}: TransactionListProps) {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+    const [transferTargetTx, setTransferTargetTx] = useState<string | null>(null);
+
+    const toggleRow = (id: string) => {
+        const newRows = new Set(expandedRows);
+        if (newRows.has(id)) newRows.delete(id);
+        else newRows.add(id);
+        setExpandedRows(newRows);
+    };
+
+    // --- LÓGICA DE FILTRADO COMPLETA ---
+    const filteredTransactions = useMemo(() => {
+        return transactions.filter(t => {
+            // 1. Filtro de búsqueda por texto
+            const matchesSearch = t.concept.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            // 2. Filtro por cuenta bancaria
+            const matchesAccount = accountFilter === 'all' || t.account_id === accountFilter;
+            
+            // 3. Filtro de Rango de Fechas
+            const tDate = new Date(t.date).setHours(0,0,0,0);
+            const start = startDate ? new Date(startDate).setHours(0,0,0,0) : null;
+            const end = endDate ? new Date(endDate).setHours(0,0,0,0) : null;
+            const matchesStart = !start || tDate >= start;
+            const matchesEnd = !end || tDate <= end;
+            
+            // 4. FILTRO DE CATEGORÍA (Corregido para desgloses)
+            let matchesCategory = false;
+            if (categoryFilter === 'all') {
+                matchesCategory = true;
+            } else if (categoryFilter === 'none') {
+                matchesCategory = !t.category_id || t.category_id === 'pending';
+            } else {
+                // Comprobamos la categoría principal de la transacción
+                const transactionCat = categories.find(c => c.id === t.category_id);
+                const isMatchPrimary = t.category_id === categoryFilter || transactionCat?.parent_id === categoryFilter;
+                
+                // Comprobamos si alguna de las líneas del desglose coincide con el filtro
+                // Buscamos tanto por el ID directo como por el ID del padre de esa subcategoría
+                const isMatchInSplits = t.is_split && t.splits?.some(s => {
+                    const splitCat = categories.find(c => c.id === s.category_id);
+                    return s.category_id === categoryFilter || splitCat?.parent_id === categoryFilter;
+                });
+                
+                matchesCategory = !!(isMatchPrimary || isMatchInSplits);
+            }
+            
+            return matchesSearch && matchesAccount && matchesStart && matchesEnd && matchesCategory;
+        });
+    }, [transactions, searchTerm, categoryFilter, accountFilter, categories, startDate, endDate]);
+
+    const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE);
+    const paginatedTransactions = useMemo(() => {
+        const start = (currentPage - 1) * ITEMS_PER_PAGE;
+        return filteredTransactions.slice(start, start + ITEMS_PER_PAGE);
+    }, [filteredTransactions, currentPage]);
+
+    const resetFilters = () => {
+        setSearchTerm(''); setCategoryFilter('all'); setStartDate(''); setEndDate(''); setCurrentPage(1);
+    };
+
+    return (
+        <div className="space-y-4">
+            {/* PANEL DE FILTROS */}
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100 items-end">
+                <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">Desde</span>
+                    <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 text-xs" />
+                </div>
+                <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">Hasta</span>
+                    <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-9 text-xs" />
+                </div>
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="bg-white"><SelectValue placeholder="Categoría" /></SelectTrigger>
+                    <SelectContent className="z-[110]">
+                        <SelectItem value="all">Todas</SelectItem>
+                        <SelectItem value="none">⚠️ Sin categoría</SelectItem>
+                        <hr className="my-1 border-slate-100" />
+                        {categories.filter(c => !c.parent_id).map(parent => (
+                            <React.Fragment key={parent.id}>
+                                <SelectItem value={parent.id} className="font-bold text-indigo-600">{parent.name.toUpperCase()}</SelectItem>
+                                {categories.filter(sub => sub.parent_id === parent.id).map(sub => (
+                                    <SelectItem key={sub.id} value={sub.id} className="pl-6">{sub.name}</SelectItem>
+                                ))}
+                            </React.Fragment>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <div className="md:col-span-2 relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 bg-white" />
+                </div>
+                {(searchTerm || categoryFilter !== 'all' || startDate || endDate) && (
+                    <Button variant="ghost" onClick={resetFilters} className="text-slate-500 hover:bg-slate-100 h-9"><FilterX className="mr-2 h-4 w-4"/> Limpiar</Button>
+                )}
+            </div>
+            
+            {/* TABLA DE MOVIMIENTOS */}   
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <Table>
+                    <TableHeader className="bg-slate-50/80">
+                        <TableRow>
+                            <TableHead className="w-[100px]">Fecha</TableHead>
+                            <TableHead>Concepto</TableHead>
+                            <TableHead className="text-right w-[140px]">Importe</TableHead>
+                            <TableHead className="w-[180px]">Categoría</TableHead>
+                            <TableHead className="w-[60px]"></TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                    {paginatedTransactions.map((t) => {
+                        const cat = categories.find((c) => c.id === t.category_id);
+                        const parentCat = cat?.parent_id ? categories.find((pc) => pc.id === cat.parent_id) : null;
+                        const displayColor = parentCat?.color || cat?.color || "#94a3b8";
+
+                        return (
+                        <React.Fragment key={t.id}>
+                            <TableRow className="group hover:bg-slate-50/50">
+                            <TableCell className="text-xs text-slate-500 font-medium">
+                                {new Date(t.date).toLocaleDateString("es-ES", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "2-digit",
+                                })}
+                            </TableCell>
+                            <TableCell className="font-medium" onClick={() => t.is_split && toggleRow(t.id)}>
+                                <div className="flex items-center gap-2 truncate max-w-[220px]">
+                                <span className="truncate text-slate-700">{t.concept}</span>
+                                {t.is_split && (
+                                    <Badge variant="secondary" className="text-[9px] bg-indigo-50 text-indigo-600 border-indigo-100">
+                                    SPLIT
+                                    </Badge>
+                                )}
+                                </div>
+                            </TableCell>
+                            <TableCell className={cn("text-right font-mono font-bold", t.amount >= 0 ? "text-green-600" : "text-slate-900")}>
+                                ${t.amount.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €
+                            </TableCell>
+
+                            <TableCell>
+                                {!t.is_split ? (
+                                <Popover onOpenChange={(open) => { if (!open) setTransferTargetTx(null); }}>
+                                    <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 w-full justify-between text-xs font-bold border-transparent transition-all"
+                                        style={{
+                                        backgroundColor: displayColor + "15",
+                                        color: displayColor,
+                                        borderLeft: `3px solid ${displayColor}`,
+                                        }}
+                                    >
+                                        <div className="flex items-center gap-2 truncate">
+                                        <LoadIcon name={cat?.icon_name || "Tag"} className="w-3.5 h-3.5" />
+                                        <span className="truncate">{cat?.name || "Pendiente"}</span>
+                                        </div>
+                                        <ChevronsUpDown className="h-3 w-3 opacity-50 shrink-0" />
+                                    </Button>
+                                    </PopoverTrigger>
+                                    
+                                    {/* 🌙 POPOVER EN MODO OSCURO */}
+                                    <PopoverContent className="w-[280px] p-0 border-slate-700 bg-slate-900 shadow-2xl z-[100] overflow-hidden" align="start">
+                                        {!transferTargetTx ? (
+                                            /* --- BUSCADOR DE CATEGORÍAS --- */
+                                            <Command className="bg-slate-900 border-none">
+                                            <CommandInput 
+                                                placeholder="Buscar categoría..." 
+                                                className="text-slate-100 border-none focus:ring-0 placeholder:text-slate-500"
+                                            />
+                                            <CommandList className="max-h-[350px] scrollbar-thin scrollbar-thumb-slate-700">
+                                                <CommandEmpty className="py-4 text-center text-xs text-slate-500 font-medium">
+                                                No se han encontrado categorías
+                                                </CommandEmpty>
+                                                {categories.filter((c) => !c.parent_id).map((parent) => {
+                                                const subCats = categories.filter((sub) => sub.parent_id === parent.id);
+                                                return (
+                                                    <CommandGroup 
+                                                    key={parent.id} 
+                                                    heading={<span className="px-2 text-[10px] font-black uppercase tracking-widest text-indigo-400/80">{parent.name}</span>}
+                                                    className="px-1"
+                                                    >
+                                                    {subCats.length === 0 && (
+                                                        <CommandItem
+                                                        onSelect={() => {
+                                                            if (parent.id === "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a") setTransferTargetTx(t.id);
+                                                            else onCategoryChange(t.id, parent.id, t.concept);
+                                                        }}
+                                                        className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-200 aria-selected:bg-slate-800 aria-selected:text-white cursor-pointer transition-colors"
+                                                        >
+                                                        <Check className={cn("h-3.5 w-3.5 shrink-0", t.category_id === parent.id ? "text-indigo-400 opacity-100" : "opacity-0")} />
+                                                        <span className="truncate">{parent.name}</span>
+                                                        </CommandItem>
+                                                    )}
+                                                    {subCats.map((sub) => (
+                                                        <CommandItem
+                                                        key={sub.id}
+                                                        onSelect={() => {
+                                                            if (sub.id === "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a") setTransferTargetTx(t.id);
+                                                            else onCategoryChange(t.id, sub.id, t.concept);
+                                                        }}
+                                                        className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-300 aria-selected:bg-slate-800 aria-selected:text-white cursor-pointer transition-colors"
+                                                        >
+                                                        <Check className={cn("h-3.5 w-3.5 shrink-0", t.category_id === sub.id ? "text-indigo-400 opacity-100" : "opacity-0")} />
+                                                        <span className="truncate">{sub.name}</span>
+                                                        </CommandItem>
+                                                    ))}
+                                                    </CommandGroup>
+                                                );
+                                                })}
+                                            </CommandList>
+                                            </Command>
+                                        ) : (
+                                            /* --- SELECTOR DE CUENTAS (DISEÑO LIMPIO Y VISIBLE) --- */
+                                            <div className="flex flex-col bg-slate-900 animate-in fade-in slide-in-from-right-2 duration-200">
+                                                <div className="p-4 bg-indigo-600">
+                                                    <h3 className="text-xs font-black text-white uppercase tracking-tighter">
+                                                    ¿A qué cuenta va el dinero?
+                                                    </h3>
+                                                </div>
+                                                
+                                                <div className="p-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                                                    {!accounts || accounts.length === 0 ? (
+                                                    <div className="py-8 text-center">
+                                                        <p className="text-xs text-slate-400 italic">No se reciben cuentas en el componente</p>
+                                                    </div>
+                                                    ) : accounts.filter((acc) => acc.id !== t.account_id).length === 0 ? (
+                                                    <div className="py-8 text-center">
+                                                        <p className="text-xs text-slate-400 italic font-medium">
+                                                        No hay otras cuentas para transferir (total: {accounts.length})
+                                                        </p>
+                                                    </div>
+                                                    ) : (
+                                                    <div className="grid gap-1">
+                                                        {accounts
+                                                        .filter((acc) => acc.id !== t.account_id)
+                                                        .map((acc) => (
+                                                            <button
+                                                            key={acc.id}
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                const toastId = toast.loading("Sincronizando...");
+                                                                const res = await handleTransferAction(t.id, acc.id);
+                                                                if (res.success) {
+                                                                toast.success("¡Vinculado!", { id: toastId });
+                                                                setTransferTargetTx(null);
+                                                                } else {
+                                                                toast.error(res.error, { id: toastId });
+                                                                }
+                                                            }}
+                                                            className="group flex items-center justify-between w-full p-3 rounded-xl hover:bg-slate-800 transition-all border border-slate-700/50 hover:border-indigo-500/50 text-left"
+                                                            >
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 border border-slate-700 group-hover:bg-indigo-500/20 transition-colors">
+                                                                <LoadIcon name={acc.icon_name || "Wallet"} className="h-4 w-4 text-slate-200" />
+                                                                </div>
+                                                                <div className="flex flex-col">
+                                                                <span className="text-sm font-bold text-white leading-none mb-1">
+                                                                    {acc.name}
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400 font-medium">
+                                                                    ID: {acc.id.substring(0, 8)}...
+                                                                </span>
+                                                                </div>
+                                                            </div>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="p-2 border-t border-slate-800 bg-slate-900/50">
+                                                    <Button 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    className="w-full h-8 text-[10px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 uppercase tracking-widest"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setTransferTargetTx(null);
+                                                    }}
+                                                    >
+                                                    ← Volver a categorías
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+                                        </PopoverContent>
+                                </Popover>
+                                ) : (
+                                <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-100 text-slate-400 text-[10px] font-black uppercase italic tracking-tighter w-full justify-center">
+                                    <Split className="h-3 w-3" /> Ver desglose
+                                </div>
+                                )}
+                            </TableCell>
+
+                            <TableCell>
+                                <div className="flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                                <TransactionSplitDialog transaction={t} categories={categories} accounts={accounts}/>
+                                </div>
+                            </TableCell>
+                            </TableRow>
+
+                            {/* FILAS DE DESGLOSE (Se mantienen igual) */}
+                            {t.is_split && expandedRows.has(t.id) && t.splits?.map((s) => {
+                            const sCat = categories.find((c) => c.id === s.category_id);
+                            const sParent = sCat?.parent_id ? categories.find((pc) => pc.id === sCat.parent_id) : null;
+                            const sColor = sParent?.color || sCat?.color || "#94a3b8";
+
+                            return (
+                                <TableRow key={s.id} className="bg-slate-50/40 border-l-4 border-l-indigo-200">
+                                <TableCell></TableCell>
+                                <TableCell className="text-[11px] pl-8 text-slate-500 italic font-medium">{s.notes || "Sub-movimiento"}</TableCell>
+                                <TableCell className="text-right text-xs font-mono font-bold text-slate-500">
+                                    {isPrivate ? "••" : `${s.amount.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €`}
+                                </TableCell>
+                                <TableCell>
+                                    <div className="inline-flex items-center gap-2 px-2 py-0.5 rounded-md text-[9px] font-black uppercase border"
+                                    style={{ backgroundColor: sColor + "10", color: sColor, borderColor: sColor + "30" }}>
+                                    <LoadIcon name={sCat?.icon_name || "Tag"} className="w-3 h-3" />
+                                    {sCat?.name}
+                                    </div>
+                                </TableCell>
+                                <TableCell></TableCell>
+                                </TableRow>
+                            );
+                            })}
+                        </React.Fragment>
+                        );
+                    })}
+                    </TableBody>
+                </Table>
+                {/* PAGINACIÓN */}
+                <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div className="flex flex-col">
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                            Página {currentPage} de {totalPages || 1}
+                        </p>
+                        <p className="text-[9px] text-slate-400 italic">
+                            {filteredTransactions.length} movimientos encontrados
+                        </p>
+                    </div>
+
+                    <div className="flex gap-1">
+                        {/* IR AL PRINCIPIO |< */}
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 bg-white"
+                            disabled={currentPage === 1} 
+                            onClick={() => setCurrentPage(1)}
+                        >
+                            <ChevronsLeft className="h-4 w-4" />
+                        </Button>
+
+                        {/* ANTERIOR < */}
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 bg-white"
+                            disabled={currentPage === 1} 
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                        </Button>
+
+                        {/* SIGUIENTE > */}
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 bg-white"
+                            disabled={currentPage === totalPages || totalPages === 0} 
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        >
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
+
+                        {/* IR AL FINAL >| */}
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 bg-white"
+                            disabled={currentPage === totalPages || totalPages === 0} 
+                            onClick={() => setCurrentPage(totalPages)}
+                        >
+                            <ChevronsRight className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
