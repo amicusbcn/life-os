@@ -73,6 +73,7 @@ export type ImporterTemplate = {
     concept: string; // Nombre del encabezado CSV para el concepto
     amount: string; // Nombre del encabezado CSV para el importe
     sign_column?: string; // Nombre del encabezado CSV si el signo está en columna separada
+    bank_balance?: string;
   };
 };
  export type ParsedTransaction = {
@@ -80,6 +81,7 @@ export type ImporterTemplate = {
   amount: number;
   concept: string;
   importer_notes: string;
+  bank_balance?: number | null;
 };
 
 export interface FinanceTransaction {
@@ -96,7 +98,7 @@ export interface FinanceTransaction {
   user_id: string;
   notes?: string | null;                  // Tu "alias" personalizado
   bank_balance?: number | null;           // El saldo que venía en el CSV
-  related_transaction_id?: string | null; // Para vincular Transferencias
+  transfer_id?: string | null; // Para vincular Transferencias
   inventory_item_id?: string | null;      // Link al módulo de Inventario
   
   category?: FinanceCategory;

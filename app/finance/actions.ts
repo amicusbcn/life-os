@@ -600,7 +600,8 @@ try {
                 account_id: account_id,
                 user_id: user_id,
                 category_id: category_id,
-                created_at: new Date().toISOString()
+                created_at: new Date().toISOString(),
+                bank_balance:t.bank_balance
             };
         });
 
@@ -637,27 +638,24 @@ function mapCsvRow(
   user_id: string,
 ): ParsedTransaction | null {
   
-  const { operation_date, concept, amount, sign_column } = mapping;
-  
+  const { operation_date, concept, amount, sign_column, bank_balance } = mapping;
+
   // 1. Obtener valores crudos
   const rawDate = row[operation_date]?.trim();
   const rawConcept = row[concept]?.trim();
   const rawAmountStr = row[amount]?.trim() || "";
   const rawSign = sign_column ? row[sign_column]?.trim() : null;
+  const rawBalanceStr = bank_balance ? row[bank_balance]?.trim() : null;
 
   // --- CORRECCIÓN CLAVE PARA FORMATO ESPAÑOL ---
   // Ejemplo: "1.910,45" -> "1910.45"
-  const sanitizedAmount = rawAmountStr
-    .replace(/\./g, '')  // 1. Eliminamos todos los puntos de miles
-    .replace(',', '.');  // 2. Cambiamos la coma decimal por punto
+  const sanitize = (val: string) => val.replace(/\./g, '').replace(',', '.');
   
-  const numericAmount = parseFloat(sanitizedAmount);
+  const numericAmount = parseFloat(sanitize(rawAmountStr));
+  const numericBalance = rawBalanceStr ? parseFloat(sanitize(rawBalanceStr)) : null;
   // --------------------------------------------
 
-  if (!rawDate || isNaN(numericAmount) || !rawConcept) {
-      // Ignorar si la fecha falta, el concepto es vacío o el importe es inválido (NaN)
-      return null;
-  }
+  if (!rawDate || isNaN(numericAmount) || !rawConcept) return null;
   
   let finalAmount: number;
 
@@ -688,6 +686,7 @@ function mapCsvRow(
     date: dateForDb,
     amount: finalAmount,
     concept: rawConcept,
+    bank_balance: numericBalance,
     importer_notes: `Importado de CSV: ${rawDate}`,
   };
 }
@@ -815,6 +814,7 @@ export async function splitTransactionAction(
     if (insertError) throw new Error(`Error insertando desgloses: ${insertError.message}`);
 
     // --- PASO 3: ACTUALIZACIÓN TRANSACCIÓN PADRE ---
+
     await supabase
       .from('finance_transactions')
       .update({ is_split: true, category_id: null })
@@ -919,43 +919,46 @@ export async function handleTransferAction(sourceTxId: string, targetAccountId: 
     if (!source || !targetAccount) return { success: false, error: "Datos no encontrados" };
 
     // 2. Lógica de decisión según tipo de cuenta
-    // Cuentas que NO suelen estar conectadas (Manuales)
     const manualTypes = ['investment', 'loan', 'mortgage', 'other_asset', 'other_liability'];
     const isTargetManual = manualTypes.includes(targetAccount.account_type);
 
     if (isTargetManual) {
-        // CREAMOS ESPEJO: Porque estas cuentas no cargan movimientos solas
+        // --- CASO A: CUENTA MANUAL (Creamos Movimiento Espejo) ---
+        // 1. Insertamos el espejo con el transfer_id apuntando al origen
         const { data: mirror, error: mirrorError } = await supabase
             .from('finance_transactions')
             .insert({
                 account_id: targetAccountId,
-                amount: -source.amount, 
+                amount: -source.amount, // Signo contrario
                 concept: `VÍNCULO: ${source.concept}`,
                 date: source.date,
                 category_id: TRANSFER_CAT_ID,
                 user_id: user.id,
-                transfer_id: source.id 
+                transfer_id: source.id // Vínculo A <- B
             })
             .select().single();
 
         if (mirrorError) return { success: false, error: mirrorError.message };
 
-        // Actualizamos origen con el link
+        // 2. Actualizamos el origen para que apunte al nuevo espejo (Vínculo A -> B)
         await supabase.from('finance_transactions')
-            .update({ transfer_id: mirror.id, category_id: TRANSFER_CAT_ID })
+            .update({ 
+                transfer_id: mirror.id, 
+                category_id: TRANSFER_CAT_ID 
+            })
             .eq('id', source.id);
             
         revalidatePath('/finance');
-        return { success: true, message: "Movimiento espejo creado en cuenta manual" };
+        return { success: true, message: "Movimiento espejo creado y vinculado bidireccionalmente" };
     } else {
-        // NO CREAMOS ESPEJO: Porque la otra cuenta ya tendrá su propio movimiento cargado
-        // Solo actualizamos la categoría en la cuenta origen
+        // --- CASO B: CUENTA AUTOMÁTICA (Solo categorizamos) ---
+        // Aquí no creamos espejo porque llegará por CSV, solo marcamos como transferencia
         await supabase.from('finance_transactions')
             .update({ category_id: TRANSFER_CAT_ID })
             .eq('id', source.id);
 
         revalidatePath('/finance');
-        return { success: true, message: "Categorizado como transferencia (sin duplicar)" };
+        return { success: true, message: "Categorizado como transferencia. Recuerda conciliar con el espejo cuando lo importes." };
     }
 }
 
@@ -973,5 +976,140 @@ export async function updateTransactionNoteAction(transactionId: string, notes: 
     }
     
     revalidatePath('/finance'); // Esto es vital para que la UI se entere del cambio
+    return { success: true };
+}
+
+export async function findMirrorCandidatesAction(amount: number, date: string, currentId: string) {
+    const supabase = await createClient();
+    // El espejo es el signo contrario (-100 -> 100)
+    const searchAmount = Number(amount) * -1;
+    
+    // Rango de 5 días
+    const d = new Date(date);
+    const minDate = new Date(d.getTime() - (5 * 24 * 60 * 60 * 1000)).toISOString();
+    const maxDate = new Date(d.getTime() + (5 * 24 * 60 * 60 * 1000)).toISOString();
+
+    const { data, error } = await supabase
+        .from('finance_transactions')
+        .select(`
+            id, 
+            concept, 
+            amount, 
+            date, 
+            account_id,
+            finance_accounts (name)
+        `)
+        .eq('amount', searchAmount)
+        .gte('date', minDate)
+        .lte('date', maxDate)
+        .is('transfer_id', null) // Solo los que no estén ya vinculados
+        .neq('id', currentId);
+
+    return { success: !error, candidates: data || [] };
+}
+
+export async function reconcileTransactionsAction(id1: string, id2: string) {
+    const supabase = await createClient();
+    
+    // Vinculación bidireccional usando transfer_id
+    const { error: err1 } = await supabase
+        .from('finance_transactions')
+        .update({ transfer_id: id2, category_id: '10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a' })
+        .eq('id', id1);
+
+    const { error: err2 } = await supabase
+        .from('finance_transactions')
+        .update({ transfer_id: id1, category_id: '10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a' })
+        .eq('id', id2);
+
+    if (err1 || err2) return { success: false, error: "Error al conciliar" };
+    
+    revalidatePath('/finance');
+    return { success: true };
+}
+
+// app/finance/actions.ts
+
+export async function processImportAction(transactions: any[], accountId: string, userId: string) {
+    const supabase = await createClient();
+    
+    // 1. Obtener la transacción más antigua que ya existe
+    const { data: oldestTx } = await supabase
+        .from('finance_transactions')
+        .select('date')
+        .eq('account_id', accountId)
+        .order('date', { ascending: true })
+        .limit(1)
+        .single();
+
+    let initialBalanceAdjustment = 0;
+    const finalTransactions = [];
+
+    for (const tx of transactions) {
+        // Si la transacción que importo es ANTERIOR a la más antigua que ya tengo
+        if (oldestTx && new Date(tx.date) < new Date(oldestTx.date)) {
+            // Es histórico: acumulamos para ajustar el saldo inicial
+            initialBalanceAdjustment += tx.amount;
+        }
+        finalTransactions.push({ ...tx, account_id: accountId, user_id: userId });
+    }
+
+    // 2. Si hay ajustes históricos, actualizamos el saldo inicial de la cuenta
+    if (initialBalanceAdjustment !== 0) {
+        const { data: account } = await supabase
+            .from('finance_accounts')
+            .select('initial_balance')
+            .eq('id', accountId)
+            .single();
+
+        if (account) {
+            await supabase
+                .from('finance_accounts')
+                .update({ initial_balance: account.initial_balance + initialBalanceAdjustment })
+                .eq('id', accountId);
+        }
+    }
+
+    // 3. Insertar movimientos
+    return await supabase.from('finance_transactions').insert(finalTransactions);
+}
+
+// app/finance/actions.ts
+
+export async function validateAndImportAction(
+    transactions: any[], 
+    accountId: string, 
+    userId: string,
+    mode: 'new' | 'historic'
+) {
+    const supabase = await createClient();
+
+    // 1. Si es modo HISTÓRICO, calculamos el sumatorio para el saldo inicial
+    if (mode === 'historic') {
+        const totalAmount = transactions.reduce((acc, t) => acc + t.amount, 0);
+        
+        const { data: account } = await supabase
+            .from('finance_accounts')
+            .select('initial_balance')
+            .eq('id', accountId)
+            .single();
+
+        if (account) {
+            // Ajustamos el saldo inicial para que la línea de tiempo sea coherente
+            await supabase
+                .from('finance_accounts')
+                .update({ initial_balance: account.initial_balance + totalAmount })
+                .eq('id', accountId);
+        }
+    }
+
+    // 2. Insertamos los movimientos (bank_balance incluido)
+    const { error } = await supabase
+        .from('finance_transactions')
+        .insert(transactions.map(t => ({ ...t, account_id: accountId, user_id: userId })));
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath('/finance');
     return { success: true };
 }

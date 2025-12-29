@@ -2,7 +2,7 @@
 'use client'
 
 import React, { useState, useMemo } from 'react';
-import { FinanceTransaction, FinanceCategory, FinanceTransactionSplit,FinanceAccount,FinanceAccountType } from '@/types/finance';
+import { FinanceTransaction, FinanceCategory,FinanceAccount } from '@/types/finance';
 import { TransactionNoteDialog } from './TransactionNoteDialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -13,14 +13,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { 
     Search, FilterX, ChevronDown, ChevronRight, ChevronLeft, Building2, User, MoreVertical,Pencil,Plane,Package,
-    Check, ChevronsUpDown, Tag, EyeOff, Split, ChevronsRight,ChevronsLeft
+    Check, ChevronsUpDown, Tag, EyeOff, Split, ChevronsRight,ChevronsLeft,Link2
 } from 'lucide-react';
 import LoadIcon from '@/utils/LoadIcon';
 import { cn } from "@/lib/utils";
 import { TransactionSplitDialog } from "./TransactionSplitDialog";
-import { handleTransferAction } from '../actions';
+import { handleTransferAction, updateTransactionCategoryAction } from '../actions';
 import { toast } from 'sonner';
-
+import { TransferAssistant } from './TransferAssistant';
 const ITEMS_PER_PAGE = 25;
 
 interface TransactionListProps {
@@ -50,12 +50,28 @@ export function TransactionList({
     const [showOriginalConcepts, setShowOriginalConcepts] = useState(false);
     const [selectedTx, setSelectedTx] = useState<FinanceTransaction | null>(null);
     const [isNoteDialogOpen, setIsNoteDialogOpen] = useState(false);
-    
+    const [showTransferAssistant, setShowTransferAssistant] = useState(false);
+    const [selectedTxForTransfer, setSelectedTxForTransfer] = useState<FinanceTransaction | null>(null);
+
     const toggleRow = (id: string) => {
         const newRows = new Set(expandedRows);
         if (newRows.has(id)) newRows.delete(id);
         else newRows.add(id);
         setExpandedRows(newRows);
+    };
+
+    const handleCategorySelection = async (transaction: FinanceTransaction, newCategoryId: string) => {
+        const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
+
+        if (newCategoryId === TRANSFER_CAT_ID) {
+            // En lugar de guardar, abrimos el asistente
+            setSelectedTxForTransfer(transaction);
+            setShowTransferAssistant(true);
+        } else {
+            // Es una categoría normal, guardamos directamente
+            await updateTransactionCategoryAction(transaction.id, newCategoryId);
+            toast.success("Categoría actualizada");
+        }
     };
 
     // --- LÓGICA DE FILTRADO COMPLETA ---
@@ -194,6 +210,12 @@ export function TransactionList({
                                         Si está en 'Notas', priorizamos nota y si no hay, mostramos concepto. */}
                                     {showOriginalConcepts ? t.concept : (t.notes || t.concept)}
                                 </span>
+                                {t.transfer_id && (
+                                    <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 shadow-sm animate-in fade-in zoom-in">
+                                    <Link2 className="h-2.5 w-2.5" />
+                                    <span className="text-[8px] font-black uppercase">VINCULADA</span>
+                                    </div>
+                                )}
                                 {t.is_split && (
                                     <Badge variant="secondary" className="text-[9px] bg-indigo-50 text-indigo-600 border-indigo-100">
                                     SPLIT
@@ -229,7 +251,6 @@ export function TransactionList({
                                     
                                     {/* 🌙 POPOVER EN MODO OSCURO */}
                                     <PopoverContent className="w-[280px] p-0 border-slate-700 bg-slate-900 shadow-2xl z-[100] overflow-hidden" align="start">
-                                        {!transferTargetTx ? (
                                             /* --- BUSCADOR DE CATEGORÍAS --- */
                                             <Command className="bg-slate-900 border-none">
                                             <CommandInput 
@@ -250,10 +271,7 @@ export function TransactionList({
                                                     >
                                                     {subCats.length === 0 && (
                                                         <CommandItem
-                                                        onSelect={() => {
-                                                            if (parent.id === "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a") setTransferTargetTx(t.id);
-                                                            else onCategoryChange(t.id, parent.id, t.concept);
-                                                        }}
+                                                        onSelect={() => {handleCategorySelection(t, parent.id);}}
                                                         className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-200 aria-selected:bg-slate-800 aria-selected:text-white cursor-pointer transition-colors"
                                                         >
                                                         <Check className={cn("h-3.5 w-3.5 shrink-0", t.category_id === parent.id ? "text-indigo-400 opacity-100" : "opacity-0")} />
@@ -263,10 +281,7 @@ export function TransactionList({
                                                     {subCats.map((sub) => (
                                                         <CommandItem
                                                         key={sub.id}
-                                                        onSelect={() => {
-                                                            if (sub.id === "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a") setTransferTargetTx(t.id);
-                                                            else onCategoryChange(t.id, sub.id, t.concept);
-                                                        }}
+                                                        onSelect={() => {handleCategorySelection(t, sub.id);}}
                                                         className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-300 aria-selected:bg-slate-800 aria-selected:text-white cursor-pointer transition-colors"
                                                         >
                                                         <Check className={cn("h-3.5 w-3.5 shrink-0", t.category_id === sub.id ? "text-indigo-400 opacity-100" : "opacity-0")} />
@@ -278,80 +293,6 @@ export function TransactionList({
                                                 })}
                                             </CommandList>
                                             </Command>
-                                        ) : (
-                                            /* --- SELECTOR DE CUENTAS (DISEÑO LIMPIO Y VISIBLE) --- */
-                                            <div className="flex flex-col bg-slate-900 animate-in fade-in slide-in-from-right-2 duration-200">
-                                                <div className="p-4 bg-indigo-600">
-                                                    <h3 className="text-xs font-black text-white uppercase tracking-tighter">
-                                                    ¿A qué cuenta va el dinero?
-                                                    </h3>
-                                                </div>
-                                                
-                                                <div className="p-2 max-h-[300px] overflow-y-auto custom-scrollbar">
-                                                    {!accounts || accounts.length === 0 ? (
-                                                    <div className="py-8 text-center">
-                                                        <p className="text-xs text-slate-400 italic">No se reciben cuentas en el componente</p>
-                                                    </div>
-                                                    ) : accounts.filter((acc) => acc.id !== t.account_id).length === 0 ? (
-                                                    <div className="py-8 text-center">
-                                                        <p className="text-xs text-slate-400 italic font-medium">
-                                                        No hay otras cuentas para transferir (total: {accounts.length})
-                                                        </p>
-                                                    </div>
-                                                    ) : (
-                                                    <div className="grid gap-1">
-                                                        {accounts
-                                                        .filter((acc) => acc.id !== t.account_id)
-                                                        .map((acc) => (
-                                                            <button
-                                                            key={acc.id}
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                const toastId = toast.loading("Sincronizando...");
-                                                                const res = await handleTransferAction(t.id, acc.id);
-                                                                if (res.success) {
-                                                                toast.success("¡Vinculado!", { id: toastId });
-                                                                setTransferTargetTx(null);
-                                                                } else {
-                                                                toast.error(res.error, { id: toastId });
-                                                                }
-                                                            }}
-                                                            className="group flex items-center justify-between w-full p-3 rounded-xl hover:bg-slate-800 transition-all border border-slate-700/50 hover:border-indigo-500/50 text-left"
-                                                            >
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 border border-slate-700 group-hover:bg-indigo-500/20 transition-colors">
-                                                                <LoadIcon name={acc.icon_name || "Wallet"} className="h-4 w-4 text-slate-200" />
-                                                                </div>
-                                                                <div className="flex flex-col">
-                                                                <span className="text-sm font-bold text-white leading-none mb-1">
-                                                                    {acc.name}
-                                                                </span>
-                                                                <span className="text-[10px] text-slate-400 font-medium">
-                                                                    ID: {acc.id.substring(0, 8)}...
-                                                                </span>
-                                                                </div>
-                                                            </div>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="p-2 border-t border-slate-800 bg-slate-900/50">
-                                                    <Button 
-                                                    variant="ghost" 
-                                                    size="sm" 
-                                                    className="w-full h-8 text-[10px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 uppercase tracking-widest"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setTransferTargetTx(null);
-                                                    }}
-                                                    >
-                                                    ← Volver a categorías
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        )}
                                         </PopoverContent>
                                 </Popover>
                                 ) : (
@@ -388,7 +329,7 @@ export function TransactionList({
                                             </Button>
 
                                             {/* ✂️ DESGLOSAR */}
-                                            <div className="group">
+                                            <div className="group w-full">
                                             <TransactionSplitDialog 
                                                     transaction={t} 
                                                     categories={categories} 
@@ -517,6 +458,17 @@ export function TransactionList({
                     onOpenChange={setIsNoteDialogOpen} 
                 />
                 )}
+            {/* Diálogo del Asistente de Transferencia */}
+            {showTransferAssistant && selectedTxForTransfer && (
+                <TransferAssistant 
+                    transaction={selectedTxForTransfer}
+                    accounts={accounts} // Las cuentas que ya pasas por props
+                    onClose={() => {
+                        setShowTransferAssistant(false);
+                        setSelectedTxForTransfer(null);
+                    }}
+                />
+            )}
         </div>
     );
 }

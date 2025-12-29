@@ -1,3 +1,4 @@
+// app/finance/components/TransactionSplitDialog.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -107,8 +108,12 @@ export function TransactionSplitDialog({ transaction, categories, accounts }: Pr
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-indigo-50 hover:text-indigo-600">
-          <Split className="h-4 w-4" />
+        <Button 
+          variant="ghost" 
+          className="w-full justify-start text-xs text-slate-200 hover:bg-slate-800 hover:text-white h-9 px-2"
+        >
+          <Split className="mr-2 h-4 w-4 text-blue-400" />
+          Desglosar importe
         </Button>
       </DialogTrigger>
       
