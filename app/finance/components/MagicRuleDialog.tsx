@@ -1,11 +1,12 @@
+// app/finance/components/MagicRuleDialog.tsx
 'use client'
 
 import React, { useState } from "react"
-import { Zap, Check, X } from "lucide-react"
+import { Zap, Check, X, Rocket } from "lucide-react" // Añadimos Rocket para el estilo
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { createRule } from "../actions"
+import { createRule, applyRuleRetroactively } from "../actions" // Importamos la función retroactiva
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -28,13 +29,38 @@ export function MagicRuleDialog({
         formData.append('pattern', pattern.toUpperCase());
         formData.append('category_id', categoryId);
 
-        const res = await createRule({}, formData);
-        if (res.success) {
-            toast.success("Regla automatizada creada");
-            router.refresh();
-            onClose();
-        }
-    };
+        // Tipamos la respuesta para que TS no se queje del .data
+    const res = await createRule({}, formData) as { success: boolean, data?: any, error?: string };
+    
+    if (res.success && res.data) {
+        const newRuleId = res.data.id; // Ahora sí existe
+
+        toast.success("Regla automatizada creada", {
+            description: `¿Quieres aplicarla a los movimientos antiguos de "${pattern}"?`,
+            duration: 8000,
+            action: {
+                label: "🚀 Ejecutar ahora",
+                onClick: async () => {
+                    const toastId = toast.loading("Limpiando el pasado...");
+                    const retroRes = await applyRuleRetroactively(newRuleId);
+                    
+                    if (retroRes.success) {
+                        toast.success(`¡Hecho! ${retroRes.count} movimientos organizados.`, {
+                            id: toastId,
+                        });
+                    } else {
+                        toast.error("No se pudo aplicar al historial", { id: toastId });
+                    }
+                }
+            }
+        });
+
+        router.refresh();
+        onClose();
+    } else if (res.error) {
+        toast.error("Error al crear la regla: " + res.error);
+    }
+};
 
     return (
         <Dialog open={true} onOpenChange={onClose}>

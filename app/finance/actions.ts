@@ -720,12 +720,14 @@ export async function createRule(prevState: any, formData: FormData) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: 'No user' };
 
-    const { error } = await supabase
+    const { data,error } = await supabase
         .from('finance_rules')
-        .insert({ pattern, category_id, user_id: user.id });
+        .insert({ pattern, category_id, user_id: user.id })
+        .select() // ✨ Importante: para que devuelva el objeto creado
+        .single();
 
     if (error) return { success: false, error: error.message };
-    return { success: true };
+    return { success: true, data };
 }
 
 export async function deleteRule(id: string) {
@@ -750,11 +752,12 @@ export async function applyRuleRetroactively(ruleId: string) {
 
     // 2. Actualizar transacciones que coincidan con el patrón y NO tengan categoría
     // Usamos ilike para que no importe mayúsculas/minúsculas
-    const { data, error: updateError, count } = await supabase
+    const { error: updateError, count } = await supabase
         .from('finance_transactions')
-        .update({ category_id: rule.category_id })
+        .update({ category_id: rule.category_id }, { count: 'exact' }) // 👈 Añadimos count exact
         .ilike('concept', `%${rule.pattern}%`)
-        .is('category_id', null); // Solo a las pendientes para no sobreescribir manuales
+        .is('category_id', null)
+        .select(); // 👈 Importante para que devuelva los datos procesados
 
     if (updateError) {
         return { success: false, error: updateError.message };
