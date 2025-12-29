@@ -17,7 +17,10 @@ const ALL_FIELDS = [
     { key: 'amount', label: 'Importe' },
     { key: 'bank_balance', label: 'Saldo (Opcional)' },
 ];
-
+interface TriggerProps {
+    onSelect?: (e: any) => void;
+    onClick?: (e: React.MouseEvent) => void;
+}
 export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accounts: FinanceAccount[] }>) {
     const [isOpen, setIsOpen] = useState(false);
     const [step, setStep] = useState<'upload' | 'mapping' | 'preview'>('upload');
@@ -31,10 +34,18 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const [detectedCount, setDetectedCount] = useState(0);
     const [csvCheckBalance, setCsvCheckBalance] = useState<number | null>(null);
 
-    const childElement = children as React.ReactElement;
+    const childElement = React.Children.only(children) as React.ReactElement<TriggerProps>;
+    
     const trigger = React.cloneElement(childElement, {
-        onSelect: (e: Event) => { e.preventDefault(); setIsOpen(true); },
-        onClick: (e: React.MouseEvent) => { e.stopPropagation(); setIsOpen(true); },
+        onSelect: (e: any) => {
+            // Algunos componentes de UI (como los de Shadcn) usan onSelect
+            if (e?.preventDefault) e.preventDefault();
+            setIsOpen(true);
+        },
+        onClick: (e: React.MouseEvent) => {
+            e.stopPropagation();
+            setIsOpen(true);
+        },
     });
 
     const resetDialog = () => {
