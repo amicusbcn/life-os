@@ -3,6 +3,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { FinanceTransaction, FinanceCategory, FinanceTransactionSplit,FinanceAccount,FinanceAccountType } from '@/types/finance';
+import { TransactionNoteDialog } from './TransactionNoteDialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { 
-    Search, FilterX, ChevronDown, ChevronRight, ChevronLeft, 
+    Search, FilterX, ChevronDown, ChevronRight, ChevronLeft, Building2, User, MoreVertical,Pencil,Plane,Package,
     Check, ChevronsUpDown, Tag, EyeOff, Split, ChevronsRight,ChevronsLeft
 } from 'lucide-react';
 import LoadIcon from '@/utils/LoadIcon';
@@ -46,7 +47,10 @@ export function TransactionList({
     const [endDate, setEndDate] = useState('');
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
     const [transferTargetTx, setTransferTargetTx] = useState<string | null>(null);
-
+    const [showOriginalConcepts, setShowOriginalConcepts] = useState(false);
+    const [selectedTx, setSelectedTx] = useState<FinanceTransaction | null>(null);
+    const [isNoteDialogOpen, setIsNoteDialogOpen] = useState(false);
+    
     const toggleRow = (id: string) => {
         const newRows = new Set(expandedRows);
         if (newRows.has(id)) newRows.delete(id);
@@ -140,6 +144,16 @@ export function TransactionList({
                 {(searchTerm || categoryFilter !== 'all' || startDate || endDate) && (
                     <Button variant="ghost" onClick={resetFilters} className="text-slate-500 hover:bg-slate-100 h-9"><FilterX className="mr-2 h-4 w-4"/> Limpiar</Button>
                 )}
+                <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setShowOriginalConcepts(!showOriginalConcepts)}
+                    className={cn("h-9 text-[10px] font-bold uppercase tracking-wider", 
+                        showOriginalConcepts ? "text-amber-600" : "text-indigo-600")}
+                    >
+                    {showOriginalConcepts ? <Building2 className="mr-2 h-3.5 w-3.5" /> : <User className="mr-2 h-3.5 w-3.5" />}
+                    {showOriginalConcepts ? "Ver Banco" : "Ver Notas"}
+                </Button>
             </div>
             
             {/* TABLA DE MOVIMIENTOS */}   
@@ -172,7 +186,14 @@ export function TransactionList({
                             </TableCell>
                             <TableCell className="font-medium" onClick={() => t.is_split && toggleRow(t.id)}>
                                 <div className="flex items-center gap-2 truncate max-w-[220px]">
-                                <span className="truncate text-slate-700">{t.concept}</span>
+                                <span className={cn(
+                                    "text-sm block truncate",
+                                    !showOriginalConcepts && t.notes ? "font-bold text-slate-900" : "font-medium text-slate-600"
+                                )}>
+                                    {/* Lógica: Si el switch está en 'Original', mostramos concepto. 
+                                        Si está en 'Notas', priorizamos nota y si no hay, mostramos concepto. */}
+                                    {showOriginalConcepts ? t.concept : (t.notes || t.concept)}
+                                </span>
                                 {t.is_split && (
                                     <Badge variant="secondary" className="text-[9px] bg-indigo-50 text-indigo-600 border-indigo-100">
                                     SPLIT
@@ -340,10 +361,65 @@ export function TransactionList({
                                 )}
                             </TableCell>
 
-                            <TableCell>
-                                <div className="flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                                <TransactionSplitDialog transaction={t} categories={categories} accounts={accounts}/>
-                                </div>
+                            <TableCell className="text-right">
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-slate-100 rounded-full">
+                                            <MoreVertical className="h-4 w-4 text-slate-500" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-52 p-2 bg-slate-900 border-slate-800 shadow-2xl" align="end">
+                                        <div className="flex flex-col gap-1">
+                                            <p className="px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                                Opciones
+                                            </p>
+                                            
+                                            {/* 📝 EDITAR NOTA */}
+                                            <Button 
+                                                variant="ghost" 
+                                                className="w-full justify-start text-xs text-slate-200 hover:bg-slate-800 hover:text-white h-9"
+                                                onClick={() => {
+                                                    setSelectedTx(t);
+                                                    setIsNoteDialogOpen(true);
+                                                }}
+                                            >
+                                                <Pencil className="mr-2 h-4 w-4 text-indigo-400" />
+                                                Editar nota (Alias)
+                                            </Button>
+
+                                            {/* ✂️ DESGLOSAR */}
+                                            <div className="group">
+                                            <TransactionSplitDialog 
+                                                    transaction={t} 
+                                                    categories={categories} 
+                                                    accounts={accounts}
+                                                />
+                                            </div>
+
+                                            <div className="h-[1px] bg-slate-800 my-1" />
+
+                                            {/* ✈️ VIAJES */}
+                                            <Button 
+                                                variant="ghost" 
+                                                disabled
+                                                className="w-full justify-start text-xs text-slate-500 opacity-50 h-9"
+                                            >
+                                                <Plane className="mr-2 h-4 w-4" />
+                                                Vincular a viaje
+                                            </Button>
+
+                                            {/* 📦 INVENTARIO */}
+                                            <Button 
+                                                variant="ghost" 
+                                                disabled
+                                                className="w-full justify-start text-xs text-slate-500 opacity-50 h-9"
+                                            >
+                                                <Package className="mr-2 h-4 w-4" />
+                                                Subir al inventario
+                                            </Button>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
                             </TableCell>
                             </TableRow>
 
@@ -434,6 +510,13 @@ export function TransactionList({
                     </div>
                 </div>
             </div>
+            {selectedTx && (
+                <TransactionNoteDialog 
+                    transaction={selectedTx} 
+                    open={isNoteDialogOpen} 
+                    onOpenChange={setIsNoteDialogOpen} 
+                />
+                )}
         </div>
     );
 }

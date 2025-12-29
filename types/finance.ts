@@ -1,3 +1,4 @@
+// types/finance.ts
 import { Json, Profile } from './inventory'; // Importamos Json y Profile desde un tipo existente
 
 // Definición de Tipos ENUM usados en la BBDD
@@ -20,10 +21,10 @@ export interface FinanceAccount {
   is_active: boolean;
   user_id: string;
   account_number?: string;
-  current_balance:number;
-  balance_updadet_at?:string;
-  color_theme?:string;
-  icon_name?:string;
+  current_balance: number;
+  balance_updated_at?: string; 
+  color_theme?: string;
+  icon_name?: string;
 }
 
 export interface FinanceCategory {
@@ -84,18 +85,20 @@ export type ImporterTemplate = {
 export interface FinanceTransaction {
   id: string;
   created_at: string;
-  date: string; // Formato YYYY-MM-DD
+  date: string;
   concept: string;
-  amount: number; // Positivo (Ingreso) o Negativo (Gasto)
+  amount: number;
   account_id: string;
   importer_id?: string;
-  
-  is_split: boolean; // true si tiene desgloses en finance_transaction_splits
-  travel_expense_id?: string | null; // Link al módulo de Viajes
-  category_id?: string | null; // Categoría primaria (si no hay split, o inicial)
+  is_split: boolean;
+  travel_expense_id?: string | null;
+  category_id?: string | null;
   user_id: string;
+  notes?: string | null;                  // Tu "alias" personalizado
+  bank_balance?: number | null;           // El saldo que venía en el CSV
+  related_transaction_id?: string | null; // Para vincular Transferencias
+  inventory_item_id?: string | null;      // Link al módulo de Inventario
   
-  // Propiedades opcionales para JOINs en el Frontend:
   category?: FinanceCategory;
   account?: FinanceAccount;
   splits?: FinanceTransactionSplit[]; 

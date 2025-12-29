@@ -1,3 +1,4 @@
+// app/finance/components/FinanceDashboardView.tsx
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -63,21 +64,21 @@ export function FinanceDashboardView({ accounts, categories, transactions, rules
     };
 
     const { currentBalance, netWorth } = useMemo(() => {
+        // Definimos qué consideramos "Dinero en mano/disponible"
         const currentTypes = ['checking', 'savings', 'credit_card', 'cash'];
         
         // Saldo Corriente (Líquido)
         const current = accounts
             .filter(acc => currentTypes.includes(acc.account_type))
-            .reduce((sum, acc) => sum + (acc.current_balance ?? acc.initial_balance), 0);
+            .reduce((sum, acc) => sum + (Number(acc.current_balance) || 0), 0);
 
-        // Saldo de Inversiones y Préstamos
-        const others = accounts
-            .filter(acc => !currentTypes.includes(acc.account_type))
-            .reduce((sum, acc) => sum + (acc.current_balance ?? acc.initial_balance), 0);
+        // Saldo Total (Patrimonio = Corriente + Inversiones + Otros)
+        const total = accounts
+            .reduce((sum, acc) => sum + (Number(acc.current_balance) || 0), 0);
 
         return {
             currentBalance: current,
-            netWorth: current + others
+            netWorth: total
         };
     }, [accounts]);
 
@@ -213,7 +214,7 @@ export function FinanceDashboardView({ accounts, categories, transactions, rules
                 !isPrivate ? "grid-rows-[1fr] opacity-100 mb-4" : "grid-rows-[0fr] opacity-0"
             )}>
                 <div className="overflow-hidden">
-                    <div className="flex overflow-x-auto pb-4 gap-4 snap-x scrollbar-hide pt-2">
+                    <div className="flex overflow-x-auto pb-4 gap-4 snap-x pt-2 scrollbar-thin scrollbar-thumb-slate-200">
                         {accounts.map((acc) => (
                             <div 
                                 key={acc.id} 
@@ -235,7 +236,7 @@ export function FinanceDashboardView({ accounts, categories, transactions, rules
                                 </div>
                                 <h3 className="font-bold text-slate-800 text-sm">{acc.name}</h3>
                                 <p className="text-xl font-black text-slate-900 mt-1">
-                                    {isPrivate ? "••••" : (acc.current_balance ?? acc.initial_balance).toLocaleString('es-ES', { minimumFractionDigits: 2 })} {acc.currency}
+                                    {isPrivate ? "••••" : (Number(acc.current_balance)).toLocaleString('es-ES', { minimumFractionDigits: 2 })} {acc.currency}
                                 </p>
                             </div>
                         ))}

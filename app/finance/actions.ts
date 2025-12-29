@@ -489,14 +489,18 @@ export async function importCsvTransactionsAction(
     const user_id = userData.user.id;
     
     const { data: accounts, error: accountError } = await supabase
-      .from('finance_accounts')
-      .select('id')
-      .eq('user_id', user_id)
-      .limit(1);
+      .from('finance_accounts')
+      .select('id, account_type') // 👈 Añadimos account_type aquí
+      .eq('id', account_id)       // Usamos el id que viene por formData
+      .eq('user_id', user_id)
+      .single();                  // Usamos single para obtener el objeto directamente
 
-    if (accountError || accounts.length === 0) {
-      return { success: false, error: 'No se encontró ninguna cuenta de destino.' };
-    }    
+    if (accountError || !accounts) {
+      return { success: false, error: 'No se encontró la cuenta de destino.' };
+    }
+
+    const isCreditCard = accounts.account_type === 'credit_card';
+
     // 2. PROCESAMIENTO DEL CSV
     const { delimiter, mapping } = template as ImporterTemplate;
 
@@ -566,29 +570,39 @@ try {
     
     // --- 4. APLICAR REGLAS E INSERTAR ---
     let autoCategorizedCount = 0;
+    let filteredCount = 0;
 
-    const finalTransactions = transactions.map(t => {
-        let category_id = null;
-
-        // Si existen reglas, buscamos coincidencia en el concepto
-        if (rules && rules.length > 0) {
-            const matchingRule = rules.find(rule => 
-                t.concept.toUpperCase().includes(rule.pattern.toUpperCase())
-            );
-            if (matchingRule) {
-                category_id = matchingRule.category_id;
-                autoCategorizedCount++;
+    const finalTransactions = transactions
+        .filter(t => {
+            // 🛡️ Filtro maestro: ignorar cajeros si es tarjeta
+            if (isCreditCard) {
+                const conceptUpper = t.concept.toUpperCase();
+                if (conceptUpper.includes('CAJERO')) {
+                    filteredCount++;
+                    return false;
+                }
             }
-        }
-
-        return {
-            ...t,
-            account_id: account_id,
-            user_id: user_id,
-            category_id: category_id, // 🪄 Aplicación de la regla
-            created_at: new Date().toISOString()
-        };
-    });
+            return true;
+        })
+        .map(t => {
+            let category_id = null;
+            if (rules && rules.length > 0) {
+                const matchingRule = rules.find(rule => 
+                    t.concept.toUpperCase().includes(rule.pattern.toUpperCase())
+                );
+                if (matchingRule) {
+                    category_id = matchingRule.category_id;
+                    autoCategorizedCount++;
+                }
+            }
+            return {
+                ...t,
+                account_id: account_id,
+                user_id: user_id,
+                category_id: category_id,
+                created_at: new Date().toISOString()
+            };
+        });
 
     const { error: insertError } = await supabase
       .from('finance_transactions')
@@ -940,4 +954,21 @@ export async function handleTransferAction(sourceTxId: string, targetAccountId: 
         revalidatePath('/finance');
         return { success: true, message: "Categorizado como transferencia (sin duplicar)" };
     }
+}
+
+export async function updateTransactionNoteAction(transactionId: string, notes: string) {
+    const supabase = await createClient(); // Asegúrate de que esto usa el cliente de servidor
+    
+    const { data, error } = await supabase
+        .from('finance_transactions')
+        .update({ notes: notes }) // Verifica que la columna en la BBDD se llame exactamente 'notes'
+        .eq('id', transactionId);
+
+    if (error) {
+        console.error("Error en Supabase:", error.message);
+        return { success: false, error: error.message };
+    }
+    
+    revalidatePath('/finance'); // Esto es vital para que la UI se entere del cambio
+    return { success: true };
 }
