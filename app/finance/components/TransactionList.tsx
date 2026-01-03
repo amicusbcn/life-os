@@ -13,14 +13,19 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { 
     Search, FilterX, ChevronDown, ChevronRight, ChevronLeft, Building2, User, MoreVertical,Pencil,Plane,Package,
-    Check, ChevronsUpDown, Tag, EyeOff, Split, ChevronsRight,ChevronsLeft,Link2
+    Check, ChevronsUpDown, Tag, EyeOff, Split, ChevronsRight,ChevronsLeft,Link2,Boxes,ArrowRight,
+    Import
 } from 'lucide-react';
+import Link from 'next/link';
 import LoadIcon from '@/utils/LoadIcon';
 import { cn } from "@/lib/utils";
 import { TransactionSplitDialog } from "./TransactionSplitDialog";
 import { handleTransferAction, updateTransactionCategoryAction } from '../actions';
 import { toast } from 'sonner';
 import { TransferAssistant } from './TransferAssistant';
+import { MagicRuleDialog } from './MagicRuleDialog';
+import { TransactionInventoryDialog } from './TransactionInventoryDialog';
+
 const ITEMS_PER_PAGE = 25;
 
 interface TransactionListProps {
@@ -52,14 +57,19 @@ export function TransactionList({
     const [isNoteDialogOpen, setIsNoteDialogOpen] = useState(false);
     const [showTransferAssistant, setShowTransferAssistant] = useState(false);
     const [selectedTxForTransfer, setSelectedTxForTransfer] = useState<FinanceTransaction | null>(null);
-
+    const [magicRuleData, setMagicRuleData] = useState<{
+        concept: string;
+        categoryId: string;
+        categoryName: string;
+    } | null>(null);
+    const [isInventoryDialogOpen, setIsInventoryDialogOpen] = useState(false);
     const toggleRow = (id: string) => {
         const newRows = new Set(expandedRows);
         if (newRows.has(id)) newRows.delete(id);
         else newRows.add(id);
         setExpandedRows(newRows);
     };
-
+    const [showInventoryDialog, setShowInventoryDialog] = useState(false);
     const handleCategorySelection = async (transaction: FinanceTransaction, newCategoryId: string) => {
         const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
 
@@ -68,9 +78,29 @@ export function TransactionList({
             setSelectedTxForTransfer(transaction);
             setShowTransferAssistant(true);
         } else {
-            // Es una categoría normal, guardamos directamente
-            await updateTransactionCategoryAction(transaction.id, newCategoryId);
-            toast.success("Categoría actualizada");
+            const catName = categories.find(c => c.id === newCategoryId)?.name || "Categoría";
+            const res = await updateTransactionCategoryAction(transaction.id, newCategoryId);
+            
+            if (res.success) {
+                // 💡 TOAST NO INTRUSIVO
+                toast.success("Categoría actualizada", {
+                    description: "¿Quieres automatizar este movimiento?",
+                    duration: 5000, // Le damos tiempo para que lo vea
+                    action: {
+                        label: "Crear Regla",
+                        onClick: () => {
+                            // Solo si el usuario hace clic, abrimos el diálogo
+                            setMagicRuleData({
+                                concept: transaction.concept,
+                                categoryId: newCategoryId,
+                                categoryName: catName
+                            });
+                        }
+                    }
+                });
+            } else {
+                toast.error("Error al actualizar");
+            }
         }
     };
 
@@ -216,6 +246,22 @@ export function TransactionList({
                                     <span className="text-[8px] font-black uppercase">VINCULADA</span>
                                     </div>
                                 )}
+                                {/* 🚀 NUEVO: Badge de Inventario */}
+                                {t.inventory_item_id && (
+                                    <Link 
+                                        href={`/inventory/${t.inventory_item_id}`} 
+                                        target="_blank" 
+                                        className="group/link"
+                                        onClick={(e) => e.stopPropagation()} // Evita que el clic dispare otros eventos de la fila
+                                    >
+                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm transition-all hover:bg-emerald-200 hover:border-emerald-300 animate-in fade-in">
+                                            <Boxes className="h-2.5 w-2.5" />
+                                            <span className="text-[8px] font-black uppercase tracking-tighter">INVENTARIO</span>
+                                            {/* Pequeña flecha que solo aparece al pasar el ratón */}
+                                            <ArrowRight className="h-2 w-2 opacity-0 group-hover/link:opacity-100 transition-opacity" />
+                                        </div>
+                                    </Link>
+                                )}
                                 {t.is_split && (
                                     <Badge variant="secondary" className="text-[9px] bg-indigo-50 text-indigo-600 border-indigo-100">
                                     SPLIT
@@ -352,10 +398,13 @@ export function TransactionList({
                                             {/* 📦 INVENTARIO */}
                                             <Button 
                                                 variant="ghost" 
-                                                disabled
-                                                className="w-full justify-start text-xs text-slate-500 opacity-50 h-9"
+                                                className="w-full justify-start text-xs text-slate-200 hover:bg-slate-800 hover:text-white h-9"
+                                                onClick={() => {
+                                                    setSelectedTx(t); // Guardamos la transacción seleccionada
+                                                    setShowInventoryDialog(true); // Abrimos el diálogo
+                                                }}
                                             >
-                                                <Package className="mr-2 h-4 w-4" />
+                                                <Package className="mr-2 h-4 w-4 text-emerald-400" />
                                                 Subir al inventario
                                             </Button>
                                         </div>
@@ -466,6 +515,24 @@ export function TransactionList({
                     onClose={() => {
                         setShowTransferAssistant(false);
                         setSelectedTxForTransfer(null);
+                    }}
+                />
+            )}
+            {magicRuleData && (
+                <MagicRuleDialog
+                    concept={magicRuleData.concept}
+                    categoryId={magicRuleData.categoryId}
+                    categoryName={magicRuleData.categoryName}
+                    onClose={() => setMagicRuleData(null)}
+                />
+            )}
+            {/* Diálogo de Inventario */}
+            {showInventoryDialog && selectedTx && (
+                <TransactionInventoryDialog 
+                    transaction={selectedTx}
+                    onClose={() => {
+                        setShowInventoryDialog(false);
+                        setSelectedTx(null);
                     }}
                 />
             )}

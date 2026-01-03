@@ -109,21 +109,37 @@ export function TransferAssistant({
                     <section className="space-y-3">
                         <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500 tracking-widest">
                             <PlusCircle className="h-3 w-3" />
-                            O crear en cuenta manual (Inversión/Préstamo)
+                            Generar movimiento espejo en...
                         </div>
-                        <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
-                            {accounts.filter(a => a.id !== transaction.account_id).map(acc => (
-                                <Button 
-                                    key={acc.id} 
-                                    variant="ghost" 
-                                    onClick={() => handleLinkToAccount(acc.id)}
-                                    className="h-auto py-3 px-3 justify-start bg-slate-800/30 hover:bg-indigo-900/40 text-left border border-transparent hover:border-indigo-500/50 transition-all"
-                                >
-                                    <Landmark className="h-4 w-4 mr-2 text-indigo-400 shrink-0" />
-                                    <span className="text-[11px] font-medium leading-tight truncate">{acc.name}</span>
-                                </Button>
-                            ))}
+                        
+                        <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+                            {accounts
+                                .filter(a => a.id !== transaction.account_id) // No mostrar la cuenta actual
+                                .sort((a, b) => a.name.localeCompare(b.name)) // Ordenar alfabéticamente
+                                .map(acc => (
+                                    <Button 
+                                        key={acc.id} 
+                                        variant="ghost" 
+                                        onClick={() => handleLinkToAccount(acc.id)}
+                                        className="h-auto py-3 px-3 justify-start bg-slate-800/30 hover:bg-indigo-900/40 text-left border border-transparent hover:border-indigo-500/50 transition-all group"
+                                    >
+                                        <div className="flex flex-col gap-1 w-full">
+                                            <div className="flex items-center">
+                                                <Landmark className="h-3 w-3 mr-2 text-indigo-400 shrink-0 group-hover:text-indigo-300" />
+                                                <span className="text-[11px] font-bold leading-tight truncate">{acc.name}</span>
+                                            </div>
+                                            {/* Pequeño indicador del tipo de cuenta para ayudarte */}
+                                            <span className="text-[8px] uppercase text-slate-500 ml-5 font-black tracking-tighter">
+                                                {acc.account_type === 'credit_card' ? 'Tarjeta' : 'Cuenta'}
+                                            </span>
+                                        </div>
+                                    </Button>
+                                ))
+                            }
                         </div>
+                        <p className="text-[9px] text-slate-500 italic mt-2 leading-tight">
+                            * Al elegir una cuenta, se creará un movimiento de **{-transaction.amount}€** para que el saldo de ambos lados cuadre perfectamente.
+                        </p>
                     </section>
                 </div>
             </DialogContent>

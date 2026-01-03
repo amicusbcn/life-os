@@ -33,7 +33,9 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     
     const [detectedCount, setDetectedCount] = useState(0);
     const [csvCheckBalance, setCsvCheckBalance] = useState<number | null>(null);
-
+    const [invertAmount, setInvertAmount] = useState(false);
+    const [isCreditCard, setIsCreditCard] = useState(false);
+    
     const childElement = React.Children.only(children) as React.ReactElement<TriggerProps>;
     
     const trigger = React.cloneElement(childElement, {
@@ -112,71 +114,56 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
         reader.readAsText(uploadedFile);
     };
 
-const preparePreview = () => {
-    const dateIdx = headers.indexOf(mapping['operation_date']);
-    const balIdx = headers.indexOf(mapping['bank_balance']);
-    const amIdx = headers.indexOf(mapping['amount']);
+    const preparePreview = () => {
+        const dateIdx = headers.indexOf(mapping['operation_date']);
+        const balIdx = headers.indexOf(mapping['bank_balance']);
+        const amIdx = headers.indexOf(mapping['amount']);
 
-    if (dateIdx === -1 || amIdx === -1) {
-        toast.error("Debes mapear al menos Fecha e Importe");
-        return;
-    }
-
-    let minDateObj: Date | null = null;
-    let balanceToCompare: number | null = null;
-    let infoOldest = {}; // Para el log final
-
-    csvLines.forEach((columns, index) => {
-        const rawDate = columns[dateIdx];
-        const rawBal = columns[balIdx];
-        const rawAm = columns[amIdx];
-        
-        const parseSpanishFloat = (str: string, label: string) => {
-            if (!str) return 0;
-            let n = str.trim();
-            // Eliminamos puntos de millar, cambiamos coma por punto
-            const clean = n.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-            const result = parseFloat(clean) || 0;
-            
-            // LOG DE TRADUCCIÓN (Solo para la primera línea o si sospechamos)
-            // console.log(`[Fila ${index}] ${label}: "${str}" -> "${clean}" -> ${result}`);
-            
-            return result;
-        };
-
-        const balNum = parseSpanishFloat(rawBal, "Saldo");
-        const amNum = parseSpanishFloat(rawAm, "Importe");
-
-        const parts = rawDate.split('/');
-        const currentDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-
-        if (!isNaN(currentDate.getTime())) {
-            if (!minDateObj || currentDate < minDateObj) {
-                minDateObj = currentDate;
-                
-                // Cálculo con céntimos
-                const res = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
-                balanceToCompare = res;
-                
-                infoOldest = {
-                    fila: index,
-                    fecha: rawDate,
-                    saldo_original: rawBal,
-                    saldo_parseado: balNum,
-                    importe_original: rawAm,
-                    importe_parseado: amNum,
-                    calculo_previo: res
-                };
-            }
+        if (dateIdx === -1 || amIdx === -1) {
+            toast.error("Debes mapear al menos Fecha e Importe");
+            return;
         }
-    });
 
-    // REVELACIÓN EN CONSOLA
-    console.log("🔍 DIAGNÓSTICO MOVIMIENTO MÁS ANTIGUO:", infoOldest);
+        let minDateObj: Date | null = null;
+        let balanceToCompare: number | null = null;
 
-    setCsvCheckBalance(balanceToCompare);
-    setStep('preview');
-};
+        csvLines.forEach((columns) => {
+            const rawDate = columns[dateIdx];
+            const rawBal = columns[balIdx];
+            const rawAm = columns[amIdx];
+            
+            const parseSpanishFloat = (str: string) => {
+                if (!str) return 0;
+                let n = str.trim();
+                const clean = n.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+                return parseFloat(clean) || 0;
+            };
+
+            let balNum = parseSpanishFloat(rawBal);
+            let amNum = parseSpanishFloat(rawAm);
+
+            // 💡 SI EL CHECK ESTÁ ACTIVO, INVERTIMOS EL SIGNO
+            if (invertAmount) {
+                amNum = amNum * -1;
+            }
+
+            const parts = rawDate.split('/');
+            const currentDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+
+            if (!isNaN(currentDate.getTime())) {
+                if (!minDateObj || currentDate < minDateObj) {
+                    minDateObj = currentDate;
+                    
+                    // Cálculo de integridad: Saldo previo = Saldo actual - Importe
+                    const res = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
+                    balanceToCompare = res;
+                }
+            }
+        });
+
+        setCsvCheckBalance(balanceToCompare);
+        setStep('preview');
+    };
 
     const executeImport = async () => {
         const toastId = toast.loading("Sincronizando con la base de datos...");
@@ -184,6 +171,7 @@ const preparePreview = () => {
         formData.append('file', file!);
         formData.append('accountId', selectedAccountId);
         formData.append('importMode', importMode);
+        formData.append('invertAmount', String(invertAmount));
 
         const result = await importCsvTransactionsAction(formData, { name: file!.name, delimiter, mapping } as any);
         if (result.success) {
@@ -251,6 +239,21 @@ const preparePreview = () => {
                                             </Select>
                                         </div>
                                     ))}
+                                </div>
+                                {/* 💡 NUEVA SECCIÓN: AJUSTES DE TARJETA */}
+                                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 space-y-2 mt-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <p className="text-[10px] font-black text-amber-600 uppercase tracking-tight">Invertir signo</p>
+                                            <p className="text-[9px] text-amber-700/60 leading-tight">Activa si los gastos salen en positivo</p>
+                                        </div>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={invertAmount} 
+                                            onChange={(e) => setInvertAmount(e.target.checked)}
+                                            className="w-4 h-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                                        />
+                                    </div>
                                 </div>
                                 <Button className="w-full h-12 bg-slate-900 text-white font-bold mt-4" onClick={preparePreview}>
                                     Continuar a Revisión <ArrowRight className="ml-2 w-4 h-4" />
