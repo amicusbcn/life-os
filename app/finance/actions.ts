@@ -26,38 +26,33 @@ export interface ImportResult extends ActionResult {
  * @returns Un objeto con el resultado de la operación.
  */
 export async function createAccount(
-  _prevState: CreateAccountResult, // DEBE ACEPTAR EL ESTADO ANTERIOR
+  _prevState: CreateAccountResult,
   formData: FormData
 ): Promise<CreateAccountResult> {
-  const supabase = await createClient(); // Usando TU createClient()
+  const supabase = await createClient();
   const { revalidatePath } = await import('next/cache');
-  // 1. Obtener datos del usuario
+  
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Usuario no autenticado.' };
 
-  if (!user) {
-    return { success: false, error: 'Acceso denegado. Usuario no autenticado.' };
-  }
-
-  // 2. Extraer datos del FormData (usando las claves de los inputs del formulario)
+  // 1. Extraer todos los campos del FormData
   const name = formData.get('name') as string;
   const accountType = formData.get('account_type') as FinanceAccountType;
-  const currency = formData.get('currency') as string;
   const initialBalanceStr = formData.get('initial_balance') as string;
+  const colorTheme = formData.get('color_theme') as string;
+  const accountNumber = formData.get('account_number') as string;
+  // Si no viene moneda del form, usamos EUR por defecto
+  const currency = (formData.get('currency') as string) || 'EUR';
 
-  // 3. Validaciones y Conversión
-  if (!name || !accountType || !currency || !initialBalanceStr) {
-    return { success: false, error: 'Faltan campos obligatorios: Nombre, Tipo, Moneda y Saldo Inicial.' };
+  // 2. Validaciones básicas
+  if (!name || !accountType || !initialBalanceStr) {
+    return { success: false, error: 'Nombre, Tipo y Saldo son obligatorios.' };
   }
   
-  let initialBalance: number;
-  try {
-    initialBalance = parseFloat(initialBalanceStr.replace(',', '.')); 
-    if (isNaN(initialBalance)) throw new Error('Saldo inicial no es un número válido.');
-  } catch (e) {
-    return { success: false, error: 'El Saldo Inicial debe ser un valor numérico.' };
-  }
+  const initialBalance = parseFloat(initialBalanceStr.replace(',', '.'));
+  if (isNaN(initialBalance)) return { success: false, error: 'Saldo inicial no válido.' };
 
-  // 5. Inserción en Supabase
+  // 3. Inserción (Incluimos los nuevos campos)
   try {
     const { data, error } = await supabase
       .from('finance_accounts')
@@ -65,34 +60,72 @@ export async function createAccount(
         user_id: user.id,
         name: name.trim(),
         account_type: accountType,
-        currency: currency.trim().toUpperCase(),
+        currency: currency.toUpperCase(),
         initial_balance: initialBalance,
+        color_theme: colorTheme,
+        account_number: accountNumber?.trim(),
+        avatar_letter: name.trim().charAt(0).toUpperCase(), // Por defecto la inicial
         is_active: true,
       })
       .select('id')
       .single();
 
-    if (error) {
-      console.error('Supabase error creating account:', error);
-      return { success: false, error: `Error de base de datos: ${error.message}` };
-    }
+    if (error) throw error;
     
-    revalidatePath('/finance'); // Refrescamos la ruta para ver los cambios
+    revalidatePath('/finance');
     return { success: true, data: { id: data.id } };
-
-  } catch (e) {
-    console.error('Unexpected error in createAccount:', e);
-    return { success: false, error: 'Ocurrió un error inesperado al procesar la solicitud.' };
+  } catch (e: any) {
+    console.error('Error creating account:', e);
+    return { success: false, error: e.message };
   }
 }
 
+export async function updateAccount(_prevState: ActionResult, formData: FormData): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { revalidatePath } = await import('next/cache');
 
-// ==========================================
-// 2. DELETE ACCOUNT (Añadida)
-// ==========================================
-export async function deleteAccount(accountId: string): Promise<CreateAccountResult> {
-    const supabase = await createClient(); // Usando TU createClient()
-    
+  // 1. Extraer datos
+  const id = formData.get('id') as string;
+  const name = formData.get('name') as string;
+  const initialBalanceRaw = formData.get('initial_balance');
+  // 2. Solo hacemos el parse si el valor existe, si no, usamos el valor actual o 0
+  const initialBalance = initialBalanceRaw 
+    ? parseFloat(initialBalanceRaw.toString().replace(',', '.')) 
+    : undefined; // O puedes poner el valor que ya tenía la cuenta
+  const accountType = formData.get('account_type') as any;
+  const colorTheme = formData.get('color_theme') as string;
+  const accountNumber = formData.get('account_number') as string;
+  const avatarLetter = formData.get('avatar_letter') as string;
+  // El checkbox de is_active suele venir como "true" (string)
+  const isActive = formData.get('is_active') === 'true';
+
+  try {
+    const { error } = await supabase
+      .from('finance_accounts')
+      .update({
+        name: name.trim(),
+        initial_balance: initialBalance,
+        account_type: accountType,
+        color_theme: colorTheme,
+        account_number: accountNumber?.trim(),
+        avatar_letter: avatarLetter?.trim().charAt(0).toUpperCase(),
+        is_active: isActive
+      })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    revalidatePath('/finance');
+    return { success: true };
+  } catch (e: any) {
+    console.error('Error updating account:', e);
+    return { success: false, error: e.message };
+  }
+}
+
+// DELETE ACCOUNT (Se mantiene igual, es correcta)
+export async function deleteAccount(accountId: string): Promise<ActionResult> {
+    const supabase = await createClient();
     const { revalidatePath } = await import('next/cache');
     try {
         const { error } = await supabase
@@ -101,41 +134,11 @@ export async function deleteAccount(accountId: string): Promise<CreateAccountRes
             .eq('id', accountId);
 
         if (error) {
-            console.error('Supabase error deleting account:', error);
-            if (error.code === '23503') { // Foreign Key Constraint
-                return { success: false, error: 'No se puede eliminar la cuenta porque tiene transacciones asociadas. Vacíala primero.' };
+            if (error.code === '23503') {
+                return { success: false, error: 'No se puede eliminar: tiene transacciones asociadas.' };
             }
-            return { success: false, error: `Error de base de datos: ${error.message}` };
+            throw error;
         }
-
-        revalidatePath('/finance');
-        return { success: true };
-    } catch (e) {
-        console.error('Unexpected error in deleteAccount:', e);
-        return { success: false, error: 'Ocurrió un error inesperado.' };
-    }
-}
-
-export async function updateAccount(_prevState: ActionResult, formData: FormData): Promise<ActionResult> {
-    const supabase = await createClient();
-    const { revalidatePath } = await import('next/cache');
-
-    const id = formData.get('id') as string;
-    const name = formData.get('name') as string;
-    const initialBalance = parseFloat(formData.get('initial_balance') as string);
-    const accountType = formData.get('account_type') as any;
-
-    try {
-        const { error } = await supabase
-            .from('finance_accounts')
-            .update({
-                name: name.trim(),
-                initial_balance: initialBalance,
-                account_type: accountType
-            })
-            .eq('id', id);
-
-        if (error) throw error;
 
         revalidatePath('/finance');
         return { success: true };
@@ -1208,4 +1211,147 @@ export async function getInventoryItemsAction() {
     }
     
     return { success: true, data };
+}
+
+// --- ACCIONES DE VIAJES Y CONCILIACIÓN ---
+
+// 1. Obtener viajes activos (de la tabla travel_trips)
+export async function getActiveTripsAction() {
+    const supabase = await createClient();
+    // Quitamos filtros temporales para asegurar que ves algo
+    const { data, error } = await supabase
+        .from('travel_trips')
+        .select('id, name, start_date, end_date')
+        .order('start_date', { ascending: false });
+
+    if (error) {
+        console.error("Error Supabase:", error);
+        return { success: false, error: error.message };
+    }
+    return { success: true, data };
+}
+
+// NUEVA: Crear un viaje real desde el diálogo financiero
+export async function createFullTripAction(name: string, startDate: string) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Buscamos un empleador por defecto para que no falle el NOT NULL
+    const { data: employer } = await supabase.from('travel_employers').select('id').limit(1).single();
+    
+    if (!employer) return { success: false, error: "Crea primero un Empleador en la sección de Viajes" };
+
+    const { data, error } = await supabase
+        .from('travel_trips')
+        .insert({
+            name,
+            start_date: startDate,
+            end_date: startDate, // Por defecto el mismo día
+            employer_id: employer.id,
+            user_id: user?.id,
+            status: 'planned'
+        })
+        .select()
+        .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+}
+// 2. Obtener gastos de un viaje (de la tabla travel_expenses)
+// app/finance/actions.ts
+
+export async function getTripExpensesAction(tripId: string) {
+    const supabase = await createClient();
+    
+    // Traemos los gastos del viaje
+    // Nota: Asegúrate de que el campo es 'trip_id' o 'travel_trip_id' según tu esquema
+    const { data, error } = await supabase
+        .from('travel_expenses')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('date', { ascending: false });
+
+    if (error) {
+        console.error("Error cargando gastos:", error);
+        return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+}
+
+// app/finance/actions.ts
+
+export async function findSuggestedExpenseAction(amount: number, date: string) {
+    const supabase = await createClient();
+    const absAmount = Math.abs(amount);
+
+    const { data, error } = await supabase
+        .from('travel_expenses')
+        .select(`
+            *,
+            travel_trips (id, name)
+        `)
+        .eq('amount', absAmount)
+        .order('date', { ascending: false })
+        .limit(5); // Traemos los 5 más probables
+
+    if (error) return { success: false, error: error.message };
+    
+    // Si queremos ser estrictos con la fecha, filtramos en JS o lo añadimos a la query
+    return { success: true, data };
+}
+
+// 3. Vincular transacción bancaria con un gasto de viaje específico
+export async function linkTransactionToExpenseAction(txId: string, expenseId: string, tripId: string) {
+    const supabase = await createClient();
+    
+    const { error } = await supabase
+        .from('finance_transactions')
+        .update({ 
+            travel_expense_id: expenseId,
+            trip_id: tripId // 🚀 Guardamos el acceso directo al viaje
+        })
+        .eq('id', txId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+}
+
+// 4. Crear un gasto en el viaje directamente desde el banco (si no existe el ticket)
+export async function createExpenseFromBankAction(tripId: string, transaction: any) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Creamos el gasto en la tabla de viajes
+    const { data: expense, error: expError } = await supabase
+        .from('travel_expenses')
+        .insert({
+            trip_id: tripId,
+            user_id: user?.id,
+            description: transaction.notes || transaction.concept,
+            amount: Math.abs(transaction.amount),
+            date: transaction.date,
+            payment_method: 'card',
+            category: 'otros'
+        })
+        .select()
+        .single();
+
+    if (expError) return { success: false, error: expError.message };
+
+    // 🚀 Vinculamos la transacción bancaria con el GASTO y el VIAJE
+    return await linkTransactionToExpenseAction(transaction.id, expense.id, tripId);
+}
+
+// Vincular la transacción bancaria con el gasto de viaje
+export async function linkTxToExpenseAction(txId: string, expenseId: string) {
+    const supabase = await createClient();
+    
+    const { error } = await supabase
+        .from('finance_transactions')
+        .update({ travel_expense_id: expenseId })
+        .eq('id', txId);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
 }

@@ -1,51 +1,54 @@
-// /utils/LoadIcon.tsx (CORRECCIÓN HIDRATACIÓN)
+// /utils/LoadIcon.tsx
 'use client';
 
 import dynamic from 'next/dynamic';
-import { type LucideProps, Utensils } from 'lucide-react';
-import React, { ComponentType } from 'react';
+import { type LucideProps, HelpCircle } from 'lucide-react';
+import React, { ComponentType, useMemo } from 'react';
 
-// --- TIPOS ---
 interface LoadIconProps extends LucideProps {
     name: string;
 }
 
-// 1. Fallback estático (siempre debe ser renderizado igual en servidor y cliente)
-const StaticFallback: ComponentType<LucideProps> = (props) => (
-    <Utensils aria-label="Loading icon" {...props} />
+// 1. Fallback consistente: un div vacío con el tamaño del icono
+// Evitamos el "StaticFallback" de cubiertos para que no parpadee un tenedor antes de un banco.
+const IconPlaceholder = ({ size = 20, className }: LucideProps) => (
+    <div style={{ width: size, height: size }} className={className} />
 );
 
-// Función para obtener el componente Lucide
+// 2. Cache de componentes para evitar re-crear el componente dynamic en cada render
+const iconCache: Record<string, ComponentType<LucideProps>> = {};
+
 const getIconComponent = (iconName: string): ComponentType<LucideProps> => {
-    
-    // 🚨 El dynamic loader DEBE ser simple y DEBE usar ssr: false
+    if (iconCache[iconName]) return iconCache[iconName];
+
     const IconLoader = dynamic(
-        () => 
-            import('lucide-react').then(mod => {
-                const Icon = mod[iconName as keyof typeof mod];
-                
-                // Devuelve el componente encontrado o el FallbackIcon (que es un componente React)
-                return (Icon || StaticFallback) as ComponentType<LucideProps>;
-            }),
+        async () => {
+            try {
+                const mod = await import('lucide-react');
+                // @ts-ignore
+                const Icon = mod[iconName];
+                return Icon || HelpCircle;
+            } catch (e) {
+                return HelpCircle;
+            }
+        },
         { 
-            loading: () => <div className="h-8 w-8 animate-pulse bg-gray-200 rounded-full" />, // Placeholder visible
-            ssr: false, // 🚨 CRÍTICO: Forzar que la carga del SVG solo ocurra en el cliente
+            // 🚨 El secreto: el loading debe tener el mismo tamaño que el icono
+            loading: () => <IconPlaceholder />, 
+            ssr: false,
         }
     );
     
+    iconCache[iconName] = IconLoader;
     return IconLoader;
 };
 
+export default function LoadIcon({ name, size, ...props }: LoadIconProps) {
+    // Memorizamos la búsqueda del componente para que no parpadee al escribir en otros inputs
+    const IconComponent = useMemo(() => {
+        if (!name || name.trim() === '') return HelpCircle;
+        return getIconComponent(name);
+    }, [name]);
 
-export default function LoadIcon({ name, ...props }: LoadIconProps) {
-    
-    // Si no hay nombre, devolvemos el icono estático de fallback
-    if (!name || name.trim() === '') {
-        return <StaticFallback {...props} />;
-    }
-    
-    const IconComponent = getIconComponent(name);
-
-    // Renderizamos el componente dinámico
-    return <IconComponent {...props} />;
+    return <IconComponent size={size} {...props} />;
 }

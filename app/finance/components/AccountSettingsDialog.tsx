@@ -1,277 +1,264 @@
-// app/finance/components/AccountSettingsDialog.tsx
 'use client'
 
-import React, { useState, useEffect, useRef } from "react"
-import { useRouter } from 'next/navigation';
-import { useActionState } from 'react'; 
-import { useFormStatus } from 'react-dom';
-
-import { deleteAccount, createAccount, updateAccount, ActionResult, CreateAccountResult } from "@/app/finance/actions" 
-import { FinanceAccount, FinanceAccountType } from "@/types/finance" 
+import React, { useState, useMemo, useEffect } from "react"
+import { useRouter } from 'next/navigation'
+import { deleteAccount, createAccount, updateAccount, ActionResult } from "@/app/finance/actions" 
+import { FinanceAccount, FinanceAccountType, ACCOUNT_TYPES_META } from "@/types/finance" 
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogHeader, DialogTitle} from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { toast } from 'sonner'
+import { cn } from "@/lib/utils"
+import LoadIcon from "@/utils/LoadIcon"
+import { AccountAvatar } from "./AccountAvatar"
 
-import { Loader2, CreditCard, Wallet, Trash2, Plus, Pencil, Check, X } from "lucide-react"
-import { toast } from 'sonner';
+import { 
+    Trash2, Plus, Check, X, Pencil, EyeOff, Eye, Landmark, Loader2 
+} from "lucide-react"
 
-// --- Global/Shared Types ---
-interface CloneableElementProps {
-	onSelect?: (e: Event) => void;
-	onClick?: (e: React.MouseEvent) => void;
-}
-interface AccountSettingsDialogProps {
-	initialAccounts: FinanceAccount[];
-	children: React.ReactElement<CloneableElementProps>;
-}
-
-// Lista estática de Tipos de Cuenta
-const ACCOUNT_TYPES: { value: FinanceAccountType, label: string }[] = [
-	{ value: 'checking', label: 'Cuenta Corriente' },
-	{ value: 'savings', label: 'Cuenta de Ahorro' },
-	{ value: 'credit_card', label: 'Tarjeta de Crédito' },
-	{ value: 'loan', label: 'Préstamo / Deuda' },
-	{ value: 'investment', label: 'Inversión' },
-	{ value: 'cash', label: 'Efectivo' },
-];
-
-// --- SUB-COMPONENTE: FILA DE CUENTA (Lectura/Edición) ---
+// --- FILA DE CUENTA ---
 function AccountRow({ account }: { account: FinanceAccount }) {
-    const [isEditing, setIsEditing] = useState(false);
-    const [loading, setLoading] = useState(false);
-    const [tempName, setTempName] = useState(account.name);
-    const [tempBalance, setTempBalance] = useState(account.initial_balance.toString());
-    const router = useRouter();
+    const [isEditing, setIsEditing] = useState(false)
+    const [loading, setLoading] = useState(false)
+    const router = useRouter()
+
+    // Estados de edición
+    const [tempName, setTempName] = useState(account.name)
+    const [tempColor, setTempColor] = useState(account.color_theme || '#64748b')
+    const [tempLetter, setTempLetter] = useState(account.avatar_letter || account.name.charAt(0).toUpperCase())
+    const [tempNumber, setTempNumber] = useState(account.account_number || '')
+    const [tempActive, setTempActive] = useState(account.is_active)
+    const [tempType, setTempType] = useState<FinanceAccountType>(account.account_type)
+    
+    const isChanged = tempName !== account.name || 
+                      tempColor !== account.color_theme || 
+                      tempLetter !== account.avatar_letter || 
+                      tempNumber !== (account.account_number || '') ||
+                      tempActive !== account.is_active ||
+                      tempType !== account.account_type;
 
     const handleSave = async () => {
-        setLoading(true);
-        const formData = new FormData();
-        formData.append('id', account.id);
-        formData.append('name', tempName);
-        formData.append('initial_balance', tempBalance);
-        formData.append('account_type', account.account_type);
+        setLoading(true)
+        const formData = new FormData()
+        formData.append('id', account.id)
+        formData.append('name', tempName)
+        formData.append('color_theme', tempColor)
+        formData.append('avatar_letter', tempLetter)
+        formData.append('account_number', tempNumber)
+        formData.append('is_active', String(tempActive))
+        formData.append('account_type', tempType)
 
-        const res = await updateAccount({} as ActionResult, formData);
+        const res = await updateAccount({} as ActionResult, formData)
         if (res.success) {
-            toast.success('Cuenta actualizada');
-            setIsEditing(false);
-            router.refresh();
+            toast.success('Cuenta actualizada')
+            setIsEditing(false)
+            router.refresh()
         } else {
-            toast.error('Error al actualizar', { description: res.error });
+            toast.error('Error al guardar')
         }
-        setLoading(false);
-    };
-
-    const handleDelete = async () => {
-        if(!confirm(`¿Borrar la cuenta "${account.name}"?`)) return;
-        setLoading(true);
-        const res = await deleteAccount(account.id);
-        if (res.error) {
-            toast.error('Error al borrar', { description: res.error });
-        } else {
-            toast.success('Cuenta eliminada');
-            router.refresh();
-        }
-        setLoading(false);
-    }
-
-    const getAccountIcon = (type: FinanceAccountType) => {
-        switch(type) {
-            case 'credit_card': return <CreditCard className="h-4 w-4 text-indigo-600" />;
-            case 'investment': return <Loader2 className="h-4 w-4 text-green-600" />;
-            case 'loan': return <Wallet className="h-4 w-4 text-red-600" />; 
-            default: return <Wallet className="h-4 w-4 text-blue-600" />;
-        }
+        setLoading(false)
     }
 
     return (
-        <div className="flex items-center gap-3 p-2 rounded-lg border border-slate-100 bg-white shadow-sm group hover:border-indigo-100 transition-all min-h-[50px]">
-            {isEditing ? (
-                // --- VISTA EDICIÓN ---
-                <div className="flex-1 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
+        <div className={cn(
+            "group mb-2 p-2 rounded-xl border bg-white shadow-sm transition-all",
+            isEditing ? "ring-2 ring-indigo-500/20 border-indigo-200" : "border-slate-100"
+        )}>
+            <div className="flex items-center gap-2">
+                {/* Color Picker Rápido */}
+                <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg border shadow-xs">
+                    <input 
+                        type="color" 
+                        value={tempColor} 
+                        onChange={(e) => setTempColor(e.target.value)}
+                        className="absolute inset-0 scale-150 cursor-pointer"
+                    />
+                </div>
+
+                <AccountAvatar 
+                    account={{ name: tempName, color_theme: tempColor, avatar_letter: tempLetter }} 
+                    className="h-8 w-8 text-[11px]" 
+                />
+
+                <div className="flex-1 min-w-0">
                     <Input 
                         value={tempName} 
                         onChange={(e) => setTempName(e.target.value)}
-                        className="h-8 text-xs flex-1 bg-slate-50"
-                        autoFocus
+                        className="h-5 text-sm border-none focus-visible:ring-0 bg-transparent font-bold p-0 px-1"
                     />
-                    <Input 
-                        value={tempBalance} 
-                        onChange={(e) => setTempBalance(e.target.value)}
-                        className="h-8 text-xs w-20 text-right bg-slate-50 font-mono"
-                    />
-                    <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={handleSave} disabled={loading} className="h-8 w-8 text-green-600 hover:bg-green-50">
-                            {loading ? <Loader2 className="h-3 w-3 animate-spin"/> : <Check className="h-4 w-4" />}
+                    <p className="text-[9px] text-slate-400 px-1 font-mono truncate">
+                        {tempNumber || 'Sin número de cuenta'}
+                    </p>
+                </div>
+
+                <div className="flex gap-1">
+                    <Button 
+                        size="icon" variant="ghost" 
+                        onClick={() => setTempActive(!tempActive)}
+                        className={cn("h-8 w-8", !tempActive ? "text-amber-500 bg-amber-50" : "text-slate-300")}
+                    >
+                        {tempActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={() => setIsEditing(!isEditing)} className="h-8 w-8 text-slate-400">
+                        <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    {isChanged && (
+                        <Button size="icon" variant="ghost" onClick={handleSave} disabled={loading} className="h-8 w-8 text-emerald-600">
+                            {loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4" />}
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => setIsEditing(false)} disabled={loading} className="h-8 w-8 text-slate-400">
-                            <X className="h-4 w-4" />
-                        </Button>
+                    )}
+                </div>
+            </div>
+
+            {isEditing && (
+                <div className="mt-3 pt-3 border-t border-slate-50 space-y-4 animate-in slide-in-from-top-2">
+                    <div className="grid grid-cols-4 gap-2">
+                        {Object.entries(ACCOUNT_TYPES_META).map(([key, meta]) => (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setTempType(key as FinanceAccountType)}
+                                className={cn(
+                                    "flex flex-col items-center justify-center p-2 rounded-xl border transition-all gap-1",
+                                    tempType === key ? "bg-indigo-600 border-indigo-500 text-white shadow-md" : "bg-slate-50 border-transparent text-slate-400 hover:border-slate-200"
+                                )}
+                            >
+                                <LoadIcon name={meta.icon} className="h-3.5 w-3.5" />
+                                <span className="text-[7px] font-bold uppercase">{meta.label.split(' ')[0]}</span>
+                            </button>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase text-slate-400">Letra</label>
+                            <Input 
+                                value={tempLetter} 
+                                onChange={(e) => setTempLetter(e.target.value.charAt(0).toUpperCase())}
+                                className="h-8 text-center font-black bg-slate-50 border-none"
+                                maxLength={1}
+                            />
+                        </div>
+                        <div className="col-span-2 space-y-1">
+                            <label className="text-[9px] font-black uppercase text-slate-400">Nº Cuenta / IBAN</label>
+                            <Input 
+                                value={tempNumber} 
+                                onChange={(e) => setTempNumber(e.target.value)}
+                                className="h-8 text-[10px] bg-slate-50 border-none font-mono"
+                            />
+                        </div>
                     </div>
                 </div>
-            ) : (
-                // --- VISTA LECTURA ---
-                <>
-                    <div className="h-8 w-8 rounded-full bg-slate-50 flex items-center justify-center border border-slate-100 shadow-sm shrink-0">
-                        {getAccountIcon(account.account_type)}
-                    </div>
-                    <span className="flex-1 text-sm font-medium text-slate-700 truncate">{account.name}</span>
-                    
-                    <div className="text-right shrink-0 mr-2">
-                        <p className={`text-sm font-semibold ${account.initial_balance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                            {account.initial_balance.toFixed(2)} {account.currency}
-                        </p>
-                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">
-                            {ACCOUNT_TYPES.find(t => t.value === account.account_type)?.label}
-                        </p>
-                    </div>
-                    
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                        <Button size="icon" variant="ghost" onClick={() => setIsEditing(true)} className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50">
-                            <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={handleDelete} disabled={loading} className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50">
-                            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Trash2 className="h-3.5 w-3.5" />}
-                        </Button>
-                    </div>
-                </>
             )}
         </div>
     )
 }
 
-// --- SUB-COMPONENTE: FORMULARIO DE CREACIÓN (NewAccountCreator) ---
-function NewAccountCreator() {
-    
-	const initialState: CreateAccountResult = {};
-	const [state, formAction] = useActionState(createAccount, initialState);
-    
-	const { pending } = useFormStatus();
-	const router = useRouter(); // Necesario para la recarga
-	const formRef = useRef<HTMLFormElement>(null);
+// --- FORMULARIO NUEVA CUENTA ---
+function NewAccountForm({ onSuccess }: { onSuccess: () => void }) {
+    const [pending, setPending] = useState(false)
+    const [type, setType] = useState<FinanceAccountType>('checking')
 
-	const [selectedType, setSelectedType] = useState<FinanceAccountType>('checking');
-	const [selectedCurrency, setSelectedCurrency] = useState<string>('EUR'); 
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault()
+        setPending(true)
+        const fd = new FormData(e.currentTarget)
+        fd.append('account_type', type)
+        const res = await createAccount({} as any, fd)
+        if (res.success) {
+            toast.success("Cuenta creada")
+            onSuccess()
+        }
+        setPending(false)
+    }
 
-	useEffect(() => {
-		if (state.success === true) {
-			toast.success('¡Cuenta creada con éxito!');
-			formRef.current?.reset();
-			router.refresh(); // <-- FORZAR RECARGA
-		} else if (state.success === false && state.error) {
-			toast.error('Error al crear cuenta', { description: state.error })
-		}
-	}, [state, router]);
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-4 gap-2">
+                <Input name="name" placeholder="Nombre (Ej: Santander)" required className="col-span-3 h-10 bg-slate-50 border-none font-bold" />
+                <Input name="color_theme" type="color" defaultValue="#6366f1" className="h-10 p-1 bg-slate-50 border-none" />
+            </div>
+            
+            <div className="grid grid-cols-4 gap-2">
+                {Object.entries(ACCOUNT_TYPES_META).map(([key, meta]) => (
+                    <button
+                        key={key}
+                        type="button"
+                        onClick={() => setType(key as FinanceAccountType)}
+                        className={cn(
+                            "flex flex-col items-center justify-center p-2 rounded-xl border transition-all h-14 gap-1",
+                            type === key ? "bg-indigo-600 border-indigo-500 text-white shadow-lg" : "bg-slate-50 border-transparent text-slate-400"
+                        )}
+                    >
+                        <LoadIcon name={meta.icon} className="h-4 w-4" />
+                        <span className="text-[7px] font-bold uppercase">{meta.label.split(' ')[0]}</span>
+                    </button>
+                ))}
+            </div>
 
-	return (
-		<form ref={formRef} action={formAction} className="flex flex-col gap-2">
-			<p className="text-xs font-semibold text-slate-400 uppercase ml-1">Nueva Cuenta</p>
-		    
-			<Input name="name" placeholder="Nombre de la cuenta (Ej: BBVA)" required className="bg-white h-10 flex-1" />
-		    
-			<div className="grid grid-cols-2 gap-2">
-				<div className="space-y-1">
-					<Select onValueChange={(value) => setSelectedType(value as FinanceAccountType)} defaultValue={selectedType} disabled={pending}>
-						<SelectTrigger className="h-10 bg-white">
-							<SelectValue placeholder="Tipo" />
-						</SelectTrigger>
-						<SelectContent>
-							{ACCOUNT_TYPES.map((type) => (
-								<SelectItem key={type.value} value={type.value}>
-									{type.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<input type="hidden" name="account_type" value={selectedType} /> 
-				</div>
-
-				<Input 
-					name="initial_balance" 
-					type="text"
-					placeholder="Saldo Inicial (0.00)" 
-					defaultValue="0.00"
-					required
-					disabled={pending}
-					className="h-10 bg-white"
-				/>
-			</div>
-		    
-			<div className="flex gap-2">
-				<Select onValueChange={setSelectedCurrency} defaultValue={selectedCurrency} disabled={pending}>
-					<SelectTrigger className="w-1/3 h-10 bg-white">
-						<SelectValue placeholder="Divisa" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="EUR">€ EUR</SelectItem>
-						<SelectItem value="USD">$ USD</SelectItem>
-					</SelectContent>
-				</Select>
-				<input type="hidden" name="currency" value={selectedCurrency} />
-
-				<Button type="submit" disabled={pending} className="bg-slate-900 h-10 flex-1">
-					{pending ? <Loader2 className="h-5 w-5 animate-spin"/> : <Plus className="h-5 w-5 mr-2"/>}
-					Añadir Cuenta
-				</Button>
-			</div>
-		</form>
-	);
+            <div className="flex gap-2">
+                <Input name="account_number" placeholder="IBAN..." className="flex-1 h-10 bg-slate-50 border-none font-mono text-xs" />
+                <Input name="initial_balance" placeholder="0.00" type="number" step="0.01" className="w-24 h-10 bg-slate-50 border-none text-right font-mono" />
+            </div>
+            
+            <Button type="submit" disabled={pending} className="w-full bg-indigo-600 h-11 uppercase font-black text-[10px] tracking-widest">
+                {pending ? "Registrando..." : "Añadir Cuenta"}
+            </Button>
+        </form>
+    )
 }
 
+// --- DIÁLOGO PRINCIPAL ---
+export function AccountSettingsDialog({ initialAccounts, children }: any) {
+    const [open, setOpen] = useState(false)
+    const [showNew, setShowNew] = useState(false)
 
-// --- COMPONENTE PRINCIPAL (Simplificado) ---
+    const trigger = React.useMemo(() => {
+        const child = React.Children.only(children) as React.ReactElement<any>;
+        return React.cloneElement(child, {
+            onClick: (e: React.MouseEvent<HTMLElement>) => {
+                e.stopPropagation();
+                if (child.props.onClick) child.props.onClick(e);
+                setOpen(true);
+            }
+        });
+    }, [children]);
 
-export function AccountSettingsDialog({ initialAccounts, children }: AccountSettingsDialogProps) {
-	const [open, setOpen] = useState(false)
-	// CORRECCIÓN CLAVE: Usamos la prop directamente.
-	const accounts = initialAccounts; 
-    
-	const childElement = children as React.ReactElement<CloneableElementProps>;
-	
-	// Lógica para el Trigger (Mismo patrón)
-	const newOnSelect = (e: Event) => {
-		e.preventDefault(); 
-		const originalOnSelect = (childElement.props as CloneableElementProps).onSelect;
-		if (typeof originalOnSelect === 'function') {
-			originalOnSelect(e);
-		}
-		setOpen(true); 
-	};
-	
-	const trigger = React.cloneElement(childElement, {
-		onSelect: newOnSelect,
-		onClick: (e: React.MouseEvent) => e.stopPropagation(), 
-	} as React.PropsWithChildren<CloneableElementProps>);
+    return (
+        <>
+            {trigger}
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="sm:max-w-[450px] h-[85vh] flex flex-col bg-slate-50 p-0 overflow-hidden border-none shadow-2xl">
+                    <DialogHeader className="p-6 pb-2 bg-white border-b">
+                        <DialogTitle className="flex items-center gap-2 uppercase tracking-tighter font-black text-slate-700">
+                            <Landmark className="h-5 w-5 text-indigo-500" /> Mis Cuentas
+                        </DialogTitle>
+                    </DialogHeader>
 
+                    <div className="flex-1 flex flex-col overflow-hidden p-4 pt-4">
+                        <Button 
+                            variant="outline" 
+                            className="w-full mb-4 border-dashed border-slate-300 bg-white hover:bg-slate-50 text-slate-500 gap-2 h-11 font-bold text-xs"
+                            onClick={() => setShowNew(!showNew)}
+                        >
+                            {showNew ? <X className="h-4 w-4"/> : <Plus className="h-4 w-4" />}
+                            {showNew ? "Cerrar" : "Añadir Cuenta"}
+                        </Button>
 
-	return (
-		<>
-			{trigger}
+                        {showNew && (
+                            <div className="mb-6 p-4 bg-white rounded-xl border border-indigo-100 shadow-md animate-in slide-in-from-top-2">
+                                <NewAccountForm onSuccess={() => setShowNew(false)} />
+                            </div>
+                        )}
 
-			<Dialog open={open} onOpenChange={setOpen}>
-				<DialogContent className="max-w-md h-[550px] flex flex-col rounded-xl p-0 overflow-hidden bg-white">
-					<DialogHeader className="p-4 pb-2 border-b border-slate-100">
-						<DialogTitle>Gestión de Cuentas</DialogTitle>
-					</DialogHeader>
-
-					{/* Contenido principal: Lista de Cuentas */}
-					<div className="flex-1 flex flex-col gap-0 overflow-hidden">
-						<div className="flex-1 overflow-y-auto p-4 space-y-2 relative">
-							{accounts.length === 0 && <p className="text-center text-sm text-slate-400 mt-10">Sin cuentas definidas</p>}
-							{accounts.map((acc) => (
-								<AccountRow key={acc.id} account={acc} />
-							))}
-						</div>
-					    
-						{/* Creador de Cuentas */}
-						<div className="p-3 border-t border-slate-100 bg-slate-50">
-							<NewAccountCreator />
-						</div>
-					</div>
-				</DialogContent>
-			</Dialog>
-		</>
-	)
+                        <div className="flex-1 overflow-y-auto pr-2 space-y-1 custom-scrollbar">
+                            {initialAccounts.map((acc: FinanceAccount) => (
+                                <AccountRow key={acc.id} account={acc} />
+                            ))}
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </>
+    )
 }

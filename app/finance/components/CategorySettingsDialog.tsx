@@ -1,3 +1,4 @@
+// apps/finance/components/CategorySettingsDialog.tsx
 'use client'
 
 import React, { useState, useMemo, useEffect } from "react"
@@ -22,6 +23,11 @@ import {
 import { cn } from "@/lib/utils"
 
 const QUICK_ICONS = ['Tag', 'ShoppingCart', 'Utensils', 'Car', 'Home', 'Zap', 'HeartPulse', 'Plane', 'Gift', 'Smartphone', 'Banknote', 'Pizza'];
+
+interface TriggerProps {
+    onClick?: React.MouseEventHandler<HTMLElement>;
+    onSelect?: (e: Event) => void;
+}
 
 // --- FILA DE CATEGORÍA ---
 function CategoryRow({ category, categories }: { category: any, categories: FinanceCategory[] }) {

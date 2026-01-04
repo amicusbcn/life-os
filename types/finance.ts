@@ -2,7 +2,24 @@
 import { Json, Profile } from './inventory'; // Importamos Json y Profile desde un tipo existente
 
 // Definición de Tipos ENUM usados en la BBDD
-export type FinanceAccountType = 'checking' | 'savings' | 'credit_card' | 'loan' | 'investment' | 'cash';
+export type FinanceAccountType = 
+  | 'checking' 
+  | 'savings' 
+  | 'credit_card' 
+  | 'loan' 
+  | 'investment' 
+  | 'cash' 
+  | 'virtual'; // Añadimos virtual para la "Caja de Viajes"
+
+export const ACCOUNT_TYPES_META: Record<FinanceAccountType, { label: string, icon: string }> = {
+    checking: { label: 'Cuenta Corriente', icon: 'Landmark' },
+    savings: { label: 'Cuenta de Ahorro', icon: 'PiggyBank' },
+    credit_card: { label: 'Tarjeta de Crédito', icon: 'CreditCard' },
+    loan: { label: 'Préstamo / Deuda', icon: 'ReceiptEuro' },
+    investment: { label: 'Inversión', icon: 'TrendingUp' },
+    cash: { label: 'Efectivo', icon: 'Banknote' },
+    virtual: { label: 'Cuenta Virtual / Puente', icon: 'Network' }
+};
 
 export interface FinanceDashboardData {
     accounts: FinanceAccount[];
@@ -22,6 +39,7 @@ export interface FinanceAccount {
   user_id: string;
   account_number?: string;
   current_balance: number;
+  avatar_letter?:string;
   balance_updated_at?: string; 
   color_theme?: string;
   icon_name?: string;
@@ -100,7 +118,7 @@ export interface FinanceTransaction {
   bank_balance?: number | null;           // El saldo que venía en el CSV
   transfer_id?: string | null; // Para vincular Transferencias
   inventory_item_id?: string | null;      // Link al módulo de Inventario
-  
+  trip_id?:string |null;
   category?: FinanceCategory;
   account?: FinanceAccount;
   splits?: FinanceTransactionSplit[]; 
