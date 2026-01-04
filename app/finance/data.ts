@@ -72,8 +72,7 @@ export async function getFinanceDashboardData(): Promise<FinanceDashboardData> {
                     category:finance_categories(*)
                 )
             `) // 👈 Añadido el join con splits y su categoría
-            .order('date', { ascending: false })
-            .limit(500),
+            .order('date', { ascending: false }),
         supabase.from('finance_rules').select('*')
     ]);
 
