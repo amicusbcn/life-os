@@ -48,7 +48,7 @@ export async function getReportCandidates(employerId: string): Promise<ReportCan
   const trips = rawTrips || []
   const today = new Date().toISOString().split('T')[0]
   const ready = trips.filter(t => t.status === 'closed')
-  const warnings = trips.filter(t => t.status !== 'closed' && t.end_date < today)
+  const warnings = trips.filter(t => t.status !== 'closed' && t.end_date && t.end_date < today);
 
   return { ready, warnings }
 }

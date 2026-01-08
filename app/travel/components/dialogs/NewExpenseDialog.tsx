@@ -152,31 +152,66 @@ export function NewExpenseDialog({
                             <Input name="concept" className="h-11" placeholder="Taxi, Cena..." required />
                         </div>
                     </div>
+					{isMileage ? (
+						/* MODO KILOMETRAJE: Recuperamos Plantillas + Km + Total */
+						<div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
+							{/* SELECTOR DE PLANTILLAS (TRAYECTOS) */}
+							<div className="grid gap-2">
+								<Label className="text-[10px] font-bold flex items-center gap-2 text-slate-500 uppercase">
+									<Gauge className="h-3 w-3" /> Trayecto Fijo
+								</Label>
+								<Select 
+									onValueChange={handleTemplateChange} 
+									value={selectedTemplateId || 'manual'}
+								>
+									<SelectTrigger className="bg-white h-10 font-medium">
+										<SelectValue placeholder="Selecciona un recorrido..." />
+									</SelectTrigger>
+									<SelectContent>
+										{templates?.map((t) => (
+											<SelectItem key={t.id} value={t.id}>
+												{t.name} ({t.distance} km)
+											</SelectItem>
+										))}
+										<SelectItem value="manual">✏️ Introducción manual</SelectItem>
+									</SelectContent>
+								</Select>
+							</div>
 
-                    {isMileage ? (
-					/* MODO KILOMETRAJE: Solo Km y Total */
-					<div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-						<div className="grid grid-cols-2 gap-4">
-						<div className="grid gap-2">
-							<Label className="text-[10px] uppercase font-bold text-slate-500">Km</Label>
-							<Input 
-							type="number" 
-							name="mileage_distance" 
-							value={distance} 
-							onChange={handleDistanceChange} 
-							className="h-10 text-lg font-bold"
-							/>
+							{/* CÁLCULO DE DISTANCIA */}
+							<div className="grid grid-cols-2 gap-4">
+								<div className="grid gap-2">
+									<Label className="text-[10px] uppercase font-bold text-slate-500">Km</Label>
+									<Input 
+										type="number" 
+										step="0.1"
+										name="mileage_distance" 
+										value={distance} 
+										onChange={handleDistanceChange} 
+										readOnly={!!selectedTemplateId && selectedTemplateId !== 'manual'}
+										className={`h-10 text-lg font-bold ${selectedTemplateId && selectedTemplateId !== 'manual' ? "bg-slate-100" : "bg-white"}`}
+									/>
+								</div>
+								<div className="grid gap-2">
+									<Label className="text-[10px] uppercase font-bold text-slate-500">Total (€)</Label>
+									<Input 
+										value={amount} 
+										readOnly 
+										className="h-10 bg-emerald-50 border-emerald-200 font-bold text-emerald-700" 
+										name="amount" 
+									/>
+								</div>
+							</div>
+
+							{/* Datos ocultos para la Action */}
+							<input type="hidden" name="mileage_rate_snapshot" value={currentRate} />
+							{/* Forzamos que la action sepa que es una plantilla si no es manual */}
+							<input type="hidden" name="template_id" value={selectedTemplateId || ''} />
+
+							<p className="text-[10px] text-emerald-600 font-medium flex items-center gap-1 justify-center bg-white py-1.5 rounded-md border border-emerald-100 shadow-sm">
+								<CheckCircle2 className="h-3 w-3" /> Auto-sincronizado con Cuenta Viajes
+							</p>
 						</div>
-						<div className="grid gap-2">
-							<Label className="text-[10px] uppercase font-bold text-slate-500">Total (€)</Label>
-							<Input value={amount} readOnly className="h-10 bg-emerald-50 border-emerald-200 font-bold text-emerald-700" name="amount" />
-						</div>
-						</div>
-						<input type="hidden" name="mileage_rate_snapshot" value={currentRate} />
-						<p className="text-[10px] text-emerald-600 font-medium flex items-center gap-1 justify-center bg-white py-1 rounded-md border border-emerald-100">
-						<CheckCircle2 className="h-3 w-3" /> Se registrará en la Cuenta de Viajes
-						</p>
-					</div>
 					) : (
 					/* GASTO NORMAL: Importe, Foto y Switch de Sincronización */
 					<div className="space-y-4">

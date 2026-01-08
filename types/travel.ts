@@ -106,6 +106,23 @@ export interface TripWithTotals extends TravelTrip {
   } | null;
 }
 
+export interface TravelReport {
+  id: string;
+  user_id: string;
+  created_at: string;
+  report_number: string;
+  total_amount: number;
+  // Añadimos 'draft' a la unión de estados
+  status: 'draft' | 'pending' | 'approved' | 'paid'; 
+  notes?: string | null;
+  // Añadimos las 3 URLs que usa tu lógica de generación de PDFs
+  url_summary?: string | null;
+  url_detail?: string | null;
+  url_receipts?: string | null;
+  // Mantengo pdf_url por si lo usas en algún otro sitio
+  pdf_url?: string | null; 
+}
+
 export interface TravelReportWithDetails {
   id: string;
   created_at: string;
