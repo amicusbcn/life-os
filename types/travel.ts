@@ -1,7 +1,7 @@
 // types/travel.ts
 
 export type TravelContext = 'work' | 'personal';
-export type TripDbStatus = 'planned' | 'ongoing' | 'completed' | 'cancelled'| 'open' | 'closed';
+export type TripDbStatus = 'planned' | 'active' | 'completed' | 'cancelled'| 'open' | 'closed'| 'reported';
 
 // --- ENTIDADES BASE (Reflejo fiel de la BBDD) ---
 

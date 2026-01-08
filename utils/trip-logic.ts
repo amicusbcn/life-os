@@ -1,8 +1,8 @@
 // app/utils/trip-logic.ts
-import { TravelTrip, TripVisualStatus } from '@/types/travel';
+import { TravelTrip, TripDbStatus } from '@/types/travel';
 
 export interface TripStateResult {
-  visualStatus: TripVisualStatus;
+  visualStatus: TripDbStatus;
   label: string;
   color: string; // Tailwind classes
   actions: {
@@ -55,9 +55,10 @@ export function getTripState(trip: TravelTrip): TripStateResult {
       actions: baseActions
     };
   }
-
+  const startDate = trip.start_date || '';
+  const endDate = trip.end_date || '';
   // B. Pasado
-  if (trip.end_date < today) {
+  if (endDate < today) {
     return {
       visualStatus: 'completed',
       label: '🛬 Realizado',
