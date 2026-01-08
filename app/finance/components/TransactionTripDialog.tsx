@@ -166,6 +166,7 @@ export function TransactionTripDialog({ transaction, onClose }: { transaction: F
                                     className="w-full p-4 rounded-xl bg-emerald-500/10 border-2 border-emerald-500/40 hover:bg-emerald-500/20 transition-all text-left flex justify-between items-center"
                                 >
                                     <div className="min-w-0">
+                                        <p className="text-sm font-black text-white truncate">{exp.date}</p>
                                         <p className="text-sm font-black text-white truncate">{exp.description}</p>
                                         <p className="text-[10px] text-emerald-400 font-bold uppercase">{exp.travel_trips?.name || 'Viaje'}</p>
                                     </div>

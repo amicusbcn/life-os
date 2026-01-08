@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { Upload, Loader2, Plus } from 'lucide-react'
-import { uploadExpenseReceipt } from '../actions'
+import { uploadExpenseReceipt } from '../../actions'
 
 export function QuickReceiptUpload({ expenseId, tripId }: { expenseId: string, tripId: string }) {
   const [isUploading, setIsUploading] = useState(false)

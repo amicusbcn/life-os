@@ -2,8 +2,8 @@
 
 import { getMileageTemplates } from '@/app/travel/data'; 
 import { TravelMileageTemplate } from '@/types/travel';
-import { CreateMileageTemplateForm } from './CreateMileageTemplateForm'; 
-import { MileageTemplatesList } from './MileageTemplatesList';
+import { CreateMileageTemplateForm } from '../../components/ui/CreateMileageTemplateForm'; 
+import { MileageTemplatesList } from '../../components/ui/MileageTemplatesList';
 import Link from 'next/link'; // <-- ¡Importar Link!
 import { Button } from '@/components/ui/button'; // <-- ¡Importar Button!
 import { ArrowLeft } from 'lucide-react'; // <-- ¡Importar ArrowLeft!

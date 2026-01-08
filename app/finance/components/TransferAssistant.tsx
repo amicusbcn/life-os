@@ -12,6 +12,7 @@ import {
 import { FinanceTransaction, FinanceAccount } from '@/types/finance';
 import { ArrowRightLeft, Landmark, Search, PlusCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 export function TransferAssistant({ 
     transaction, 
@@ -109,37 +110,60 @@ export function TransferAssistant({
                     <section className="space-y-3">
                         <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500 tracking-widest">
                             <PlusCircle className="h-3 w-3" />
-                            Generar movimiento espejo en...
+                            Seleccionar cuenta de destino
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+                        <div className="grid grid-cols-1 gap-2 max-h-[250px] overflow-y-auto pr-1 custom-scrollbar">
                             {accounts
-                                .filter(a => a.id !== transaction.account_id) // No mostrar la cuenta actual
-                                .sort((a, b) => a.name.localeCompare(b.name)) // Ordenar alfabéticamente
-                                .map(acc => (
-                                    <Button 
-                                        key={acc.id} 
-                                        variant="ghost" 
-                                        onClick={() => handleLinkToAccount(acc.id)}
-                                        className="h-auto py-3 px-3 justify-start bg-slate-800/30 hover:bg-indigo-900/40 text-left border border-transparent hover:border-indigo-500/50 transition-all group"
-                                    >
-                                        <div className="flex flex-col gap-1 w-full">
-                                            <div className="flex items-center">
-                                                <Landmark className="h-3 w-3 mr-2 text-indigo-400 shrink-0 group-hover:text-indigo-300" />
-                                                <span className="text-[11px] font-bold leading-tight truncate">{acc.name}</span>
+                                .filter(a => a.id !== transaction.account_id)
+                                .sort((a, b) => a.name.localeCompare(b.name))
+                                .map(acc => {
+                                    // Verificamos la configuración de la cuenta
+                                    const isAutoMirror = acc.auto_mirror_transfers;
+
+                                    return (
+                                        <Button 
+                                            key={acc.id} 
+                                            variant="ghost" 
+                                            onClick={() => handleLinkToAccount(acc.id)}
+                                            className={cn(
+                                                "h-auto py-3 px-4 justify-between text-left border transition-all group",
+                                                isAutoMirror 
+                                                    ? "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20 hover:border-emerald-500/50" 
+                                                    : "bg-slate-800/30 border-slate-700 hover:border-indigo-500/50 hover:bg-indigo-900/40"
+                                            )}
+                                        >
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center">
+                                                    <Landmark className={cn(
+                                                        "h-3.5 w-3.5 mr-2 shrink-0",
+                                                        isAutoMirror ? "text-emerald-400" : "text-indigo-400"
+                                                    )} />
+                                                    <span className="text-[12px] font-bold leading-tight">{acc.name}</span>
+                                                </div>
+                                                <span className="text-[8px] uppercase text-slate-500 font-black tracking-tighter">
+                                                    {acc.account_type}
+                                                </span>
                                             </div>
-                                            {/* Pequeño indicador del tipo de cuenta para ayudarte */}
-                                            <span className="text-[8px] uppercase text-slate-500 ml-5 font-black tracking-tighter">
-                                                {acc.account_type === 'credit_card' ? 'Tarjeta' : 'Cuenta'}
-                                            </span>
-                                        </div>
-                                    </Button>
-                                ))
+
+                                            <div className="text-right">
+                                                {isAutoMirror ? (
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-tighter">Auto-Espejo</span>
+                                                        <span className="text-[7px] text-emerald-500/70">Crea ingreso hoy</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Solo Categorizar</span>
+                                                        <span className="text-[7px] text-slate-500">Espera importación</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </Button>
+                                    );
+                                })
                             }
                         </div>
-                        <p className="text-[9px] text-slate-500 italic mt-2 leading-tight">
-                            * Al elegir una cuenta, se creará un movimiento de **{-transaction.amount}€** para que el saldo de ambos lados cuadre perfectamente.
-                        </p>
                     </section>
                 </div>
             </DialogContent>

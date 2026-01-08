@@ -1,7 +1,7 @@
 // app/finance/components/ImporterDialog.tsx
 'use client';
 
-import React, { useState, PropsWithChildren } from 'react'; 
+import React, { useEffect,useState, PropsWithChildren } from 'react'; 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,7 @@ interface TriggerProps {
     onSelect?: (e: any) => void;
     onClick?: (e: React.MouseEvent) => void;
 }
-export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accounts: FinanceAccount[] }>) {
+export function ImporterDialog({ accounts,templates, children }: PropsWithChildren<{ accounts: FinanceAccount[], templates: any[] }>) {
     const [isOpen, setIsOpen] = useState(false);
     const [step, setStep] = useState<'upload' | 'mapping' | 'preview'>('upload');
     const [selectedAccountId, setSelectedAccountId] = useState('');
@@ -30,14 +30,44 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const [headers, setHeaders] = useState<string[]>([]);
     const [mapping, setMapping] = useState<Record<string, string>>({});
     const [importMode, setImportMode] = useState<'new' | 'historic'>('new');
+    const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+    const [newTemplateName, setNewTemplateName] = useState('');
     
     const [detectedCount, setDetectedCount] = useState(0);
     const [csvCheckBalance, setCsvCheckBalance] = useState<number | null>(null);
     const [invertAmount, setInvertAmount] = useState(false);
     const [isCreditCard, setIsCreditCard] = useState(false);
-    
+    const [templateId, setTemplateId] = useState<string | null>(null);
     const childElement = React.Children.only(children) as React.ReactElement<TriggerProps>;
-    
+    useEffect(() => {
+        const account = accounts.find(a => a.id === selectedAccountId);
+        if (account?.importer_id) { // Asumiendo que añadiste esta columna a finance_accounts
+            const template = templates.find(t => t.id === account.importer_id);
+            if (template) {
+                const s = template.settings;
+                setDelimiter(s.delimiter || ';');
+                setInvertAmount(s.invert_sign || false);
+                
+                // Mapeo automático desde el template
+                const newMap: Record<string, string> = {};
+                // Mapeamos los índices de columna a los nombres de headers si ya se cargó el archivo
+                if (headers.length > 0) {
+                   newMap['operation_date'] = headers[s.column_map.date] || 'none';
+                   newMap['concept'] = headers[s.column_map.concept] || 'none';
+                   
+                   if (s.has_two_columns) {
+                       // Lógica para dos columnas: podemos mapear 'amount' al cargo o crédito temporalmente
+                       // o ajustar tu lógica ALL_FIELDS para soportar esto.
+                       newMap['amount'] = headers[s.column_map.charge] || 'none'; 
+                   } else {
+                       newMap['amount'] = headers[s.column_map.amount] || 'none';
+                   }
+                }
+                setMapping(newMap);
+                setTemplateId(template.id);
+            }
+        }
+    }, [selectedAccountId, headers, accounts, templates]);
     const trigger = React.cloneElement(childElement, {
         onSelect: (e: any) => {
             // Algunos componentes de UI (como los de Shadcn) usan onSelect
@@ -115,46 +145,69 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     };
 
     const preparePreview = () => {
-        const dateIdx = headers.indexOf(mapping['operation_date']);
-        const balIdx = headers.indexOf(mapping['bank_balance']);
-        const amIdx = headers.indexOf(mapping['amount']);
+        // 1. Buscamos si la cuenta tiene un template asociado
+        const account = accounts.find(a => a.id === selectedAccountId);
+        const template = templates?.find(t => t.id === account?.importer_id);
+        const s = template?.settings;
 
-        if (dateIdx === -1 || amIdx === -1) {
-            toast.error("Debes mapear al menos Fecha e Importe");
+        // 2. Definimos los índices. Priorizamos los del template (que son numéricos directos)
+        // Si no hay template, usamos los que el usuario marcó manualmente en el diálogo
+        const dateIdx = s ? s.column_map.date : headers.indexOf(mapping['operation_date']);
+        const balIdx = headers.indexOf(mapping['bank_balance']); // El saldo suele ser manual siempre
+        
+        // IMPORTANTE: Si hay doble columna en template, ignoramos el amIdx manual
+        const amIdx = headers.indexOf(mapping['amount']);
+        const chargeIdx = s?.has_two_columns ? s.column_map.charge : -1;
+        const creditIdx = s?.has_two_columns ? s.column_map.credit : -1;
+
+        // Validación básica: necesitamos fecha y alguna forma de importe
+        const hasAmount = s?.has_two_columns ? (chargeIdx !== -1 || creditIdx !== -1) : amIdx !== -1;
+        if (dateIdx === -1 || !hasAmount) {
+            toast.error("Faltan columnas críticas (Fecha/Importe) según la plantilla");
             return;
         }
 
         let minDateObj: Date | null = null;
         let balanceToCompare: number | null = null;
 
+        const parseSpanishFloat = (str: string) => {
+            if (!str) return 0;
+            let n = str.trim();
+            const clean = n.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+            return parseFloat(clean) || 0;
+        };
+
         csvLines.forEach((columns) => {
             const rawDate = columns[dateIdx];
             const rawBal = columns[balIdx];
-            const rawAm = columns[amIdx];
             
-            const parseSpanishFloat = (str: string) => {
-                if (!str) return 0;
-                let n = str.trim();
-                const clean = n.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-                return parseFloat(clean) || 0;
-            };
+            // 3. LÓGICA DE IMPORTE SEGÚN TIPO DE PLANTILLA
+            let amNum = 0;
+            if (s?.has_two_columns) {
+                const charge = parseSpanishFloat(columns[chargeIdx]); // Gasto
+                const credit = parseSpanishFloat(columns[creditIdx]); // Ingreso/Abono
+                // En una tarjeta, el cargo resta y el abono suma.
+                amNum = credit - charge;
+            } else {
+                amNum = parseSpanishFloat(columns[amIdx]);
+            }
 
-            let balNum = parseSpanishFloat(rawBal);
-            let amNum = parseSpanishFloat(rawAm);
-
-            // 💡 SI EL CHECK ESTÁ ACTIVO, INVERTIMOS EL SIGNO
-            if (invertAmount) {
+            // 4. Inversión de signo (del template o manual del diálogo)
+            if (invertAmount || s?.invert_sign) {
                 amNum = amNum * -1;
             }
 
+            let balNum = parseSpanishFloat(rawBal);
+
+            // Procesamiento de fecha (formato DD/MM/YYYY)
+            if (!rawDate) return;
             const parts = rawDate.split('/');
             const currentDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
 
             if (!isNaN(currentDate.getTime())) {
                 if (!minDateObj || currentDate < minDateObj) {
                     minDateObj = currentDate;
-                    
-                    // Cálculo de integridad: Saldo previo = Saldo actual - Importe
+                    // Cálculo de integridad
                     const res = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
                     balanceToCompare = res;
                 }
@@ -172,6 +225,7 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
         formData.append('accountId', selectedAccountId);
         formData.append('importMode', importMode);
         formData.append('invertAmount', String(invertAmount));
+        formData.append('templateId', templateId || '');
 
         const result = await importCsvTransactionsAction(formData, { name: file!.name, delimiter, mapping } as any);
         if (result.success) {
@@ -222,10 +276,13 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
 
                         {step === 'mapping' && (
                             <div className="space-y-4">
+                                {/* ... (Cabecera de registros detectados sin cambios) ... */}
                                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex justify-between items-center">
                                     <span className="text-[10px] font-bold text-slate-500 uppercase">Detectados: {detectedCount} registros</span>
                                     <Button variant="link" className="h-auto p-0 text-[10px] text-indigo-600 font-bold" onClick={() => setStep('upload')}>Cambiar archivo</Button>
                                 </div>
+
+                                {/* ... (Mapeo de campos sin cambios) ... */}
                                 <div className="space-y-3">
                                     {ALL_FIELDS.map(f => (
                                         <div key={f.key} className="flex items-center gap-4">
@@ -240,9 +297,11 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
                                         </div>
                                     ))}
                                 </div>
-                                {/* 💡 NUEVA SECCIÓN: AJUSTES DE TARJETA */}
-                                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 space-y-2 mt-4">
-                                    <div className="flex items-center justify-between">
+
+                                {/* 💡 SECCIÓN MEJORADA: AJUSTES E INTELIGENCIA */}
+                                <div className="space-y-2 mt-4">
+                                    {/* Switch de Invertir Signo (Existente) */}
+                                    <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 flex items-center justify-between">
                                         <div className="space-y-0.5">
                                             <p className="text-[10px] font-black text-amber-600 uppercase tracking-tight">Invertir signo</p>
                                             <p className="text-[9px] text-amber-700/60 leading-tight">Activa si los gastos salen en positivo</p>
@@ -254,7 +313,38 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
                                             className="w-4 h-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
                                         />
                                     </div>
+
+                                    {/* ✨ CANELA FINA: GUARDAR COMO PLANTILLA */}
+                                    <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="space-y-0.5">
+                                                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-tight">Guardar como plantilla</p>
+                                                <p className="text-[9px] text-indigo-700/60 leading-tight">Aprender este mapeo para el futuro</p>
+                                            </div>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={saveAsTemplate} 
+                                                onChange={(e) => setSaveAsTemplate(e.target.checked)}
+                                                className="w-4 h-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                        </div>
+                                        
+                                        {saveAsTemplate && (
+                                            <div className="animate-in slide-in-from-top-1 duration-200">
+                                                <Input 
+                                                    placeholder="Nombre de la plantilla (ej: Mi Banco CSV)" 
+                                                    value={newTemplateName}
+                                                    onChange={(e) => setNewTemplateName(e.target.value)}
+                                                    className="h-9 text-xs bg-white border-indigo-200 focus:border-indigo-500"
+                                                />
+                                                <p className="text-[8px] text-indigo-400 mt-1 ml-1 uppercase font-bold">
+                                                    Se vinculará automáticamente a esta cuenta
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
+
                                 <Button className="w-full h-12 bg-slate-900 text-white font-bold mt-4" onClick={preparePreview}>
                                     Continuar a Revisión <ArrowRight className="ml-2 w-4 h-4" />
                                 </Button>

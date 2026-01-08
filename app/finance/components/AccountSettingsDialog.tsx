@@ -1,10 +1,12 @@
+// app/finance/components/AccountSettingsDialog.tsx
 'use client'
 
 import React, { useState, useMemo, useEffect } from "react"
 import { useRouter } from 'next/navigation'
 import { deleteAccount, createAccount, updateAccount, ActionResult } from "@/app/finance/actions" 
 import { FinanceAccount, FinanceAccountType, ACCOUNT_TYPES_META } from "@/types/finance" 
-
+import { Switch } from "@/components/ui/switch" 
+import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -12,13 +14,19 @@ import { toast } from 'sonner'
 import { cn } from "@/lib/utils"
 import LoadIcon from "@/utils/LoadIcon"
 import { AccountAvatar } from "./AccountAvatar"
-
+import { 
+    Select, 
+    SelectContent, 
+    SelectItem, 
+    SelectTrigger, 
+    SelectValue 
+} from "@/components/ui/select"
 import { 
     Trash2, Plus, Check, X, Pencil, EyeOff, Eye, Landmark, Loader2 
 } from "lucide-react"
 
 // --- FILA DE CUENTA ---
-function AccountRow({ account }: { account: FinanceAccount }) {
+function AccountRow({ account,templates }: { account: FinanceAccount,templates: any[] }) {
     const [isEditing, setIsEditing] = useState(false)
     const [loading, setLoading] = useState(false)
     const router = useRouter()
@@ -30,13 +38,30 @@ function AccountRow({ account }: { account: FinanceAccount }) {
     const [tempNumber, setTempNumber] = useState(account.account_number || '')
     const [tempActive, setTempActive] = useState(account.is_active)
     const [tempType, setTempType] = useState<FinanceAccountType>(account.account_type)
-    
+    const [tempAutoMirror, setTempAutoMirror] = useState(account.auto_mirror_transfers || false)
+    const [tempImporterId, setTempImporterId] = useState(account.importer_id || 'none')
+    const [tempInitialBalance, setTempInitialBalance] = useState(account.initial_balance || 0)
+
+    // Se dispara solo cuando cambias el tipo de cuenta en el selector
+    useEffect(() => {
+        // Tipos donde queremos que esté activo por defecto
+        const autoActiveTypes: FinanceAccountType[] = ['loan', 'investment'];
+        
+        if (autoActiveTypes.includes(tempType)) {
+            setTempAutoMirror(true);
+        } else {
+            setTempAutoMirror(false);
+        }
+    }, [tempType]);
     const isChanged = tempName !== account.name || 
                       tempColor !== account.color_theme || 
                       tempLetter !== account.avatar_letter || 
                       tempNumber !== (account.account_number || '') ||
                       tempActive !== account.is_active ||
-                      tempType !== account.account_type;
+                      tempType !== account.account_type ||
+                      tempAutoMirror !== (account.auto_mirror_transfers || false)|| 
+                      tempImporterId !== (account.importer_id || 'none')||
+                      Number(tempInitialBalance) !== Number(account.initial_balance);
 
     const handleSave = async () => {
         setLoading(true)
@@ -48,7 +73,9 @@ function AccountRow({ account }: { account: FinanceAccount }) {
         formData.append('account_number', tempNumber)
         formData.append('is_active', String(tempActive))
         formData.append('account_type', tempType)
-
+        formData.append('auto_mirror_transfers', String(tempAutoMirror))
+        formData.append('importer_id', tempImporterId === 'none' ? '' : tempImporterId)
+        formData.append('initial_balance', String(tempInitialBalance))
         const res = await updateAccount({} as ActionResult, formData)
         if (res.success) {
             toast.success('Cuenta actualizada')
@@ -148,6 +175,51 @@ function AccountRow({ account }: { account: FinanceAccount }) {
                             />
                         </div>
                     </div>
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                        <div className="space-y-0.5 pr-4">
+                            <Label className="text-[10px] font-bold uppercase text-slate-700">Movimiento Espejo</Label>
+                            <p className="text-[8px] text-slate-500 leading-tight">
+                                Genera automáticamente el ingreso de contrapartida al recibir una transferencia.
+                            </p>
+                        </div>
+                        <Switch 
+                            checked={tempAutoMirror} 
+                            onCheckedChange={setTempAutoMirror}
+                            className="scale-75 data-[state=checked]:bg-emerald-500"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        {/* ✨ CAMPO SALDO INICIAL REINTEGRADO */}
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase text-slate-400 italic">Saldo Inicial (Ancla)</label>
+                            <Input 
+                                type="number"
+                                step="0.01"
+                                value={tempInitialBalance} 
+                                onChange={(e) => setTempInitialBalance(Number(e.target.value))}
+                                className="h-8 text-[11px] bg-slate-50 border-none font-mono font-bold text-indigo-600"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase text-slate-400">Plantilla de Importación</label>
+                            <Select 
+                                value={tempImporterId || 'none'} 
+                                onValueChange={(val: string) => setTempImporterId(val)}
+                            >
+                                <SelectTrigger className="h-8 text-[11px] bg-slate-50 border-none">
+                                    <SelectValue placeholder="Sin plantilla asociada" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Ninguna (Manual)</SelectItem>
+                                    {templates.map((t: any) => (
+                                        <SelectItem key={t.id} value={t.id} className="text-xs">
+                                            {t.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
@@ -209,7 +281,15 @@ function NewAccountForm({ onSuccess }: { onSuccess: () => void }) {
 }
 
 // --- DIÁLOGO PRINCIPAL ---
-export function AccountSettingsDialog({ initialAccounts, children }: any) {
+export function AccountSettingsDialog({ 
+    initialAccounts, 
+    templates, // ✨ Asegúrate de que esto está aquí
+    children 
+}: { 
+    initialAccounts: FinanceAccount[], 
+    templates: any[], 
+    children: React.ReactNode 
+}) {
     const [open, setOpen] = useState(false)
     const [showNew, setShowNew] = useState(false)
 
@@ -251,9 +331,9 @@ export function AccountSettingsDialog({ initialAccounts, children }: any) {
                             </div>
                         )}
 
-                        <div className="flex-1 overflow-y-auto pr-2 space-y-1 custom-scrollbar">
+                        <div className="flex-1 overflow-y-auto space-y-1">
                             {initialAccounts.map((acc: FinanceAccount) => (
-                                <AccountRow key={acc.id} account={acc} />
+                                <AccountRow key={acc.id} account={acc} templates={templates} />
                             ))}
                         </div>
                     </div>

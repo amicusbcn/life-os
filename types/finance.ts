@@ -25,7 +25,9 @@ export interface FinanceDashboardData {
     accounts: FinanceAccount[];
     categories: FinanceCategory[];
     transactions: FinanceTransaction[];
-    rules: FinanceRule[]; // 👈 Añade esta línea
+    rules: FinanceRule[];
+    templates: any[]; // Plantillas de importación
+    history: any[];   // Log de importaciones
 }
 
 export interface FinanceAccount {
@@ -43,6 +45,8 @@ export interface FinanceAccount {
   balance_updated_at?: string; 
   color_theme?: string;
   icon_name?: string;
+  auto_mirror_transfers?:boolean|null;
+  importer_id?:string|null;
 }
 
 export interface FinanceCategory {

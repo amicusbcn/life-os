@@ -1,3 +1,4 @@
+// app/finance/components/FinanceMenu.tsx
 'use client'
 
 import React from 'react';
@@ -7,25 +8,51 @@ import { FileUp, FolderTree, CreditCard } from 'lucide-react';
 import { AccountSettingsDialog } from './AccountSettingsDialog';
 import { CategorySettingsDialog } from './CategorySettingsDialog';
 import { ImporterDialog } from './ImporterDialog';
-
-export function FinanceMenu({ accounts, categories, rules }: { accounts: FinanceAccount[], categories: FinanceCategory[], rules: FinanceRule[]}) {
-    // Definimos los items en un array para que React los gestione con Keys de forma nativa
+import { ImporterTemplatesDialog } from './ImporterTemplatesDialog';
+import { Settings2 } from 'lucide-react';
+interface FinanceMenuProps {
+    accounts: FinanceAccount[];
+    categories: FinanceCategory[];
+    rules: FinanceRule[];
+    templates: any[]; // ✨ Añadido
+    history: any[];   // ✨ Añadido
+}
+export function FinanceMenu({ 
+    accounts, 
+    categories, 
+    rules, 
+    templates, 
+    history 
+}: FinanceMenuProps) {    // Definimos los items en un array para que React los gestione con Keys de forma nativa
     const menuItems = [
         {
             id: 'importer',
             component: (
-                <ImporterDialog accounts={accounts}>
+                <ImporterDialog 
+                    accounts={accounts} 
+                    templates={templates} // ✨ Añade esta línea para cumplir el contrato
+                >
                     <DropdownMenuItem className="cursor-pointer" onSelect={(e) => e.preventDefault()}>
                         <FileUp className="mr-2 h-4 w-4" /> Importar CSV
                     </DropdownMenuItem>
                 </ImporterDialog>
             )
         },
+        {
+            id: 'templates',
+            component: (
+                <ImporterTemplatesDialog initialTemplates={templates} history={history}> 
+                    <DropdownMenuItem className="cursor-pointer" onSelect={(e) => e.preventDefault()}>
+                        <Settings2 className="mr-2 h-4 w-4" /> Plantillas de Importación
+                    </DropdownMenuItem>
+                </ImporterTemplatesDialog>
+            )
+        },
         { id: 'sep-1', component: <DropdownMenuSeparator /> },
         {
             id: 'accounts',
             component: (
-                <AccountSettingsDialog initialAccounts={accounts}>
+                <AccountSettingsDialog initialAccounts={accounts} templates={templates}>
                     <DropdownMenuItem className="cursor-pointer" onSelect={(e) => e.preventDefault()}>
                         <CreditCard className="mr-2 h-4 w-4" /> Gestionar Cuentas
                     </DropdownMenuItem>

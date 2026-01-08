@@ -215,91 +215,168 @@ export async function deleteTrip(tripId: string): Promise<ActionResponse> {
   }
 }
 // === GASTOS CON FOTO ===
+// 1. LA FUNCIÓN NÚCLEO (Privada, no se exporta)
+async function insertExpenseWithFinance(
+  supabase: any,
+  user_id: string,
+  data: {
+    trip_id: string;
+    category_id: string;
+    date: string;
+    concept: string;
+    amount: number;
+    context: string;
+    mileage_distance?: number;
+    mileage_rate_snapshot?: number;
+    receipt_url?: string;
+    account_id?: string; // Para el Doble Grabado manual
+    sync_finance: boolean;
+  }
+) {
+  // A. Insertar en Viajes
+  const { data: newExpense, error: expError } = await supabase
+    .from('travel_expenses')
+    .insert({
+      trip_id: data.trip_id,
+      category_id: data.category_id,
+      date: data.date,
+      concept: data.concept,
+      amount: data.amount,
+      mileage_distance: data.mileage_distance,
+      mileage_rate_snapshot: data.mileage_rate_snapshot,
+      receipt_url: data.receipt_url,
+      is_reimbursable: data.context === 'work',
+      user_id: user_id,
+      context: data.context
+    })
+    .select().single();
 
-export async function createExpense(formData: FormData): Promise<ActionResponse> {
-  const supabase = await createClient()
-  const trip_id = formData.get('trip_id') as string
+  if (expError) throw expError;
 
-  // Usamos el nuevo helper más estricto
-  if (!(await checkTripEditable(supabase, trip_id))) {
-    return { success: false, error: '⛔ Viaje cerrado o reportado. No se pueden añadir gastos.' }
+  // B. Si toca Finanzas (Doble Grabado)
+  if (data.sync_finance) {
+    const CUENTA_VIAJES_ID = '99f4b21c-9883-4bae-b0a8-19b7ae058f18';
+
+    const FIN_CAT_ID = data.context === 'work' 
+      ? 'ad17366f-06de-4f06-b88e-67aace8f4b21' 
+      : 'db5e8971-26b9-4d42-adf4-77fa30cd0dba';
+
+    const { error: finError } = await supabase
+      .from('finance_transactions')
+      .insert({
+        user_id,
+        account_id: CUENTA_VIAJES_ID,
+        category_id: FIN_CAT_ID,
+        date: data.date,
+        concept: `[VIAJE] ${data.concept}`,
+        amount: -data.amount,
+        travel_expense_id: newExpense.id,
+        trip_id: data.trip_id
+      });
+
+    if (finError) console.error("Error sincronizando finanzas:", finError);
   }
 
-  const category_id = formData.get('category_id') as string
-  const date = formData.get('date') as string
-  const concept = formData.get('concept') as string
-  const amountStr = formData.get('amount') as string
-  const distanceStr = formData.get('mileage_distance') as string
-  const rateStr = formData.get('mileage_rate_snapshot') as string
-  const is_reimbursable = formData.get('is_reimbursable') === 'on'
-  
+  return { success: true };
+}
+
+export async function createExpense(formData: FormData): Promise<ActionResponse> {
+  const supabase = await createClient();
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) return { success: false, error: 'No auth' };
+
+  const trip_id = formData.get('trip_id') as string;
+  const context = formData.get('context') as string || 'work';
+  const syncFinance = formData.get('addToFinance') === 'true';
+  const account_id = formData.get('account_id') as string;
+
+  if (!(await checkTripEditable(supabase, trip_id))) {
+    return { success: false, error: '⛔ Viaje cerrado.' };
+  }
+
   try {
-    const file = formData.get('receipt_file') as File
-    const receipt_url = await uploadFile(supabase, file, trip_id)
+    const file = formData.get('receipt_file') as File;
+    const receipt_url = await uploadFile(supabase, file, trip_id);
 
-    if (!trip_id || !category_id || !date || !concept) return { success: false, error: 'Faltan datos obligatorios.' }
+    await insertExpenseWithFinance(supabase, user.id, {
+      trip_id,
+      category_id: formData.get('category_id') as string,
+      date: formData.get('date') as string,
+      concept: formData.get('concept') as string,
+      amount: parseFloat(formData.get('amount') as string || '0'),
+      context,
+      receipt_url: receipt_url ?? undefined,
+      account_id,
+      sync_finance: syncFinance,
+      mileage_distance: formData.get('mileage_distance') ? parseFloat(formData.get('mileage_distance') as string) : undefined,
+      mileage_rate_snapshot: formData.get('mileage_rate_snapshot') ? parseFloat(formData.get('mileage_rate_snapshot') as string) : undefined,
+    });
 
-    const expenseData: any = {
-      trip_id, category_id, date, concept, is_reimbursable,
-      amount: parseFloat(amountStr || '0'),
-      receipt_url, 
-      user_id: (await supabase.auth.getUser()).data.user?.id
-    }
-
-    if (distanceStr) {
-      expenseData.mileage_distance = parseFloat(distanceStr)
-      expenseData.mileage_rate_snapshot = parseFloat(rateStr)
-    }
-
-    const { error } = await supabase.from('travel_expenses').insert(expenseData)
-    if (error) return { success: false, error: 'Error al guardar el gasto: ' + error.message }
-    
-    revalidatePath(`/travel/${trip_id}`)
-    return { success: true }
+    revalidatePath(`/travel/${context}/${trip_id}`);
+    revalidatePath('/finance');
+    return { success: true };
   } catch (e: any) {
-     return { success: false, error: e.message }
+    return { success: false, error: e.message };
   }
 }
 
 export async function updateExpense(formData: FormData): Promise<ActionResponse> {
   const supabase = await createClient()
   const trip_id = formData.get('trip_id') as string
+  const expense_id = formData.get('expense_id') as string
+  const context = formData.get('context') as string || 'work'
   
   if (!(await checkTripEditable(supabase, trip_id))) {
     return { success: false, error: '⛔ Viaje cerrado o reportado.' }
   }
 
-  const id = formData.get('expense_id') as string
-  
   try {
     const file = formData.get('receipt_file') as File
     const new_receipt_url = await uploadFile(supabase, file, trip_id)
 
+    const amount = parseFloat(formData.get('amount') as string || '0')
+    const concept = formData.get('concept') as string
+    const date = formData.get('date') as string
+
     const updateData: any = {
       category_id: formData.get('category_id'),
-      date: formData.get('date'),
-      concept: formData.get('concept'),
-      is_reimbursable: formData.get('is_reimbursable') === 'on',
-      amount: parseFloat(formData.get('amount') as string || '0')
+      date,
+      concept,
+      amount,
+      is_reimbursable: context === 'work' // Mantenemos coherencia con la creación
     }
 
-    if (new_receipt_url) {
-      updateData.receipt_url = new_receipt_url
-    }
+    if (new_receipt_url) updateData.receipt_url = new_receipt_url
 
     const distanceStr = formData.get('mileage_distance') as string
     if (distanceStr) {
       updateData.mileage_distance = parseFloat(distanceStr)
       updateData.mileage_rate_snapshot = parseFloat(formData.get('mileage_rate_snapshot') as string)
-    } else {
-      updateData.mileage_distance = null
-      updateData.mileage_rate_snapshot = null
     }
 
-    const { error } = await supabase.from('travel_expenses').update(updateData).eq('id', id)
-    if (error) return { success: false, error: 'Error al actualizar el gasto: ' + error.message }
-    
-    revalidatePath(`/travel/${trip_id}`)
+    // A. Actualizar en Travel
+    const { error: travelError } = await supabase
+      .from('travel_expenses')
+      .update(updateData)
+      .eq('id', expense_id)
+
+    if (travelError) throw travelError
+
+    // B. Sincronizar con Finanzas (si existe vinculación)
+    // Buscamos si hay una transacción en finanzas vinculada a este gasto
+    const { error: financeError } = await supabase
+      .from('finance_transactions')
+      .update({
+        amount: -amount, // Recordar signo negativo para gastos
+        concept: `[VIAJE] ${concept}`,
+        date: date
+      })
+      .eq('travel_expense_id', expense_id) // Filtro por el vínculo UUID
+
+    if (financeError) console.error("Aviso: No se pudo actualizar en Finanzas:", financeError)
+
+    revalidatePath(`/travel/${context}/${trip_id}`)
+    revalidatePath('/finance')
     return { success: true }
   } catch (e: any) {
     return { success: false, error: e.message }
@@ -309,14 +386,38 @@ export async function updateExpense(formData: FormData): Promise<ActionResponse>
 export async function deleteExpense(expenseId: string, tripId: string): Promise<ActionResponse> {
   const supabase = await createClient()
   
+  // 1. Verificamos si es editable
   if (!(await checkTripEditable(supabase, tripId))) {
-    return { success: false, error: '⛔ No se puede borrar: Viaje cerrado o reportado.' }
+    return { success: false, error: '⛔ No se puede borrar: Viaje cerrado.' }
   }
-  
-  const { error } = await supabase.from('travel_expenses').delete().eq('id', expenseId)
-  if (error) return { success: false, error: 'Error al borrar el gasto' }
-  revalidatePath(`/travel/${tripId}`)
-  return { success: true }
+
+  try {
+    // 2. Borrado en Finanzas (Doble Borrado)
+    // Lo hacemos primero por si hay restricciones de integridad, aunque tu esquema permite nulos
+    const { error: financeError } = await supabase
+      .from('finance_transactions')
+      .delete()
+      .eq('travel_expense_id', expenseId)
+
+    if (financeError) console.error("Error al borrar vinculación financiera:", financeError)
+
+    // 3. Borrado en Travel
+    const { error: travelError } = await supabase
+      .from('travel_expenses')
+      .delete()
+      .eq('id', expenseId)
+
+    if (travelError) throw travelError
+
+    // 4. Revalidar ambos mundos
+    // Nota: Como no tenemos el context aquí, revalidamos el path genérico o layout
+    revalidatePath('/travel', 'layout') 
+    revalidatePath('/finance')
+    
+    return { success: true }
+  } catch (e: any) {
+    return { success: false, error: 'Error al borrar: ' + e.message }
+  }
 }
 
 // === ACCIÓN RÁPIDA: SUBIR TICKET ===
@@ -431,30 +532,30 @@ export async function togglePersonalAccounting(expenseId: string, tripId: string
  */
 export async function createMileageTemplate(formData: FormData): Promise<ActionResponse> {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: 'No autenticado.' };
+
     const name = formData.get('name') as string;
     const distanceStr = formData.get('distance') as string;
 
-    if (!name || !distanceStr) {
-        return { success: false, error: 'Faltan nombre o distancia.' };
-    }
+    if (!name || !distanceStr) return { success: false, error: 'Faltan campos.' };
 
     const distance = parseFloat(distanceStr);
-    if (isNaN(distance) || distance <= 0) {
-        return { success: false, error: 'Distancia no válida.' };
+
+    try {
+        const { error } = await supabase.from('travel_mileage_templates').insert({
+            name: name,
+            distance: distance, // <-- Cambiado de default_distance a distance
+            user_id: user.id
+        });
+
+        if (error) throw error;
+
+        revalidatePath('/travel/[context]', 'layout');
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
     }
-
-    const { error } = await supabase.from('travel_mileage_templates').insert({
-        name,
-        distance,
-    });
-
-    if (error) {
-        console.error('Error al crear plantilla de kilometraje:', error);
-        return { success: false, error: 'Error al guardar la plantilla.' };
-    }
-
-    revalidatePath('/travel/settings/mileage'); 
-    return { success: true };
 }
 
 
@@ -463,70 +564,41 @@ export async function createMileageTemplate(formData: FormData): Promise<ActionR
  * ... (Esta función se mantiene igual, usando ActionResponse de types/common) ...
  * * NOTA: Por brevedad no repito el cuerpo de esta función, pero se mantiene el que definí antes.
  */
-export async function createExpenseFromTemplate(
-    templateId: string, 
-    tripId: string, 
-    date: string, 
-    concept?: string
-): Promise<ActionResponse> {
-    // ... (Cuerpo de la función) ...
-    const supabase = await createClient();
-    const user = (await supabase.auth.getUser()).data.user;
+// app/travel/actions.ts
 
-    if (!user) return { success: false, error: 'No autenticado.' };
-    
-    if (!(await checkTripEditable(supabase, tripId))) {
-        return { success: false, error: '⛔ Viaje cerrado o reportado. No se pueden añadir gastos.' };
-    }
-    
-    const { data: template, error: templateError } = await supabase
-        .from('travel_mileage_templates')
-        .select('name, distance')
-        .eq('id', templateId)
-        .eq('user_id', user.id)
-        .single();
-        
-    if (templateError || !template) {
-        return { success: false, error: 'Plantilla de kilometraje no encontrada.' };
-    }
-    
-    const { data: mileageCategory, error: catError } = await supabase
-        .from('travel_categories')
-        .select('id, current_rate')
-        .eq('is_mileage', true)
-        .limit(1)
-        .single();
-        
-    if (catError || !mileageCategory || !mileageCategory.current_rate) {
-        return { success: false, error: 'Configuración de tasa de kilometraje no encontrada. (Debe haber una categoría marcada como kilometraje con una tasa válida).' };
-    }
-    
-    const rate = mileageCategory.current_rate;
-    const distance = template.distance;
-    
-    const amount = distance * parseFloat(rate.toString());
+export async function createExpenseFromTemplate(templateId: string, tripId: string, date: string, concept?: string): Promise<ActionResponse> {
+  const supabase = await createClient();
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user || !user.id) return { success: false, error: 'No auth' };
 
-    const expenseData = {
-        tripId,
-        category_id: mileageCategory.id,
-        date,
-        concept: concept || `Recorrido: ${template.name}`,
-        amount, 
-        mileage_distance: distance,
-        mileage_rate_snapshot: rate, 
-        is_reimbursable: true,
-        user_id: user.id
-    };
-
-    const { error: expenseError } = await supabase.from('travel_expenses').insert(expenseData);
+  try {
+    // Lógica de cálculo (reutilizamos la que ya tenías)
+    const { data: template } = await supabase.from('travel_mileage_templates').select('*').eq('id', templateId).single();
+    const { data: cat } = await supabase.from('travel_categories').select('*').eq('is_mileage', true).single();
     
-    if (expenseError) {
-        console.error('Error al guardar el gasto desde plantilla:', expenseError);
-        return { success: false, error: 'Error al crear el gasto de kilometraje.' };
-    }
+    if (!template || !cat) throw new Error("Plantilla o categoría no encontrada");
 
-    revalidatePath(`/travel/${tripId}`);
+    const amount = template.distance * cat.current_rate;
+
+    // Llamamos al núcleo. Para kilometraje personal/trabajo SIEMPRE sync_finance = true
+    await insertExpenseWithFinance(supabase, user.id, {
+      trip_id: tripId,
+      category_id: cat.id,
+      date,
+      concept: concept || `Recorrido: ${template.name}`,
+      amount,
+      context: 'work', // Como dijiste: el kilometraje siempre es trabajo
+      sync_finance: true, // Siempre a la cuenta de viajes
+      mileage_distance: template.distance,
+      mileage_rate_snapshot: cat.current_rate,
+    });
+
+    revalidatePath(`/travel/work/${tripId}`);
+    revalidatePath('/finance');
     return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
 }
 
 /**

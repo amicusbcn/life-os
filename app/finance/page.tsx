@@ -2,14 +2,12 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server'; 
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
-import { UserMenuProps } from '@/types/common'; // Asegúrate de que este tipo exista
 
 // Componentes y datos Server-Side
 import { getFinanceDashboardData } from './data'; 
 import { FinanceDashboardView } from './components/FinanceDashboardView';
 import { FinanceMenu } from './components/FinanceMenu';
-import { FinanceAccount, FinanceCategory, FinanceTransaction } from '@/types/finance';
-import { Banknote } from 'lucide-react';
+
 
 export default async function FinancePage() {
     const supabase = await createClient();
@@ -29,13 +27,18 @@ export default async function FinancePage() {
         
     const userRole = profile?.role || 'user';
 
-    // 3. Obtener todos los datos del Dashboard
-    const { accounts, categories, transactions,rules } = await getFinanceDashboardData();
+    // 3. Obtener todos los datos del Dashboard (Ahora incluye templates e history)
+    const { 
+        accounts, 
+        categories, 
+        transactions, 
+        rules, 
+        templates, 
+        history 
+    } = await getFinanceDashboardData();
     
-    // 4. Calcular el Saldo Total Global (Simple suma de initial_balance)
-    
+    // 4. Calcular el Saldo Total Global
     const totalBalance = accounts.reduce((acc, account) => acc + (account.current_balance || 0), 0);
-
 
     // 5. Renderizar la UI
     return (
@@ -46,18 +49,19 @@ export default async function FinancePage() {
                 backHref="/"
                 userEmail={user.email || ''}
                 userRole={userRole}
-                maxWClass='max-w-7xl' // Usamos un ancho mayor para la tabla de transacciones
+                maxWClass='max-w-7xl'
                 moduleMenu={
                     <FinanceMenu 
                         accounts={accounts} 
                         categories={categories}
                         rules={rules}
+                        templates={templates} // ✨ Pasamos las plantillas
+                        history={history}     // ✨ Pasamos el histórico
                     />
                 } 
             />
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-                {/* 6. Delegamos el renderizado de la tabla al componente cliente */}
                 <FinanceDashboardView 
                     accounts={accounts}
                     categories={categories}

@@ -35,48 +35,60 @@ export async function createAccount(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Usuario no autenticado.' };
 
-  // 1. Extraer todos los campos del FormData
+  // Logs para depuración
+  console.log("--- Iniciando createAccount ---");
+  console.log("User ID:", user.id);
+
   const name = formData.get('name') as string;
   const accountType = formData.get('account_type') as FinanceAccountType;
   const initialBalanceStr = formData.get('initial_balance') as string;
   const colorTheme = formData.get('color_theme') as string;
   const accountNumber = formData.get('account_number') as string;
-  // Si no viene moneda del form, usamos EUR por defecto
   const currency = (formData.get('currency') as string) || 'EUR';
 
-  // 2. Validaciones básicas
-  if (!name || !accountType || !initialBalanceStr) {
-    return { success: false, error: 'Nombre, Tipo y Saldo son obligatorios.' };
+  console.log("Datos recibidos:", { name, accountType, initialBalanceStr, accountNumber });
+
+  if (!name || !accountType) {
+    return { success: false, error: 'Nombre y Tipo son obligatorios.' };
   }
   
-  const initialBalance = parseFloat(initialBalanceStr.replace(',', '.'));
+  const initialBalance = initialBalanceStr ? parseFloat(initialBalanceStr.replace(',', '.')) : 0;
   if (isNaN(initialBalance)) return { success: false, error: 'Saldo inicial no válido.' };
 
-  // 3. Inserción (Incluimos los nuevos campos)
   try {
-    const { data, error } = await supabase
-      .from('finance_accounts')
-      .insert({
+    const payload = {
         user_id: user.id,
         name: name.trim(),
         account_type: accountType,
         currency: currency.toUpperCase(),
         initial_balance: initialBalance,
-        color_theme: colorTheme,
-        account_number: accountNumber?.trim(),
-        avatar_letter: name.trim().charAt(0).toUpperCase(), // Por defecto la inicial
+        current_balance: initialBalance, // ✨ Importante: inicializamos el saldo actual igual al inicial
+        color_theme: colorTheme || '#6366f1',
+        account_number: accountNumber?.trim() || null,
+        avatar_letter: name.trim().charAt(0).toUpperCase(),
         is_active: true,
-      })
+      };
+
+    console.log("Insertando payload:", payload);
+
+    const { data, error } = await supabase
+      .from('finance_accounts')
+      .insert(payload)
       .select('id')
       .single();
 
-    if (error) throw error;
+    if (error) {
+        console.error('Error de Supabase:', error);
+        throw error;
+    }
     
+    console.log("Cuenta creada con éxito ID:", data.id);
     revalidatePath('/finance');
     return { success: true, data: { id: data.id } };
   } catch (e: any) {
-    console.error('Error creating account:', e);
-    return { success: false, error: e.message };
+    console.error('Captura de error crítico:', e);
+    // Devolvemos un error más descriptivo si existe
+    return { success: false, error: e.message || 'Error desconocido al crear la cuenta' };
   }
 }
 
@@ -87,30 +99,44 @@ export async function updateAccount(_prevState: ActionResult, formData: FormData
   // 1. Extraer datos
   const id = formData.get('id') as string;
   const name = formData.get('name') as string;
+  const importerId = formData.get('importer_id') as string;
+
+  // 2. Parseo de saldo (Solo si viene en el FormData, si no, no lo tocamos)
   const initialBalanceRaw = formData.get('initial_balance');
-  // 2. Solo hacemos el parse si el valor existe, si no, usamos el valor actual o 0
   const initialBalance = initialBalanceRaw 
     ? parseFloat(initialBalanceRaw.toString().replace(',', '.')) 
-    : undefined; // O puedes poner el valor que ya tenía la cuenta
+    : undefined;
+
   const accountType = formData.get('account_type') as any;
   const colorTheme = formData.get('color_theme') as string;
   const accountNumber = formData.get('account_number') as string;
   const avatarLetter = formData.get('avatar_letter') as string;
-  // El checkbox de is_active suele venir como "true" (string)
+  
+  // 3. Booleanos (Conversión segura de string a boolean)
   const isActive = formData.get('is_active') === 'true';
+  const autoMirrorTransfers = formData.get('auto_mirror_transfers') === 'true'; // <--- NUEVO
 
   try {
+    // 4. Construcción dinámica del objeto de actualización
+    const updateData: any = {
+      name: name.trim(),
+      account_type: accountType,
+      color_theme: colorTheme,
+      account_number: accountNumber?.trim(),
+      avatar_letter: avatarLetter?.trim().charAt(0).toUpperCase(),
+      is_active: isActive,
+      auto_mirror_transfers: autoMirrorTransfers,
+      importer_id: importerId === "" ? null : importerId, // 🚩 AÑADIR ESTO    
+    };
+
+    // Solo actualizamos el balance si realmente se ha pasado un valor numérico
+    if (initialBalance !== undefined && !isNaN(initialBalance)) {
+      updateData.initial_balance = initialBalance;
+    }
+
     const { error } = await supabase
       .from('finance_accounts')
-      .update({
-        name: name.trim(),
-        initial_balance: initialBalance,
-        account_type: accountType,
-        color_theme: colorTheme,
-        account_number: accountNumber?.trim(),
-        avatar_letter: avatarLetter?.trim().charAt(0).toUpperCase(),
-        is_active: isActive
-      })
+      .update(updateData)
       .eq('id', id);
 
     if (error) throw error;
@@ -471,166 +497,176 @@ import * as csv from 'csv-parser'; // Importar la librería
 import { Readable } from 'stream'; // Requerido para manejar el archivo en Node.js
 
 export async function importCsvTransactionsAction(
-  formData: FormData,
-  template: Partial<ImporterTemplate>,
+    formData: FormData,
+    template: Partial<ImporterTemplate>,
 ): Promise<{ success: boolean; error?: string; transactionsCount?: number; autoCategorizedCount?: number }> {
-  
-  // Capturar errores generales de Server Action
-  try {
-    const file = formData.get('file') as File | null;
-    const account_id = formData.get('accountId') as string; // <-- Recibimos el ID
-    if (!file) {
-      return { success: false, error: 'No se ha subido ningún archivo.' };
-    }
-    
-    // 1. AUTENTICACIÓN Y CUENTA
-    const supabase = await createClient();
-    const { data: userData, error: authError } = await supabase.auth.getUser();
-    if (authError || !userData.user) {
-      return { success: false, error: 'Usuario no autenticado.' };
-    }
-    const user_id = userData.user.id;
-    
-    const { data: accounts, error: accountError } = await supabase
-      .from('finance_accounts')
-      .select('id, account_type') // 👈 Añadimos account_type aquí
-      .eq('id', account_id)       // Usamos el id que viene por formData
-      .eq('user_id', user_id)
-      .single();                  // Usamos single para obtener el objeto directamente
 
-    if (accountError || !accounts) {
-      return { success: false, error: 'No se encontró la cuenta de destino.' };
-    }
+    try {
+        const file = formData.get('file') as File | null;
+        const account_id = formData.get('accountId') as string;
+        const invertAmountManual = formData.get('invertAmount') === 'true';
+        const saveAsTemplate = formData.get('saveAsTemplate') === 'true';
+        const newTemplateName = formData.get('newTemplateName') as string;
+        let templateId = formData.get('templateId') as string | null;
 
-    const isCreditCard = accounts.account_type === 'credit_card';
+        if (!file) return { success: false, error: 'No se ha subido ningún archivo.' };
 
-    // 2. PROCESAMIENTO DEL CSV
-    const { delimiter, mapping } = template as ImporterTemplate;
+        const supabase = await createClient();
+        const { data: userData, error: authError } = await supabase.auth.getUser();
+        if (authError || !userData.user) return { success: false, error: 'Usuario no autenticado.' };
 
-    // --- Lectura, Limpieza y Parsing Síncrono ---
-    
-    // a) Leer archivo
-    const buffer = await file.arrayBuffer();
-    const fileContent = Buffer.from(buffer).toString('utf8');
-    
-    // b) Limpieza robusta de líneas (para eliminar basura bancaria)
-    const allLines = fileContent.split(/\r?\n|\r/g);
-    const cleanedLines = allLines.filter(line => {
-        const trimmedLine = line.trim();
-        if (trimmedLine.length === 0) return false;
+        const user_id = userData.user.id;
+
+        // 1. OBTENER CUENTA
+        const { data: account, error: accountError } = await supabase
+            .from('finance_accounts')
+            .select('id, account_type')
+            .eq('id', account_id)
+            .single();
+
+        if (accountError || !account) return { success: false, error: 'No se encontró la cuenta.' };
+
+        const isCreditCard = account.account_type === 'credit_card';
+        const { delimiter, mapping } = template as ImporterTemplate;
+
+        // 2. GESTIÓN DE PLANTILLA (Si se crea una nueva)
+        if (saveAsTemplate && newTemplateName && mapping) {
+            const bufferTmp = await file.arrayBuffer();
+            const contentTmp = Buffer.from(bufferTmp).toString('utf8');
+            const firstLine = contentTmp.split(/\r?\n|\r/g)[0];
+            const headersArr = firstLine.split(delimiter || ';').map(h => h.trim().replace(/"/g, ''));
+
+            const columnMap = {
+                date: headersArr.indexOf(mapping.operation_date),
+                concept: headersArr.indexOf(mapping.concept),
+                amount: headersArr.indexOf(mapping.amount),
+                charge: null,
+                credit: null
+            };
+
+            const { data: newT } = await supabase
+                .from('finance_importer_templates')
+                .insert({
+                    name: newTemplateName,
+                    user_id,
+                    settings: { 
+                        delimiter: delimiter || ';', 
+                        skip_rows: 1, 
+                        invert_sign: invertAmountManual, 
+                        has_two_columns: false, 
+                        column_map: columnMap 
+                    }
+                })
+                .select().single();
+
+            if (newT) {
+                templateId = newT.id;
+                await supabase.from('finance_accounts').update({ importer_id: newT.id }).eq('id', account_id);
+            }
+        }
+
+        // 3. CREAR EL REGISTRO DE IMPORTACIÓN (EL PADRE) - Tabla Histórico
+        const { data: importerRecord, error: importerError } = await supabase
+            .from('finance_importers')
+            .insert({
+                user_id,
+                account_id,
+                template_id: (templateId && templateId !== 'none') ? templateId : null,
+                filename: file.name,
+                row_count: 0, 
+                import_date: new Date().toISOString().split('T')[0]
+            })
+            .select().single();
+
+        if (importerError || !importerRecord) return { success: false, error: 'Error al inicializar histórico.' };
+
+        // 4. PROCESAMIENTO CSV (Tu lógica robusta de limpieza)
+        const buffer = await file.arrayBuffer();
+        const fileContent = Buffer.from(buffer).toString('utf8');
+        const allLines = fileContent.split(/\r?\n|\r/g);
         
-        // Comprobar contenido y encabezados inútiles
-        const fields = trimmedLine.split(delimiter);
-        const hasContent = fields.some(field => field.trim().length > 0);
-        const isUselessHeader = trimmedLine.toLowerCase().includes('movimientos de cuenta') 
-                                || trimmedLine.startsWith('----')
-                                || trimmedLine.includes('saldo inicial');
-        
-        return hasContent && !isUselessHeader;
-    });
-
-    // c) Convertir a un string limpio para el parser síncrono
-    const cleanedStreamContent = cleanedLines.join('\n'); 
-
-    const transactions: ParsedTransaction[] = [];
-    
-    // d) Ejecutar el parsing SÍNCRONO (usando .write())
-try {
-        const parser = csv.default({ // <-- Usamos csv.default() o solo csv() si funciona
-            separator: delimiter || ';', 
-            mapHeaders: ({ header }: { header: string }) => header.trim().replace(/"/g, ''), // <-- Tipado: { header: string }
+        const cleanedLines = allLines.filter(line => {
+            const trimmedLine = line.trim();
+            if (trimmedLine.length === 0) return false;
+            const fields = trimmedLine.split(delimiter);
+            const hasContent = fields.some(field => field.trim().length > 0);
+            const isUselessHeader = trimmedLine.toLowerCase().includes('movimientos de cuenta')
+                || trimmedLine.startsWith('----')
+                || trimmedLine.includes('saldo inicial');
+            return hasContent && !isUselessHeader;
         });
 
-        parser
-            .on('data', (row: Record<string, string>) => { // <-- Tipado: row: Record<string, string>
-                // Mapear cada fila
-                const mappedRow = mapCsvRow(row, mapping, account_id, user_id);
-                if (mappedRow) {
-                    transactions.push(mappedRow);
-                }
-            })
-            .on('error', (error: Error) => { // <-- Tipado: error: Error
-                // Capturar error del parser
-                throw new Error(`Error al parsear el CSV: ${error.message}`);
+        const cleanedStreamContent = cleanedLines.join('\n');
+        const transactions: any[] = [];
+
+        try {
+            const parser = csv.default({
+                separator: delimiter || ';',
+                mapHeaders: ({ header }: { header: string }) => header.trim().replace(/"/g, ''),
             });
 
-        // La clave del parseo síncrono: Escribir el contenido completo y terminar.
-        parser.write(cleanedStreamContent);
-        parser.end(); // Indica que no hay más datos
+            parser.on('data', (row: Record<string, string>) => {
+                const mappedRow = mapCsvRow(row, mapping, account_id, user_id);
+                if (mappedRow) {
+                    if (invertAmountManual) mappedRow.amount *= -1;
+                    transactions.push(mappedRow);
+                }
+            }).on('error', (error: Error) => {
+                throw new Error(`Error al parsear: ${error.message}`);
+            });
+
+            parser.write(cleanedStreamContent);
+            parser.end();
+        } catch (e) {
+            return { success: false, error: `Error procesando CSV: ${(e as Error).message}` };
+        }
+
+        // 5. AUTO-CATEGORIZACIÓN Y ASIGNACIÓN DE IMPORTER_ID
+        const { data: rules } = await supabase.from('finance_rules').select('pattern, category_id');
+        let autoCategorizedCount = 0;
+
+        const finalTransactions = transactions
+            .filter(t => !(isCreditCard && t.concept.toUpperCase().includes('CAJERO')))
+            .map(t => {
+                let category_id = null;
+                if (rules) {
+                    const rule = rules.find(r => t.concept.toUpperCase().includes(r.pattern.toUpperCase()));
+                    if (rule) { category_id = rule.category_id; autoCategorizedCount++; }
+                }
+                return {
+                    ...t,
+                    account_id,
+                    user_id,
+                    category_id,
+                    importer_id: importerRecord.id // Vínculo al registro de histórico
+                };
+            });
+
+        // 6. INSERCIÓN FINAL Y ACTUALIZACIÓN
+        const { error: insertError } = await supabase.from('finance_transactions').insert(finalTransactions);
+        
+        if (insertError) {
+            await supabase.from('finance_importers').delete().eq('id', importerRecord.id);
+            return { success: false, error: `Error al guardar: ${insertError.message}` };
+        }
+
+        await supabase
+            .from('finance_importers')
+            .update({ row_count: finalTransactions.length })
+            .eq('id', importerRecord.id);
+
+        const { revalidatePath } = await import('next/cache');
+        revalidatePath('/finance');
+
+        return {
+            success: true,
+            transactionsCount: finalTransactions.length,
+            autoCategorizedCount
+        };
 
     } catch (e) {
-        return { success: false, error: `Error al procesar el archivo CSV: ${(e as Error).message}` };
+        return { success: false, error: `Error interno: ${e instanceof Error ? e.message : String(e)}` };
     }
-// --- 2.5 OBTENER REGLAS DE AUTO-CATEGORIZACIÓN ---
-    const { data: rules } = await supabase
-        .from('finance_rules')
-        .select('pattern, category_id');
-
-    // 3. VALIDACIÓN
-    if (transactions.length === 0) {
-        return { success: false, error: 'No se pudieron extraer transacciones.' };
-    }
-    
-    // --- 4. APLICAR REGLAS E INSERTAR ---
-    let autoCategorizedCount = 0;
-    let filteredCount = 0;
-
-    const finalTransactions = transactions
-        .filter(t => {
-            // 🛡️ Filtro maestro: ignorar cajeros si es tarjeta
-            if (isCreditCard) {
-                const conceptUpper = t.concept.toUpperCase();
-                if (conceptUpper.includes('CAJERO')) {
-                    filteredCount++;
-                    return false;
-                }
-            }
-            return true;
-        })
-        .map(t => {
-            let category_id = null;
-            if (rules && rules.length > 0) {
-                const matchingRule = rules.find(rule => 
-                    t.concept.toUpperCase().includes(rule.pattern.toUpperCase())
-                );
-                if (matchingRule) {
-                    category_id = matchingRule.category_id;
-                    autoCategorizedCount++;
-                }
-            }
-            return {
-                ...t,
-                account_id: account_id,
-                user_id: user_id,
-                category_id: category_id,
-                created_at: new Date().toISOString(),
-                bank_balance:t.bank_balance
-            };
-        });
-
-    const { error: insertError } = await supabase
-      .from('finance_transactions')
-      .insert(finalTransactions);
-    
-    if (insertError) {
-      console.error('Error al insertar transacciones:', insertError);
-      return { success: false, error: `Error al guardar: ${insertError.message}` };
-    }
-    
-    // 5. Devolver éxito con contadores
-    const { revalidatePath } = await import('next/cache');
-    revalidatePath('/finance');
-    
-    return { 
-        success: true, 
-        transactionsCount: transactions.length,
-        autoCategorizedCount: autoCategorizedCount // Devolvemos cuántas se categorizaron solas
-    };
-
-  } catch (e) {
-    const errorMessage = e instanceof Error ? e.message : String(e);
-    return { success: false, error: `Error interno: ${errorMessage}` };
-  }
 }
 
 
@@ -913,37 +949,36 @@ export async function handleTransferAction(sourceTxId: string, targetAccountId: 
 
     const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
 
-    // 1. Obtener transacción origen y datos de la cuenta destino
+    // 1. Obtener transacción origen y LA CONFIGURACIÓN de la cuenta destino
     const [{ data: source }, { data: targetAccount }] = await Promise.all([
         supabase.from('finance_transactions').select('*').eq('id', sourceTxId).single(),
-        supabase.from('finance_accounts').select('account_type').eq('id', targetAccountId).single()
+        // Ahora pedimos explícitamente nuestra nueva columna
+        supabase.from('finance_accounts').select('account_type, auto_mirror_transfers').eq('id', targetAccountId).single()
     ]);
 
     if (!source || !targetAccount) return { success: false, error: "Datos no encontrados" };
 
-    // 2. Lógica de decisión según tipo de cuenta
-    const manualTypes = ['investment', 'loan', 'mortgage', 'other_asset', 'other_liability'];
-    const isTargetManual = manualTypes.includes(targetAccount.account_type);
+    // 2. Lógica de decisión basada en la configuración de la cuenta
+    // Si el switch está ON, creamos espejo. Si está OFF, solo categorizamos.
+    const shouldCreateMirror = targetAccount.auto_mirror_transfers === true;
 
-    if (isTargetManual) {
-        // --- CASO A: CUENTA MANUAL (Creamos Movimiento Espejo) ---
-        // 1. Insertamos el espejo con el transfer_id apuntando al origen
+    if (shouldCreateMirror) {
+        // --- CASO A: GENERAR MOVIMIENTO ESPEJO ---
         const { data: mirror, error: mirrorError } = await supabase
             .from('finance_transactions')
             .insert({
                 account_id: targetAccountId,
-                amount: -source.amount, // Signo contrario
+                amount: -source.amount, 
                 concept: `VÍNCULO: ${source.concept}`,
                 date: source.date,
                 category_id: TRANSFER_CAT_ID,
                 user_id: user.id,
-                transfer_id: source.id // Vínculo A <- B
+                transfer_id: source.id 
             })
             .select().single();
 
         if (mirrorError) return { success: false, error: mirrorError.message };
 
-        // 2. Actualizamos el origen para que apunte al nuevo espejo (Vínculo A -> B)
         await supabase.from('finance_transactions')
             .update({ 
                 transfer_id: mirror.id, 
@@ -952,16 +987,15 @@ export async function handleTransferAction(sourceTxId: string, targetAccountId: 
             .eq('id', source.id);
             
         revalidatePath('/finance');
-        return { success: true, message: "Movimiento espejo creado y vinculado bidireccionalmente" };
+        return { success: true, message: "Movimiento espejo creado automáticamente según configuración" };
     } else {
-        // --- CASO B: CUENTA AUTOMÁTICA (Solo categorizamos) ---
-        // Aquí no creamos espejo porque llegará por CSV, solo marcamos como transferencia
+        // --- CASO B: SOLO CATEGORIZAR (Esperar a importación) ---
         await supabase.from('finance_transactions')
             .update({ category_id: TRANSFER_CAT_ID })
             .eq('id', source.id);
 
         revalidatePath('/finance');
-        return { success: true, message: "Categorizado como transferencia. Recuerda conciliar con el espejo cuando lo importes." };
+        return { success: true, message: "Categorizado como transferencia. No se ha creado espejo por configuración de la cuenta." };
     }
 }
 
@@ -1353,5 +1387,53 @@ export async function linkTxToExpenseAction(txId: string, expenseId: string) {
         .eq('id', txId);
 
     if (error) return { success: false, error: error.message };
+    return { success: true };
+}
+
+// app/finance/actions.ts
+
+export async function createImporterTemplate(name: string, settings: any) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "No autorizado" };
+
+    const { data, error } = await supabase
+        .from('finance_importer_templates')
+        .insert({
+            name,
+            settings,
+            user_id: user.id
+        })
+        .select()
+        .single();
+
+    if (error) return { success: false, error: error.message };
+    revalidatePath('/finance');
+    return { success: true, data };
+}
+
+export async function updateImporterTemplate(id: string, name: string, settings: any) {
+    const supabase = await createClient();
+    
+    const { error } = await supabase
+        .from('finance_importer_templates')
+        .update({ name, settings })
+        .eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+    revalidatePath('/finance');
+    return { success: true };
+}
+
+export async function deleteImporterTemplate(id: string) {
+    const supabase = await createClient();
+    
+    const { error } = await supabase
+        .from('finance_importer_templates')
+        .delete()
+        .eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+    revalidatePath('/finance');
     return { success: true };
 }

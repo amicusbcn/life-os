@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from 'next/link'
-import { Briefcase, ShoppingCart, Box, ToolCase,Utensils, Clock,ChefHat,Wallet, type LucideIcon } from 'lucide-react'
+import { Briefcase, ShoppingCart, Box, ToolCase,Utensils, Clock,ChefHat,Wallet, Plane, type LucideIcon } from 'lucide-react'
 import { redirect } from 'next/navigation'
 // IMPORTAMOS EL HEADER UNIFICADO
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader'
@@ -18,6 +18,7 @@ const LucideIconMap: Record<string, LucideIcon> = {
     Clock: Clock,
     ChefHat: ChefHat,
 	Wallet: Wallet,
+	Plane: Plane,
 };
 
 export default async function Dashboard() {
