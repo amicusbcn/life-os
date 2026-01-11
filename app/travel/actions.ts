@@ -110,19 +110,30 @@ async function uploadFile(supabase: any, file: File, tripId: string): Promise<st
 export async function createTrip(formData: FormData): Promise<ActionResponse> {
   const supabase = await createClient()
   const name = formData.get('name') as string
-  const employer_id = formData.get('employer_id') as string
+  const employer_id = formData.get('employer_id') as string | null;
   const start_date = formData.get('start_date') as string
   const end_date = formData.get('end_date') as string
+  const context = formData.get('context') as 'work' | 'personal';
 
-  if (!employer_id || !name || !start_date || !end_date) return { success: false, error: 'Faltan datos' }
+  const isMissingData = !name || !start_date || (context === 'work' && !employer_id);
+
+  if (isMissingData) {
+      return { 
+          success: false, 
+          error: 'Error: Faltan datos obligatorios (Nombre, Fecha o Empresa).' 
+      };
+  }
   if (end_date < start_date) return { success: false, error: 'Fechas incorrectas' }
 
   // CAMBIO IMPORTANTE: Estado inicial siempre es 'open'
   const { error } = await supabase.from('travel_trips').insert({
-    name, employer_id, start_date, end_date, status: 'open'
+    name, employer_id, start_date, end_date, context,status: 'open'
   })
 
-  if (error) return { success: false, error: 'Error al crear el viaje' }
+  if (error) {
+    console.error('Supabase Error:', error)
+    return { success: false, error: 'Error al crear el viaje' }
+  }
   revalidatePath('/travel')
   return { success: true }
 }
@@ -643,4 +654,44 @@ export async function deleteMileageTemplate(templateId: string): Promise<ActionR
         console.error('Error catastrófico en deleteMileageTemplate:', error);
         return { success: false, error: 'Error interno del servidor.' };
     }
+}
+// app/travel/actions.ts
+
+export async function createTravelCategory(formData: FormData): Promise<ActionResponse> {
+    const supabase = await createClient()
+    const name = formData.get('name') as string
+    const icon_name = formData.get('icon_name') as string
+    const context = formData.get('context') as string
+    const is_mileage = formData.get('is_mileage') === 'true'
+    const current_rate = formData.get('current_rate') ? parseFloat(formData.get('current_rate') as string) : null
+
+    const { error } = await supabase
+        .from('travel_categories')
+        .insert({ name, icon_key: icon_name, context, is_mileage, current_rate })
+
+    if (error) return { success: false, error: error.message }
+    return { success: true }
+}
+
+export async function updateTravelCategory(formData: FormData): Promise<ActionResponse> {
+    const supabase = await createClient()
+    const id = formData.get('id') as string
+    const name = formData.get('name') as string
+    const icon_name = formData.get('icon_name') as string
+    const current_rate = formData.get('current_rate') ? parseFloat(formData.get('current_rate') as string) : null
+
+    const { error } = await supabase
+        .from('travel_categories')
+        .update({ name, icon_key: icon_name, current_rate })
+        .eq('id', id)
+
+    if (error) return { success: false, error: error.message }
+    return { success: true }
+}
+
+export async function deleteTravelCategory(id: string): Promise<ActionResponse> {
+    const supabase = await createClient()
+    const { error } = await supabase.from('travel_categories').delete().eq('id', id)
+    if (error) return { success: false, error: error.message }
+    return { success: true }
 }

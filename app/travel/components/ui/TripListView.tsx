@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { 
   Calendar, Briefcase, Search, FileText, List, 
-  Image as ImageIcon, MoreVertical, Send, CheckCircle2, Undo, Loader2, Trash2, Tag 
+  Image as ImageIcon, MoreVertical, Send, CheckCircle2, Undo, Loader2, Trash2, Tag, 
+  Paperclip
 } from 'lucide-react'
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -53,7 +54,8 @@ import {
   markAsSubmitted, 
   markAsPaidAndArchive, 
   revertToDraft,
-  deleteReport
+  deleteReport,
+  getSignedReportUrl
 } from '@/app/travel/report-actions'
 
 interface TripListViewProps {
@@ -188,12 +190,15 @@ export function TripListView({ trips, reports, employers, context }: TripListVie
             <div className="flex gap-3 text-right pl-2">
                 <div>
                     <span className="block text-2xl font-black text-slate-900 tracking-tight">{report.total_amount.toFixed(2)}€</span>
-                    <Badge variant="outline" className={`mt-1 border-0 font-bold uppercase tracking-wider text-[10px] ${
-                        report.status === 'paid' ? 'bg-green-100 text-green-700' : 
-                        report.status === 'submitted' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
-                    }`}>
-                      {report.status === 'draft' ? 'Borrador' : report.status === 'submitted' ? 'Enviado' : 'Pagado'}
-                    </Badge>
+                      <Badge variant="outline" className={`mt-1 border-0 font-bold uppercase tracking-wider text-[10px] ${
+                          report.status === 'paid' ? 'bg-green-100 text-green-700' : 
+                          report.status === 'submitted' ? 'bg-blue-100 text-blue-700' : 
+                          'bg-slate-100 text-slate-600'
+                      }`}>
+                          {report.status === 'draft' ? 'Borrador' : 
+                          report.status === 'submitted' ? 'Enviado' : 
+                          'Pagado'}
+                      </Badge>
                 </div>
 
                 <DropdownMenu>
@@ -232,23 +237,46 @@ export function TripListView({ trips, reports, employers, context }: TripListVie
                 </DropdownMenu>
             </div>
           </div>
+            <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
+              {/* 1. LINK RESUMEN (Ahora es VISTA WEB) */}
+              <Link href={`/travel/reports/${report.id}?type=summary`} target="_blank" className="flex-1">
+                <Button 
+                  variant="outline" size="sm" 
+                  className="w-full h-9 gap-2 text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100"
+                >
+                  <FileText className="h-4 w-4" /> Resumen
+                </Button>
+              </Link>
 
-          <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
-              {report.url_summary && (
-                  <a href={report.url_summary} target="_blank" className="flex-1">
-                      <Button variant="outline" size="sm" className="w-full h-9 gap-2 text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100">
-                          <FileText className="h-4 w-4" /> Resumen
-                      </Button>
-                  </a>
+              {/* 2. LINK DETALLE (Ahora es VISTA WEB) */}
+              <Link href={`/travel/reports/${report.id}?type=detail`} target="_blank" className="flex-1">
+                <Button 
+                  variant="outline" size="sm" 
+                  className="w-full h-9 gap-2 text-slate-700 border-slate-200 hover:bg-slate-50"
+                >
+                  <List className="h-4 w-4" /> Detalle
+                </Button>
+              </Link>
+
+              {/* 3. LINK TICKETS (Sigue siendo PDF en STORAGE) */}
+              {report.url_receipts && (
+                <Button 
+                  variant="outline" size="sm" 
+                  className="flex-1 h-9 gap-2 text-orange-700 bg-orange-50 border-orange-200 hover:bg-orange-100"
+                  onClick={async (e) => {
+                    e.preventDefault(); // Evitamos cualquier comportamiento extraño del botón
+                    try {
+                      const url = await getSignedReportUrl(report.url_receipts!);
+                      window.open(url, '_blank');
+                    } catch (err) {
+                      alert("No se pudo abrir el archivo de tickets");
+                    }
+                  }}
+                >
+                  <Paperclip className="h-4 w-4" /> Tickets
+                </Button>
               )}
-              {report.url_detail && (
-                  <a href={report.url_detail} target="_blank" className="flex-1">
-                      <Button variant="outline" size="sm" className="w-full h-9 gap-2 text-slate-700 border-slate-200">
-                          <List className="h-4 w-4" /> Detalle
-                      </Button>
-                  </a>
-              )}
-          </div>
+            </div>
         </div>
 
         <Accordion type="single" collapsible className="w-full border-t border-slate-100">

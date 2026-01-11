@@ -3,8 +3,9 @@
 
 import React, { useState, useMemo, useEffect } from "react"
 import { useRouter } from 'next/navigation'
-import { createCategory, deleteCategory, updateCategory, createRule, deleteRule, ActionResult,applyRuleRetroactively } from "@/app/finance/actions" 
+import { createCategory, deleteCategory, updateCategory, createRule, deleteRule, applyRuleRetroactively } from "@/app/finance/actions" 
 import { FinanceCategory, FinanceRule } from "@/types/finance" 
+import { ActionResult } from "@/types/common"
 
 // UI Components
 import { Button } from "@/components/ui/button"

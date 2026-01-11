@@ -19,6 +19,13 @@ export interface ActionResponse {
     message?: string;
 }
 
+// Tipo estándar para respuestas de Server Action
+export interface ActionResult {
+  success?: boolean;
+  error?: string;
+  data?: Record<string, unknown>; // Opcionalmente, { id?: string; count?: number; ... }
+}
+
 // Extensión para la acción de creación de reportes (específica de Travel)
 // NOTA: La dejamos aquí si la mayoría de los tipos de respuesta se parecen a esta.
 export interface CreateReportResponse extends ActionResponse {

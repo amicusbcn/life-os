@@ -6,15 +6,22 @@ import { ArrowLeft } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { TravelSettingsButton } from '../components/ui/TravelSettingsButton' 
 import { TripListView } from '../components/ui/TripListView'
-import { getTravelDashboardData, getMileageTemplates } from '../data'
+import { getTravelDashboardData, getMileageTemplates, getTravelCategories } from '../data'
 import { TravelContext } from '@/types/travel'
+import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader'
+import { TravelModuleMenu } from '../components/ui/TravelModuleMenu'
+import { createClient } from '@/utils/supabase/server'
 
 interface PageProps {
   params: Promise<{ context: string }>;
 }
 export default async function TravelPage({ params }: PageProps) {
-  const { context } = await params;
+  const { context } = await params
+  if (context !== 'work' && context !== 'personal') notFound()
 
+  // Necesitamos el usuario para el Header unificado
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
   // 1. Validar que el contexto sea permitido
   if (context !== 'work' && context !== 'personal') {
     notFound()
@@ -23,30 +30,35 @@ export default async function TravelPage({ params }: PageProps) {
   const travelContext = context as TravelContext
 
   // 2. Obtener los datos ya transformados y filtrados desde el "cerebro" (data.ts)
-  const { trips, reports, employers } = await getTravelDashboardData(travelContext)
-  const templates = await getMileageTemplates();
+  const [dashboardData, templates, categories, { data: userData }] = await Promise.all([
+    getTravelDashboardData(travelContext),
+    getMileageTemplates(),
+    getTravelCategories(travelContext),
+    supabase.auth.getUser()
+  ])
+
+  // EXTRAEMOS LAS VARIABLES QUE DABAN ERROR
+  const { trips, reports, employers } = dashboardData
   // 3. Configuración visual dinámica
   const title = travelContext === 'work' ? 'Viajes de Trabajo' : 'Viajes Personales'
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans pb-24">
-      {/* HEADER ESTÁTICO */}
-      <div className="sticky top-0 z-10 bg-white border-b border-slate-200/50 px-4 py-4 shadow-sm">
-        <div className="max-w-xl mx-auto flex items-center justify-between">
-          
-          <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-200 -ml-2 rounded-full">
-                <ArrowLeft className="h-5 w-5 text-slate-600" />
-              </Button>
-            </Link>
-            <h1 className="text-xl font-bold text-slate-800">{title}</h1>
-          </div>
-          
-          {/* Le pasamos el contexto si el botón necesita filtrar algo internamente */}
-          <TravelSettingsButton context={travelContext} templates={templates} />
-        </div>
-      </div>
+      {/* HEADER UNIFICADO */}
+      <UnifiedAppHeader 
+        title={title}
+        backHref="/" 
+        userEmail={user?.email || ''}
+        userRole="admin" 
+        maxWClass="max-w-xl"
+        moduleMenu={
+          <TravelModuleMenu 
+            context={travelContext} 
+            templates={templates} 
+            categories={categories} // <-- Pasamos las categorías aquí
+          />
+        }
+      />
 
       <main className="max-w-xl mx-auto p-4">
         {/* Pasamos los datos a la vista de lista */}

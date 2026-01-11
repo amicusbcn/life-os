@@ -7,8 +7,12 @@ import {
   TripQueryResponse,
   ReportQueryResponse,
   TravelTrip,
+  TripDetailData,
   TripDbStatus,
-  TravelMileageTemplate
+  TravelMileageTemplate,
+  TravelCategory,
+  TravelExpense,
+  ReportStatus
 } from '@/types/travel'
 import { getTripState } from '@/utils/trip-logic'
 
@@ -18,7 +22,7 @@ export async function getTravelDashboardData(context: TravelContext) {
   // 1. Obtener Empresas
   const { data: employers } = await supabase
     .from('travel_employers')
-    .select('id, name')
+    .select('id, name','color')
     .order('name')
     .returns<TravelEmployer[]>()
 
@@ -31,6 +35,7 @@ export async function getTravelDashboardData(context: TravelContext) {
       travel_reports ( id, name, status, code )
     `)
     .eq('context', context)
+    .neq('status', 'archived')
     .order('start_date', { ascending: false })
     .returns<TripQueryResponse[]>()
 
@@ -45,17 +50,18 @@ export async function getTravelDashboardData(context: TravelContext) {
   // pero habitualmente los informes son de 'work')
   const { data: rawReports } = await supabase
     .from('travel_reports')
-    .select(`
-      *,
-      travel_employers ( name ),
-      travel_trips ( 
-        id, 
-        name, 
-        travel_expenses ( amount ) 
-      )
-    `)
-    .order('created_at', { ascending: false })
-    .returns<ReportQueryResponse[]>()
+      .select(`
+        *,
+        travel_employers ( name ),
+        travel_trips ( 
+          id, 
+          name, 
+          start_date,
+          travel_expenses ( amount ) 
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .returns<ReportQueryResponse[]>()
 
   // --- MAPEO DE VIAJES (Recuperamos tu lógica de totales y visualStatus) ---
   
@@ -91,24 +97,35 @@ export async function getTravelDashboardData(context: TravelContext) {
     }
   }) || []
 
+  
   // --- MAPEO DE INFORMES ---
 
-  const reports: TravelReportWithDetails[] = rawReports?.map(rep => {
-    let total = 0
-    let tripCount = rep.travel_trips?.length || 0
-    rep.travel_trips?.forEach(t => {
-      // @ts-ignore (por la estructura anidada de Supabase)
-      t.travel_expenses?.forEach((e: any) => total += (e.amount || 0))
-    })
+const reports: TravelReportWithDetails[] = rawReports?.map(rep => {
+  let total = 0
+  
+  const tripsData = rep.travel_trips?.map(t => {
+    // @ts-ignore (por la estructura anidada)
+    const tripExpenses = t.travel_expenses || []
+    const tripTotal = tripExpenses.reduce((sum: number, e: any) => sum + (e.amount || 0), 0)
+    total += tripTotal
 
     return {
-      ...rep,
-      status: rep.status as any,
-      employer_name: rep.travel_employers?.name,
-      trip_count: tripCount,
-      total_amount: total
+      id: t.id,
+      name: t.name,
+      start_date: (t as any).start_date, // Forzamos el acceso ya que ahora viene en la query
+      travel_expenses: tripExpenses
     }
   }) || []
+
+  return {
+    ...rep,
+    status: rep.status as ReportStatus,
+    employer_name: rep.travel_employers?.name,
+    trip_count: tripsData.length,
+    total_amount: total,
+    trips_data: tripsData
+  }
+}) || []
 
   return {
     trips,
@@ -124,4 +141,66 @@ export async function getMileageTemplates(): Promise<TravelMileageTemplate[]> {
         .select('*')
         .order('name');
     return data || [];
+}
+
+export async function getTripDetails(tripId: string, context: TravelContext): Promise<TripDetailData | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('travel_trips')
+    .select('*, travel_employers(name)')
+    .eq('id', tripId)
+    .eq('context', context)
+    .single()
+  
+  if (error || !data) return null
+  return data as unknown as TripDetailData
+}
+
+export async function getTravelCategories(context: TravelContext): Promise<TravelCategory[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('travel_categories')
+    .select('*')
+    .eq('context', context)
+    .order('name')
+  
+  return (data as TravelCategory[]) || []
+}
+
+export async function getTripExpenses(tripId: string): Promise<TravelExpense[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('travel_expenses')
+    .select('*, finance_transactions(id)')
+    .eq('trip_id', tripId)
+    .order('date', { ascending: false })
+  
+  return (data as TravelExpense[]) || []
+}
+
+export async function getArchivedTravelData(context: TravelContext) {
+  const supabase = await createClient()
+
+  const { data: rawTrips } = await supabase
+    .from('travel_trips')
+    .select(`
+      *,
+      travel_employers ( name,color ),
+      travel_reports ( id, name, status, code, url_receipts, url_summary, url_detail ),
+      travel_expenses (
+        id, date, concept, amount, is_reimbursable, mileage_distance,
+        travel_categories ( name, icon_key )
+      )
+    `)
+    .eq('context', context)
+    .eq('status', 'archived')
+    .order('start_date', { ascending: false })
+  const trips = rawTrips?.map(trip => {
+    const total = trip.travel_expenses?.reduce((sum: number, exp: any) => sum + (exp.amount || 0), 0) || 0;
+    return {
+      ...trip,
+      total_amount: total // Ahora total_amount tendrá el valor correcto
+    }
+  })
+  return trips || []
 }

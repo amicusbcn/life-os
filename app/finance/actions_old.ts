@@ -1250,43 +1250,44 @@ export async function getInventoryItemsAction() {
 // --- ACCIONES DE VIAJES Y CONCILIACIÓN ---
 
 // 1. Obtener viajes activos (de la tabla travel_trips)
-export async function getActiveTripsAction() {
+// app/finance/actions.ts
+
+// 1. Obtener viajes filtrados por contexto (Work vs Personal)
+export async function getActiveTripsAction(context: 'work' | 'personal') {
     const supabase = await createClient();
-    // Quitamos filtros temporales para asegurar que ves algo
     const { data, error } = await supabase
         .from('travel_trips')
-        .select('id, name, start_date, end_date')
+        .select('id, name, start_date, end_date, context')
+        .eq('context', context) // ✨ Filtro vital
         .order('start_date', { ascending: false });
 
-    if (error) {
-        console.error("Error Supabase:", error);
-        return { success: false, error: error.message };
-    }
+    if (error) return { success: false, error: error.message };
     return { success: true, data };
 }
 
-// NUEVA: Crear un viaje real desde el diálogo financiero
-export async function createFullTripAction(name: string, startDate: string) {
+export async function createFullTripAction(name: string, startDate: string, context: 'work' | 'personal') {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Buscamos un empleador por defecto para que no falle el NOT NULL
-    const { data: employer } = await supabase.from('travel_employers').select('id').limit(1).single();
-    
-    if (!employer) return { success: false, error: "Crea primero un Empleador en la sección de Viajes" };
+    // Si es profesional, necesitamos un empleador
+    let employer_id = null;
+    if (context === 'work') {
+        const { data: emp } = await supabase.from('travel_employers').select('id').limit(1).single();
+        employer_id = emp?.id;
+    }
 
     const { data, error } = await supabase
         .from('travel_trips')
         .insert({
             name,
             start_date: startDate,
-            end_date: startDate, // Por defecto el mismo día
-            employer_id: employer.id,
+            end_date: startDate,
+            context, // ✨ Asignamos el contexto aquí
+            employer_id,
             user_id: user?.id,
             status: 'planned'
         })
-        .select()
-        .single();
+        .select().single();
 
     if (error) return { success: false, error: error.message };
     return { success: true, data };
@@ -1315,24 +1316,68 @@ export async function getTripExpensesAction(tripId: string) {
 
 // app/finance/actions.ts
 
-export async function findSuggestedExpenseAction(amount: number, date: string) {
+export async function findSuggestedExpenseAction(amount: number, date: string, context: 'work' | 'personal') {
     const supabase = await createClient();
     const absAmount = Math.abs(amount);
+    
+    // Margen de 5 días para el banco
+    const d = new Date(date);
+    const minDate = new Date(d.getTime() - (5 * 24 * 60 * 60 * 1000)).toISOString();
+    const maxDate = new Date(d.getTime() + (5 * 24 * 60 * 60 * 1000)).toISOString();
 
     const { data, error } = await supabase
         .from('travel_expenses')
         .select(`
             *,
-            travel_trips (id, name)
+            travel_trips!inner (id, name, context, status)
         `)
         .eq('amount', absAmount)
-        .order('date', { ascending: false })
-        .limit(5); // Traemos los 5 más probables
+        .eq('travel_trips.context', context) // ✨ Solo sugerir gastos del mismo contexto
+        .gte('date', minDate)
+        .lte('date', maxDate)
+        .order('date', { ascending: false });
 
     if (error) return { success: false, error: error.message };
-    
-    // Si queremos ser estrictos con la fecha, filtramos en JS o lo añadimos a la query
     return { success: true, data };
+}
+
+export async function reconcileTravelExpenseAction(
+    txId: string, 
+    expenseId: string, 
+    mode: 'exact' | 'adjust_trip' | 'virtual_adjustment'
+) {
+    const supabase = await createClient();
+    const VIRTUAL_ACCOUNT_ID = 'id-de-tu-cuenta-virtual'; // 🚩 Configurar
+
+    // 1. Obtener datos de ambos lados
+    const { data: tx } = await supabase.from('finance_transactions').select('*').eq('id', txId).single();
+    const { data: exp } = await supabase.from('travel_expenses').select('*, travel_trips(status, context)').eq('id', expenseId).single();
+
+    if (!tx || !exp) return { success: false, error: "Datos no encontrados" };
+
+    const diff = Math.abs(tx.amount) - exp.amount;
+
+    // ESCENARIO A: Ajustar el gasto del viaje (Solo si está abierto)
+    if (mode === 'adjust_trip') {
+        if (exp.travel_trips.status === 'closed') return { success: false, error: "No se puede ajustar un viaje cerrado" };
+        await supabase.from('travel_expenses').update({ amount: Math.abs(tx.amount) }).eq('id', expenseId);
+    }
+
+    // ESCENARIO B: Transacción de ajuste en cuenta virtual
+    if (mode === 'virtual_adjustment' && diff !== 0) {
+        await supabase.from('finance_transactions').insert({
+            account_id: VIRTUAL_ACCOUNT_ID,
+            amount: -diff, // El ajuste negativo para cuadrar
+            date: tx.date,
+            concept: `Ajuste dieta: ${tx.concept}`,
+            category_id: tx.category_id, // Mantenemos la categoría (Work/Perso)
+            travel_expense_id: expenseId,
+            user_id: tx.user_id
+        });
+    }
+
+    // 2. Vincular finalmente la transacción bancaria original
+    return await linkTransactionToExpenseAction(txId, expenseId, exp.trip_id);
 }
 
 // 3. Vincular transacción bancaria con un gasto de viaje específico
@@ -1352,29 +1397,52 @@ export async function linkTransactionToExpenseAction(txId: string, expenseId: st
 }
 
 // 4. Crear un gasto en el viaje directamente desde el banco (si no existe el ticket)
-export async function createExpenseFromBankAction(tripId: string, transaction: any) {
+export async function createExpenseFromBankAction(
+    tripId: string, 
+    transaction: FinanceTransaction, 
+    travelCategoryId: string, // ✨ Nueva: Categoría de viaje (vuelo, comida...)
+    context: 'work' | 'personal' // ✨ Nueva: El contexto de la categoría de finanzas
+) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Creamos el gasto en la tabla de viajes
-    const { data: expense, error: expError } = await supabase
+    if (!user) return { success: false, error: "No autorizado" };
+
+    // 1. Creamos el gasto en la tabla de viajes
+    // Importante: is_reimbursable suele ser true en work y false en personal
+    const { data: newExpense, error: expError } = await supabase
         .from('travel_expenses')
         .insert({
             trip_id: tripId,
-            user_id: user?.id,
-            description: transaction.notes || transaction.concept,
-            amount: Math.abs(transaction.amount),
+            user_id: user.id,
             date: transaction.date,
-            payment_method: 'card',
-            category: 'otros'
+            concept: transaction.notes || transaction.concept,
+            amount: Math.abs(transaction.amount),
+            category_id: travelCategoryId, 
+            context: context, // ✨ Aseguramos el contexto correcto
+            is_reimbursable: context === 'work', // Lógica por defecto
+            personal_accounting_checked: true // Ya que viene de finanzas
         })
         .select()
         .single();
 
-    if (expError) return { success: false, error: expError.message };
+    if (expError || !newExpense) {
+        return { success: false, error: "Error al crear el gasto de viaje" };
+    }
 
-    // 🚀 Vinculamos la transacción bancaria con el GASTO y el VIAJE
-    return await linkTransactionToExpenseAction(transaction.id, expense.id, tripId);
+    // 2. Vinculamos la transacción de finanzas con este nuevo gasto
+    const { error: txError } = await supabase
+        .from('finance_transactions')
+        .update({ 
+            travel_expense_id: newExpense.id,
+            trip_id: tripId 
+        })
+        .eq('id', transaction.id);
+
+    if (txError) return { success: false, error: "Gasto creado pero no vinculado" };
+
+    revalidatePath('/finance');
+    return { success: true, data: newExpense };
 }
 
 // Vincular la transacción bancaria con el gasto de viaje

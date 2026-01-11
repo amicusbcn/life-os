@@ -1,6 +1,11 @@
 // app/travel/[context]/[id]/page.tsx
 
-import { createClient } from '@/utils/supabase/server'
+import { 
+  getTripDetails, 
+  getTripExpenses, 
+  getTravelCategories, 
+  getMileageTemplates 
+} from '@/app/travel/data'
 import { NewExpenseDialog } from '@/app/travel/components/dialogs/NewExpenseDialog'
 import { EditExpenseDialog } from '@/app/travel/components/dialogs/EditExpenseDialog'
 import { QuickReceiptUpload } from '@/app/travel/components/ui/QuickReceiptUpload'
@@ -8,12 +13,11 @@ import { TripStatusSelector } from '@/app/travel/components/ui/TripStatusSelecto
 import { toggleReceiptWaived, togglePersonalAccounting } from '@/app/travel/actions'
 import { CategoryIcon } from '@/utils/icon-map'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Calendar, Paperclip, AlertCircle, Ban, Wallet,CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, MapPin, Calendar, Paperclip, AlertCircle, Ban, Wallet, CheckCircle2,Lock } from 'lucide-react'
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { redirect, notFound } from 'next/navigation'
-import { getMileageTemplates } from '@/app/travel/data'
-import { TravelExpense, TravelCategory, TripDetailData, TravelContext } from '@/types/travel'
+import { TravelExpense, TripDetailData, TravelContext } from '@/types/travel'
 
 interface PageProps {
   params: Promise<{ context: string; id: string }>
@@ -21,63 +25,33 @@ interface PageProps {
 
 export default async function TripDetailPage({ params }: PageProps) {
   const { context, id } = await params
-  const tripId = id
-  
   if (context !== 'work' && context !== 'personal') notFound();
   const travelContext = context as TravelContext;
-
-  const supabase = await createClient()
-
-  // 1. Obtener Viaje (Validando que el contexto de la URL coincida con el de la BBDD)
-  const { data: rawTrip, error } = await supabase
-    .from('travel_trips')
-    .select('*, travel_employers(name)')
-    .eq('id', tripId)
-    .eq('context', travelContext) // Seguridad: evita saltar de personal a work por ID
-    .single()
-
-  if (error || !rawTrip) redirect(`/travel/${travelContext}`);
-  const trip = rawTrip as unknown as TripDetailData;
-
-  // 2. Obtener Categorías filtradas por contexto
-  const { data: categories } = await supabase
-    .from('travel_categories')
-    .select('*')
-    .eq('context', travelContext)
-    .order('name')
-    .returns<TravelCategory[]>()
-
-  // 3. Obtener Gastos
-  const { data: expenses } = await supabase
-    .from('travel_expenses')
-    .select('*')
-    .eq('trip_id', tripId)
-    .order('date', { ascending: false })
-    .returns<TravelExpense[]>()
-    
-  // 4. Obtener Plantillas de Kilometraje
-  const mileageTemplates = await getMileageTemplates();
-
-  const totalAmount = expenses?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0
-  const isClosed = trip.status === 'closed'
-  const hasExpenses = (expenses?.length || 0) > 0;
-  const isPersonal = travelContext === 'personal';
-
-  // VALIDACIÓN DE TICKETS (Solo relevante en Trabajo)
-  const pendingCount = expenses?.filter(e => {
-      const category = categories?.find(c => c.id === e.category_id)
-      return !category?.is_mileage && !e.receipt_url && !e.receipt_waived
-  }).length || 0
   
-  const hasPendingReceipts = !isPersonal && pendingCount > 0
+  // 1. Obtención de datos mediante las nuevas funciones de data.ts
+  const trip = await getTripDetails(id, travelContext);
+  if (!trip) redirect(`/travel/${travelContext}`);
+  const tripId = id; // Esto soluciona los errores "Cannot find name 'tripId'"
 
-  // AGRUPACIÓN POR FECHA
-  const groupedExpenses = expenses?.reduce<Record<string, TravelExpense[]>>((acc, expense) => {
+  const [categories, expenses, mileageTemplates] = await Promise.all([
+    getTravelCategories(travelContext),
+    getTripExpenses(id),
+    getMileageTemplates()
+  ]);
+
+  // 2. Lógica de Negocio y Totales
+  const totalAmount = expenses.reduce((sum, item) => sum + (item.amount || 0), 0)
+  const isClosed = trip.status === 'closed'
+  const isPersonal = travelContext === 'personal'
+  const isLocked = trip.status === 'closed' || trip.status === 'reported';
+
+  // AGRUPACIÓN POR FECHA (Safe para compilación)
+  const groupedExpenses = expenses.reduce<Record<string, TravelExpense[]>>((acc, expense) => {
     const dateKey = expense.date 
     if (!acc[dateKey]) acc[dateKey] = []
     acc[dateKey].push(expense)
     return acc
-  }, {}) || {} 
+  }, {})
 
   const sortedDates = Object.keys(groupedExpenses).sort((a, b) => b.localeCompare(a))
 
@@ -162,11 +136,19 @@ export default async function TripDetailPage({ params }: PageProps) {
                             </div>
                             
                             <div className="flex-1 min-w-0">
-                                <div className="flex justify-between items-baseline">
-                                    <p className="font-bold text-sm truncate text-slate-800">{expense.concept}</p>
-                                    <p className="font-black text-sm text-slate-900 ml-2">{expense.amount.toFixed(2)}€</p>
+                              <div className="flex justify-between items-baseline">
+                                  <p className="font-bold text-sm truncate text-slate-800">{expense.concept}</p>
+                                  
+                                  
+                                <div className="flex items-center gap-1.5 ml-2">
+                                    <p className="font-black text-sm text-slate-900">
+                                        {expense.amount.toFixed(2)}€
+                                    </p>
                                 </div>
-                                <p className="text-[10px] text-slate-500 font-medium">{category?.name} {isMileage ? `• ${expense.mileage_distance}km` : ''}</p>
+                              </div>
+                              <p className="text-[10px] text-slate-500 font-medium">
+                                  {category?.name} {isMileage ? `• ${expense.mileage_distance}km` : ''}
+                              </p>
                             </div>
                           </div>
 
@@ -174,70 +156,85 @@ export default async function TripDetailPage({ params }: PageProps) {
                           <div className={`px-3 py-1.5 border-t flex items-center justify-between min-h-[40px] ${isMissingReceipt ? 'bg-orange-50 border-orange-100' : 'bg-slate-50/50 border-slate-100'}`}>
                             <div className="flex items-center gap-3">
                                 {/* CHECK CONTABILIDAD (WALLET) */}
-                                <form>
-                                    <Button 
-                                        formAction={async () => {
-                                            'use server'
-                                            await togglePersonalAccounting(expense.id, tripId, expense.personal_accounting_checked)
-                                        }}
-                                        variant="ghost" size="icon" className="h-7 w-7"
-                                    >
-                                        <Wallet className={`h-3.5 w-3.5 ${expense.personal_accounting_checked ? 'text-emerald-500' : 'text-slate-300'}`} />
-                                    </Button>
-                                </form>
+                                    {expense.finance_transactions && expense.finance_transactions.length > 0 ? (
+                                        <span title="Sincronizado con Finanzas">
+                                            <Wallet className="h-3.5 w-3.5 text-emerald-500" />
+                                        </span>
+                                    ) : (
+                                        <span title="No sincronizado">
+                                            <Wallet className="h-3.5 w-3.5 text-slate-200" />
+                                        </span>
+                                    )}
 
                                 <div className="h-4 w-px bg-slate-200 mx-0.5" />
 
                                 {/* LÓGICA DE TICKETS */}
+                                {/* LÓGICA DE TICKETS PROTEGIDA */}
                                 {isMileage ? (
                                     <span className="text-[10px] text-slate-400 italic">No requiere ticket</span>
                                 ) : (
                                     <div className="flex items-center gap-2">
+                                        {/* CASO A: Hay ticket (Independiente de si está cerrado o no, lo mostramos) */}
                                         {expense.receipt_url ? (
-                                            <a href={expense.receipt_url} target="_blank" className="text-[10px] font-bold text-indigo-600 flex items-center gap-1">
+                                            <a 
+                                                href={expense.receipt_url} 
+                                                target="_blank" 
+                                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
+                                            >
                                                 <Paperclip className="h-3 w-3" /> VER TICKET
                                             </a>
+                                        ) : isLocked ? (
+                                            /* CASO B: Viaje BLOQUEADO y sin ticket */
+                                            expense.receipt_waived ? (
+                                                <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 opacity-70">
+                                                    <CheckCircle2 className="h-3 w-3" /> EXENTO
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-bold text-red-500 flex items-center gap-1">
+                                                    <AlertCircle className="h-3 w-3" /> FALTA TICKET
+                                                </span>
+                                            )
                                         ) : (
+                                            /* CASO C: Viaje ABIERTO y sin ticket (Permitimos acciones) */
                                             <>
-                                                {!isClosed && (
-                                                    <>
-                                                        <QuickReceiptUpload expenseId={expense.id} tripId={tripId} />
-                                                        
-                                                        {/* BOTÓN RECUPERADO: Omitir / Justificar sin ticket */}
-                                                        <form>
-                                                            <Button 
-                                                                formAction={async () => {
-                                                                    'use server'
-                                                                    await toggleReceiptWaived(expense.id, tripId, expense.receipt_waived)
-                                                                }}
-                                                                variant="ghost" 
-                                                                size="sm" 
-                                                                className={`h-7 px-2 text-[10px] font-bold uppercase ${
-                                                                    expense.receipt_waived 
-                                                                        ? 'text-emerald-600 hover:bg-emerald-50' 
-                                                                        : 'text-orange-600 hover:bg-orange-100'
-                                                                }`}
-                                                            >
-                                                                {expense.receipt_waived ? (
-                                                                    <><CheckCircle2 className="h-3 w-3 mr-1" /> Exento</>
-                                                                ) : (
-                                                                    <><Ban className="h-3 w-3 mr-1" /> ¿Sin Ticket?</>
-                                                                )}
-                                                            </Button>
-                                                        </form>
-                                                    </>
-                                                )}
-                                                {isClosed && !expense.receipt_waived && (
-                                                    <span className="text-[10px] text-red-500 font-black uppercase">Falta Ticket</span>
-                                                )}
+                                                <QuickReceiptUpload expenseId={expense.id} tripId={tripId} />
+                                                
+                                                <form>
+                                                    <Button 
+                                                        formAction={async () => {
+                                                            'use server'
+                                                            await toggleReceiptWaived(expense.id, tripId, expense.receipt_waived)
+                                                        }}
+                                                        variant="ghost" 
+                                                        size="sm" 
+                                                        className={`h-7 px-2 text-[10px] font-bold uppercase ${
+                                                            expense.receipt_waived 
+                                                                ? 'text-emerald-600 hover:bg-emerald-50' 
+                                                                : 'text-orange-600 hover:bg-orange-100'
+                                                        }`}
+                                                    >
+                                                        {expense.receipt_waived ? (
+                                                            <><CheckCircle2 className="h-3 w-3 mr-1" /> Exento</>
+                                                        ) : (
+                                                            <><Ban className="h-3 w-3 mr-1" /> ¿Sin Ticket?</>
+                                                        )}
+                                                    </Button>
+                                                </form>
                                             </>
                                         )}
                                     </div>
                                 )}
                             </div>
-
-                            {!isClosed && (
-                                <EditExpenseDialog expense={expense} categories={categories || []} context={travelContext} />
+                            {!isLocked ? (
+                              <EditExpenseDialog 
+                                expense={expense} 
+                                categories={categories || []} 
+                                context={travelContext} 
+                              />
+                            ) : (
+                              <Button variant="ghost" size="icon" disabled className="opacity-30">
+                                <Lock className="h-4 w-4" />
+                              </Button>
                             )}
                         </div>
                         </CardContent>

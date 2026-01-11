@@ -1,10 +1,19 @@
 // types/travel.ts
 
+/**
+ * CONTEXTOS Y ESTADOS
+ */
 export type TravelContext = 'work' | 'personal';
-export type TripDbStatus = 'planned' | 'active' | 'completed' | 'cancelled'| 'open' | 'closed'| 'reported';
 
-// --- ENTIDADES BASE (Reflejo fiel de la BBDD) ---
+// 'archived' permite ocultar viajes viejos de la vista principal
+export type TripDbStatus = 'planned' | 'active' | 'completed' | 'cancelled' | 'open' | 'closed' | 'reported' | 'archived';
 
+// Flujo simplificado: Borrador -> Enviado -> Pagado -> Archivado
+export type ReportStatus = 'draft' | 'submitted' | 'paid' | 'archived';
+
+/**
+ * ENTIDADES BASE (Reflejo fiel de la BBDD)
+ */
 export interface TravelTrip {
   id: string;
   created_at: string;
@@ -15,7 +24,7 @@ export interface TravelTrip {
   employer_id: string | null;
   report_id: string | null;
   user_id: string;
-  context: TravelContext; // NUEVO
+  context: TravelContext;
 }
 
 export interface TravelExpense {
@@ -35,115 +44,23 @@ export interface TravelExpense {
   user_id: string;
   receipt_waived: boolean;
   personal_accounting_checked: boolean;
-  context: TravelContext; // NUEVO
+  context: TravelContext;
+  finance_transactions?: { id: string }[];
 }
 
 export interface TravelCategory {
   id: string;
   name: string;
-  icon?: string;
-  color?: string;
+  icon_key: string | null;
   context: TravelContext;
-  icon_key: string;  
-  is_mileage: boolean; 
-  current_rate?:number;
+  current_rate: number | null;
+  is_mileage: boolean;
 }
 
-export interface TripDetailData extends TravelTrip {
-  travel_employers: {
-    name: string;
-  } | null;
-}
-
-// --- TIPOS PARA CONSULTAS (Lo que "viene" de Supabase) ---
-// Estos son los que suelen abultar pero son necesarios para evitar el tipo 'any'
-
-export interface TripQueryResponse {
+export interface TravelEmployer {
   id: string;
   name: string;
-  start_date: string;
-  end_date: string | null;
-  status: TripDbStatus;
-  employer_id: string | null;
-  report_id: string | null;
-  context: TravelContext;
-  travel_employers: { name: string } | null;
-  travel_reports: { id: string; name: string; status: string; code: string | null } | null;
-  // Si usas una cuenta de gastos agregada desde SQL, añadirías:
-  expenses_aggregate?: { aggregate: { sum: { amount: number }; count: number } };
-}
-
-export interface ReportQueryResponse {
-  id: string;
-  created_at: string;
-  name: string;
-  employer_id: string | null;
-  user_id: string;
-  status: string;
-  code: string | null;
-  url_summary: string | null;
-  url_detail: string | null;
-  url_receipts: string | null;
-  travel_employers: { name: string } | null;
-  travel_trips: { id: string; name: string; travel_expenses: { amount: number }[] }[];
-}
-
-// --- INTERFACES PARA LA UI (Data Transfer Objects) ---
-
-export interface TripWithTotals extends TravelTrip {
-  employer_name: string; // Eliminamos el '?' para que no sea undefined
-  report_name?: string;
-  report_status?: string;
-  total_amount: number;
-  expense_count: number;
-  visual_status: string;
-  // Añadimos esto para resolver los errores de "Property 'travel_reports' does not exist"
-  travel_reports?: {
-    id: string;
-    name: string;
-    status: string;
-    code: string | null;
-  } | null;
-}
-
-export interface TravelReport {
-  id: string;
-  user_id: string;
-  created_at: string;
-  report_number: string;
-  total_amount: number;
-  // Añadimos 'draft' a la unión de estados
-  status: 'draft' | 'pending' | 'approved' | 'paid'; 
-  notes?: string | null;
-  // Añadimos las 3 URLs que usa tu lógica de generación de PDFs
-  url_summary?: string | null;
-  url_detail?: string | null;
-  url_receipts?: string | null;
-  // Mantengo pdf_url por si lo usas en algún otro sitio
-  pdf_url?: string | null; 
-}
-
-export interface TravelReportWithDetails {
-  id: string;
-  created_at: string;
-  name: string;
-  employer_id: string | null;
-  user_id: string;
-  status: 'draft' | 'submitted' | 'approved' | 'paid';
-  code: string | null;
-  url_summary?: string | null;
-  url_detail?: string | null;
-  url_receipts?: string | null;
-  employer_name?: string;
-  trip_count: number;
-  total_amount: number;
-  // ESTO ES LO QUE FALTA:
-  trips_data?: {
-    id: string;
-    name: string;
-    start_date: string;
-    travel_expenses?: { amount: number }[];
-  }[];
+  color?:string;
 }
 
 export interface TravelMileageTemplate {
@@ -154,40 +71,80 @@ export interface TravelMileageTemplate {
   user_id: string;
 }
 
-// --- PROPS DE COMPONENTES ---
-
-export interface NewExpenseDialogProps {
-  tripId: string;
-  categories: TravelCategory[];
-  templates: TravelMileageTemplate[];
-  context: TravelContext; // Obligatorio para saber qué mostrar
+/**
+ * RESPUESTAS DE CONSULTAS (Data Fetching)
+ */
+export interface TripQueryResponse extends TravelTrip {
+  travel_employers: { name: string } | null;
+  travel_reports: { 
+    id: string; 
+    name: string; 
+    status: ReportStatus; 
+    code: string | null 
+  } | null;
 }
 
-export interface TravelEmployer {
+export interface ReportQueryResponse extends TravelReport {
+  travel_employers: { name: string } | null;
+  travel_trips: {
+    id: string;
+    name: string;
+    start_date: string; // Ya no necesitamos (t as any)
+    travel_expenses: { amount: number }[];
+  }[];
+}
+
+/**
+ * INTERFACES PARA LA UI (Extended)
+ */
+export interface TripWithTotals extends TravelTrip {
+  employer_name?: string;
+  report_name?: string;
+  report_status?: ReportStatus;
+  total_amount: number;
+}
+
+export interface TravelReport {
   id: string;
+  created_at: string;
   name: string;
+  employer_id: string | null;
+  user_id: string;
+  status: ReportStatus;
+  code: string | null;
+  url_summary?: string | null;
+  url_detail?: string | null;
+  url_receipts?: string | null;
 }
 
-// Auxiliares
+export interface TravelReportWithDetails extends TravelReport {
+  employer_name?: string;
+  trip_count: number;
+  total_amount: number;
+  trips_data?: {
+    id: string;
+    name: string;
+    start_date: string;
+    travel_expenses?: { amount: number }[];
+  }[];
+}
+
+/**
+ * AUXILIARES PARA COMPONENTES
+ */
+export interface ReportCandidatesResponse {
+  ready: TravelTrip[];
+  warnings: TravelTrip[];
+}
+
+export interface TripDetailData extends TravelTrip {
+  travel_employers: { name: string } | null;
+}
+
 export type ExpenseReceiptUrl = { receipt_url: string | null };
 
 export interface TravelTripCandidate {
   id: string;
   name: string;
   start_date: string;
-}
-
-export interface ReportCandidatesResponse {
-  ready: TravelTripCandidate[];
-  warnings: TravelTripCandidate[];
-}
-
-export interface TripStatusSelectorProps {
-    tripId: string;
-    currentStatus: TripDbStatus;
-    isPersonal?: boolean;
-    // Añadimos lo que falta:
-    trip: any; // O el tipo de tu viaje si lo tienes definido
-    hasPendingReceipts: boolean;
-    hasExpenses: boolean;
 }
