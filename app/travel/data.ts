@@ -22,7 +22,7 @@ export async function getTravelDashboardData(context: TravelContext) {
   // 1. Obtener Empresas
   const { data: employers } = await supabase
     .from('travel_employers')
-    .select('id, name','color')
+    .select('id, name,color')
     .order('name')
     .returns<TravelEmployer[]>()
 
