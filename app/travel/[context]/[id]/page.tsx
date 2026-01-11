@@ -132,7 +132,7 @@ export default async function TripDetailPage({ params }: PageProps) {
                         <CardContent className="p-0">
                           <div className="flex items-center p-3">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${isMissingReceipt ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-500'}`}>
-                                {isMissingReceipt ? <AlertCircle className="h-5 w-5 animate-pulse" /> : <CategoryIcon name={category?.icon_key} className="h-5 w-5" />}
+                                {isMissingReceipt ? <AlertCircle className="h-5 w-5 animate-pulse" /> : <CategoryIcon name={category?.icon_key || 'Tag'} className="h-5 w-5" />}
                             </div>
                             
                             <div className="flex-1 min-w-0">
