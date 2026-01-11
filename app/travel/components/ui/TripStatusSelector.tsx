@@ -3,7 +3,7 @@
 
 import { updateTripStatus, deleteTrip } from '@/app/travel/actions' // <-- ¡Importar deleteTrip!
 import { getTripState } from '@/utils/trip-logic'
-import { TravelTrip, TripDbStatus,TripStatusSelectorProps } from '@/types/travel' // <-- Tipos ya existentes
+import { TravelTrip, TripDbStatus } from '@/types/travel' // <-- Tipos ya existentes
 import {
   Select,
   SelectContent,
@@ -29,6 +29,13 @@ import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from "@/components/ui/button"
 
+interface TripStatusSelectorProps {
+  trip: TravelTrip;
+  onStatusChange?: (newStatus: TripDbStatus) => void;
+  // AÑADE ESTAS DOS LÍNEAS:
+  hasPendingReceipts?: boolean;
+  hasExpenses?: boolean;
+}
 
 export function TripStatusSelector({ trip, hasPendingReceipts, hasExpenses }: TripStatusSelectorProps) { // <-- ¡Actualizar Destructuring!
   const router = useRouter();
