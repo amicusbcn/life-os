@@ -141,7 +141,7 @@ export function EditExpenseDialog({ expense, categories, context }: EditExpenseD
                 {categories.map((cat) => (
                   <SelectItem key={cat.id} value={cat.id}>
                     <div className="flex items-center gap-2">
-                      <CategoryIcon name={category?.icon_key || 'Tag'} className="h-5 w-5" />
+                      <CategoryIcon name={cat?.icon_key || 'Tag'} className="h-5 w-5" />
                       <span>{cat.name}</span>
                     </div>
                   </SelectItem>
