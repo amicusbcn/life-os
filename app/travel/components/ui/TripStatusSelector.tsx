@@ -30,11 +30,13 @@ import { useState } from 'react'
 import { Button } from "@/components/ui/button"
 
 interface TripStatusSelectorProps {
-  trip: TravelTrip;
+  tripId: string;
+  currentStatus: TripDbStatus;
+  hasPendingReceipts: boolean;
+  hasExpenses: boolean;
+  isPersonal: boolean;
   onStatusChange?: (newStatus: TripDbStatus) => void;
-  // AÑADE ESTAS DOS LÍNEAS:
-  hasPendingReceipts?: boolean;
-  hasExpenses?: boolean;
+  trip?: any; // Lo dejamos opcional por si acaso se pasa el objeto entero
 }
 
 export function TripStatusSelector({ trip, hasPendingReceipts, hasExpenses }: TripStatusSelectorProps) { // <-- ¡Actualizar Destructuring!
