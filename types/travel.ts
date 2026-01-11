@@ -51,7 +51,7 @@ export interface TravelExpense {
 export interface TravelCategory {
   id: string;
   name: string;
-  icon_key: string | null;
+  icon_key: string | undefined;
   context: TravelContext;
   current_rate: number | null;
   is_mileage: boolean;
