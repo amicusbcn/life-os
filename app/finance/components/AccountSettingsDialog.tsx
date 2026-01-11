@@ -3,8 +3,9 @@
 
 import React, { useState, useMemo, useEffect } from "react"
 import { useRouter } from 'next/navigation'
-import { deleteAccount, createAccount, updateAccount, ActionResult } from "@/app/finance/actions" 
+import { deleteAccount, createAccount, updateAccount } from "@/app/finance/actions" 
 import { FinanceAccount, FinanceAccountType, ACCOUNT_TYPES_META } from "@/types/finance" 
+import { ActionResult } from "@/types/common"
 import { Switch } from "@/components/ui/switch" 
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
