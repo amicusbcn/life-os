@@ -16,8 +16,16 @@ import {
 } from "@/components/ui/select"
 import { Plus, Calculator, Gauge, Wallet, Landmark, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { TravelCategory, TravelMileageTemplate, NewExpenseDialogProps } from '@/types/travel' 
+import { TravelCategory, TravelMileageTemplate, TravelContext } from '@/types/travel' 
 import { ActionResponse } from '@/types/common'
+
+interface NewExpenseDialogProps {
+  tripId: string;
+  categories: TravelCategory[];
+  templates: TravelMileageTemplate[];
+  context: TravelContext;
+  accounts?: any[]; // La incluimos aquí directamente
+}
 
 // Nota: He añadido 'accounts' a las props para la integración con Finanzas
 export function NewExpenseDialog({ 
