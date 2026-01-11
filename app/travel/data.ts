@@ -18,7 +18,12 @@ import { getTripState } from '@/utils/trip-logic'
 
 export async function getTravelDashboardData(context: TravelContext) {
   const supabase = await createClient()
+  console.log("--- INICIANDO DIAGNÓSTICO DE VIAJES ---")
+  console.log("Contexto recibido:", context)
 
+  const { count } = await supabase.from('travel_trips').select('*', { count: 'exact', head: true })
+  console.log("Total viajes en BBDD (cualquier contexto/estado):", count)
+  
   // 1. Obtener Empresas
   const { data: employers } = await supabase
     .from('travel_employers')
@@ -31,7 +36,7 @@ export async function getTravelDashboardData(context: TravelContext) {
     .from('travel_trips')
     .select(`
       id, name, start_date, end_date, status, employer_id, report_id, context,
-      travel_employers ( name,color ),
+      travel_employers ( name ),
       travel_reports ( id, name, status, code )
     `)
     .eq('context', context)
