@@ -31,7 +31,7 @@ export async function getTravelDashboardData(context: TravelContext) {
     .from('travel_trips')
     .select(`
       id, name, start_date, end_date, status, employer_id, report_id, context,
-      travel_employers ( name ),
+      travel_employers ( name,color ),
       travel_reports ( id, name, status, code )
     `)
     .eq('context', context)
