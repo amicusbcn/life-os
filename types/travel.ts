@@ -102,6 +102,11 @@ export interface TripWithTotals extends TravelTrip {
   report_name?: string;
   report_status?: ReportStatus;
   total_amount: number;
+  travel_reports?: {
+    id: string;
+    code: string;
+    status: string;
+  } | null;
 }
 
 export interface TravelReport {

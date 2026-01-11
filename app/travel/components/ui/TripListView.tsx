@@ -107,20 +107,20 @@ export function TripListView({ trips, reports, employers, context }: TripListVie
 
   // --- FILTRADO ---
   const activeTrips = trips.filter(t => 
-    ['planned', 'active', 'completed'].includes(t.visual_status)
+    ['planned', 'active', 'completed'].includes(t.status)
   )
 
   const historyTrips = trips.filter(t => 
-    ['closed', 'reported'].includes(t.visual_status) &&
+    ['closed', 'reported'].includes(t.status) &&
     (t.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-     t.employer_name.toLowerCase().includes(searchTerm.toLowerCase()))
+     (t.employer_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()))
   )
 
   // --- RENDER CARDS (TU LÓGICA ORIGINAL) ---
   const RenderTripCard = ({ trip }: { trip: TripWithTotals }) => {
     const { label, color } = getTripState(trip); 
-    const isClosed = ['closed', 'reported'].includes(trip.visual_status);
-    const isReported = trip.visual_status === 'reported';
+    const isClosed = ['closed', 'reported'].includes(trip.status);
+    const isReported = trip.status === 'reported';
     const reportCode = trip.travel_reports?.code;
     
     return (
