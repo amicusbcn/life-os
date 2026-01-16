@@ -1,3 +1,4 @@
+// utils/icon-map.tsx
 import { 
   Car, 
   Bed, 

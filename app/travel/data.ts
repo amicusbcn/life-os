@@ -176,11 +176,16 @@ export async function getTripExpenses(tripId: string): Promise<TravelExpense[]> 
   const supabase = await createClient()
   const { data } = await supabase
     .from('travel_expenses')
-    .select('*, finance_transactions(id)')
+    .select('*, finance_transactions(id),travel_categories!inner(is_mileage)')
     .eq('trip_id', tripId)
     .order('date', { ascending: false })
+
+  const formattedData = data?.map(expense => ({
+    ...expense,
+    is_mileage: expense.travel_categories?.is_mileage || false
+  }))
   
-  return (data as TravelExpense[]) || []
+  return (formattedData as TravelExpense[]) || []
 }
 
 export async function getArchivedTravelData(context: TravelContext) {

@@ -72,7 +72,13 @@ export default async function TripDetailPage({ params }: PageProps) {
   }, {})
 
   const sortedDates = Object.keys(groupedExpenses).sort((a, b) => b.localeCompare(a))
-
+  console.log("DEBUG TICKETS:", expenses.map(e => ({
+  desc: e.concept,
+  url: !!e.receipt_url,
+  waived: e.receipt_waived,
+  is_mileage: e.is_mileage,
+  is_pending: !e.receipt_url && !e.receipt_waived && !e.is_mileage
+})));
   return (
     <div className="min-h-screen bg-slate-100 pb-24 font-sans">
       

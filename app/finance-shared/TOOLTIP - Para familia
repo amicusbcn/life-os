@@ -1,0 +1,28 @@
+📝 Chuleta: Desplegar familia.midominio.com
+(A realizar cuando decidas abrir el acceso)
+
+En Vercel:
+
+Dale a "Add New Project".
+
+Selecciona el mismo repositorio de GitHub que usas para Life-OS.
+
+Ponle de nombre: life-os-family (o similar).
+
+Configura Variables de Entorno (En el nuevo proyecto):
+
+NEXT_PUBLIC_SUPABASE_URL: (La misma que Life-OS)
+
+NEXT_PUBLIC_SUPABASE_ANON_KEY: (La misma que Life-OS)
+
+NEXT_PUBLIC_APP_MODE: family_finance_only 👈 La clave mágica.
+
+Configura el Dominio:
+
+En Vercel > Settings > Domains, añade familia.midominio.com.
+
+En Supabase (Auth):
+
+Ve a Authentication > URL Configuration > Redirect URLs.
+
+Añade: https://familia.midominio.com/auth/callback (para que el login funcione allí).
