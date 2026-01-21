@@ -16,6 +16,10 @@ export interface ActionResponse {
     message?: string;
 }
 
+export interface CreateReportResponse extends ActionResponse {
+    reportId?: string;
+}
+
 export interface UserMenuProps {
     userEmail: string;
     userRole: string | null;
