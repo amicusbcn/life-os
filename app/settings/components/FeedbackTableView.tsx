@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { ActionResponse } from '@/types/common';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { AppFeedback, CATEGORIES_MAP, FeedbackCategory } from '@/types/settings';
+import { AppFeedback, FEEDBACK_CATEGORIES_MAP, FeedbackCategory } from '@/types/feedback';
 import {FeedbackTableViewProps, SortKey, SortOrder, TableState} from "@/types/settings"; 
 import { updateFeedbackStatus, updateFeedbackCategory } from '@/app/core/actions';
 import { useMemo, useState } from 'react';
@@ -159,7 +159,7 @@ export function FeedbackTableView({ proposals }: FeedbackTableViewProps) {
 
 function CategoryDropdown({ feedbackId, currentCategory }: { feedbackId: string, currentCategory: FeedbackCategory }) {
     const router = useRouter();
-    const current = CATEGORIES_MAP[currentCategory];
+    const current = FEEDBACK_CATEGORIES_MAP[currentCategory];
 
     const handleSelectCategory = (category: FeedbackCategory) => {
         if (category === currentCategory) return;
@@ -187,8 +187,8 @@ function CategoryDropdown({ feedbackId, currentCategory }: { feedbackId: string,
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-[200px]">
-                {(Object.keys(CATEGORIES_MAP) as FeedbackCategory[]).map((key) => {
-                    const category = CATEGORIES_MAP[key];
+                {(Object.keys(FEEDBACK_CATEGORIES_MAP) as FeedbackCategory[]).map((key) => {
+                    const category = FEEDBACK_CATEGORIES_MAP[key];
                     return (
                         <DropdownMenuItem 
                             key={key} 
