@@ -8,9 +8,7 @@ import { getFeedbackProposals } from '@/app/core/actions';
 import { UserMenuProps } from '@/types/common';
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
 import { SettingsMenu } from '../components/SettingsMenu';
-// Componente Cliente (se creará a continuación)
-import { FeedbackTableView } from '../components/FeedbackTableView'; 
-
+import { FeedbackTableView } from '../components/FeedbackTableView';
 export default async function FeedbackAdminPage() {
 		const supabase = await createClient();
 		const { data: { user } } = await supabase.auth.getUser();
@@ -49,7 +47,10 @@ export default async function FeedbackAdminPage() {
 						/>
 						
 						{/* 2. RENDERIZAR EL CLIENT COMPONENT CON DATOS */}
-						<FeedbackTableView proposals={proposals} /> 
+						<FeedbackTableView 
+							proposals={proposals}       // Mapeamos 'proposals' a 'feedbacks'
+							isAdmin={userRole === 'admin'} // Pasamos el booleano obligatorio
+						/>
 				</div>
 		);
 }
