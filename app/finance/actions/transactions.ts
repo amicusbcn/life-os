@@ -1,15 +1,15 @@
 'use server'
 import { createClient } from '@/utils/supabase/server'
-import {ActionResult } from '@/types/common'
+import {ActionResponse } from '@/types/common'
 import {FinanceCategory} from '@/types/finance'; 
 import { revalidatePath } from 'next/cache'
 
-export interface CreateCategoryResult extends ActionResult {
+export interface CreateCategoryResult extends ActionResponse {
     data?: { id: string, category: FinanceCategory }; // Devolver el objeto categoría
 }
 
 export async function createCategory(
-    _prevState: ActionResult, 
+    _prevState: ActionResponse, 
     formData: FormData
 ): Promise<CreateCategoryResult> {
     const supabase = await createClient();
@@ -53,9 +53,9 @@ export async function createCategory(
 // 4. UPDATE CATEGORY (Nueva)
 // ==========================================
 export async function updateCategory(
-  _prevState: ActionResult, 
+  _prevState: ActionResponse, 
   formData: FormData
-): Promise<ActionResult> {
+): Promise<ActionResponse> {
     const supabase = await createClient();
     const { revalidatePath } = await import('next/cache');
 
@@ -89,7 +89,7 @@ export async function updateCategory(
 // ==========================================
 // 5. DELETE CATEGORY (Nueva)
 // ==========================================
-export async function deleteCategory(categoryId: string): Promise<ActionResult> {
+export async function deleteCategory(categoryId: string): Promise<ActionResponse> {
     const supabase = await createClient();
 
     const { revalidatePath } = await import('next/cache');

@@ -1,7 +1,7 @@
 'use server'
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
-import {ActionResult } from '@/types/common'
+import {ActionResponse } from '@/types/common'
 
 
 
