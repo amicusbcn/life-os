@@ -5,7 +5,7 @@ import React, { useState, useMemo, useEffect } from "react"
 import { useRouter } from 'next/navigation'
 import { deleteAccount, createAccount, updateAccount } from "@/app/finance/actions" 
 import { FinanceAccount, FinanceAccountType, ACCOUNT_TYPES_META } from "@/types/finance" 
-import { ActionResult } from "@/types/common"
+import { ActionResponse } from "@/types/common"
 import { Switch } from "@/components/ui/switch" 
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -77,7 +77,7 @@ function AccountRow({ account,templates }: { account: FinanceAccount,templates: 
         formData.append('auto_mirror_transfers', String(tempAutoMirror))
         formData.append('importer_id', tempImporterId === 'none' ? '' : tempImporterId)
         formData.append('initial_balance', String(tempInitialBalance))
-        const res = await updateAccount({} as ActionResult, formData)
+        const res = await updateAccount({} as ActionResponse, formData)
         if (res.success) {
             toast.success('Cuenta actualizada')
             setIsEditing(false)

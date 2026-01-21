@@ -35,3 +35,6 @@ export const FEEDBACK_CATEGORIES_MAP: Record<FeedbackCategory, { label: string; 
     feature: { label: 'Nueva Funcionalidad', color: 'bg-emerald-500' },
     other: { label: 'General / Otros', color: 'bg-slate-500' },
 };
+
+
+

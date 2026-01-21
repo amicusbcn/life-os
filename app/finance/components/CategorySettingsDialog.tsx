@@ -5,7 +5,7 @@ import React, { useState, useMemo, useEffect } from "react"
 import { useRouter } from 'next/navigation'
 import { createCategory, deleteCategory, updateCategory, createRule, deleteRule, applyRuleRetroactively } from "@/app/finance/actions" 
 import { FinanceCategory, FinanceRule } from "@/types/finance" 
-import { ActionResult } from "@/types/common"
+import { ActionResponse } from "@/types/common"
 
 // UI Components
 import { Button } from "@/components/ui/button"
@@ -46,7 +46,7 @@ function CategoryRow({ category, categories }: { category: any, categories: Fina
         formData.append('icon_name', icon)
         formData.append('color', color)
         
-        const res = await updateCategory({} as ActionResult, formData)
+        const res = await updateCategory({} as ActionResponse, formData)
         if (res.success) {
             toast.success('Guardado')
             setIsChanged(false)
