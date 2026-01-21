@@ -207,3 +207,4 @@ export interface DashboardData {
     transactions: SharedTransaction[]
     splitTemplates: SharedSplitTemplate[]
 }
+
