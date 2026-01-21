@@ -2,12 +2,12 @@
 'use server'
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
-import {ActionResult } from '@/types/common'
+import {ActionResponse } from '@/types/common'
 import { FinanceAccountType, FinanceTransactionSplit } from '@/types/finance'; 
 
 
 
-export interface CreateAccountResult extends ActionResult {
+export interface CreateAccountResult extends ActionResponse {
     data?: { id: string }; // Sobrescribe data con el tipo específico
 }
 
@@ -80,7 +80,7 @@ export async function createAccount(
 }
 
 
-export async function updateAccount(_prevState: ActionResult, formData: FormData): Promise<ActionResult> {
+export async function updateAccount(_prevState: ActionResponse, formData: FormData): Promise<ActionResponse> {
   const supabase = await createClient();
   const { revalidatePath } = await import('next/cache');
 
@@ -138,7 +138,7 @@ export async function updateAccount(_prevState: ActionResult, formData: FormData
 }
 
 // DELETE ACCOUNT (Se mantiene igual, es correcta)
-export async function deleteAccount(accountId: string): Promise<ActionResult> {
+export async function deleteAccount(accountId: string): Promise<ActionResponse> {
     const supabase = await createClient();
     const { revalidatePath } = await import('next/cache');
     try {
