@@ -1,7 +1,7 @@
 // types/feedback.ts
 
 export type FeedbackCategory = 'bug' | 'improvement' | 'feature' | 'other';
-export type SortKey = 'created_at' | 'profiles.full_name' | 'context_path' | 'is_processed';
+export type SortKey = keyof AppFeedback | 'author' | 'date' | 'profiles.full_name' | 'created_at'
 export type SortOrder = 'asc' | 'desc';
 
 export interface AppFeedback {
@@ -19,8 +19,16 @@ export interface AppFeedback {
     } | null;
 }
 
+export interface TableState {
+    sortBy: SortKey
+    sortOrder: SortOrder
+    statusFilter: string
+    categoryFilter: string
+}
+
 export interface FeedbackTableViewProps {
-    proposals: AppFeedback[];
+    proposals: AppFeedback[]
+    isAdmin: boolean
 }
 
 export interface FeedbackTableState {

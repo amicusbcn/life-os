@@ -8,13 +8,14 @@ export type EmailPreference = 'all' | 'high_only' | 'none';
 
 // --- DOMINIO: MÓDULOS (Fusionado) ---
 export interface AppModule {
-    id: string;
-    key: string;
-    name: string;
-    description: string | null;
-    icon: string | null; 
-    route?: string; // <--- Añadido de tu archivo antiguo
-    is_active: boolean;
+    id: string
+    key: string
+    name: string
+    description: string | null
+    icon: string | null
+    route?: string 
+    key_url?: string
+    is_active: boolean
 }
 
 // --- DOMINIO: PERFILES (Fusionado) ---

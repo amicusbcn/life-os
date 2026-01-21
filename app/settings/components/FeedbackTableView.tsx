@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import { ActionResponse } from '@/types/common';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AppFeedback, FEEDBACK_CATEGORIES_MAP, FeedbackCategory } from '@/types/feedback';
-import {FeedbackTableViewProps, SortKey, SortOrder, TableState} from "@/types/settings"; 
+import {FeedbackTableViewProps, SortKey, SortOrder,TableState } from "@/types/feedback"; 
 import { updateFeedbackStatus, updateFeedbackCategory } from '@/app/core/actions';
 import { useMemo, useState } from 'react';
 
@@ -21,11 +21,14 @@ import { useMemo, useState } from 'react';
 export function FeedbackTableView({ proposals }: FeedbackTableViewProps) {
     const [tableState, setTableState] = useState<TableState>({
         sortBy: 'created_at',
-        sortOrder: 'desc', // Por defecto, el más reciente primero
-    });
+        sortOrder: 'desc',
+        statusFilter: 'all',   // <--- FALTABA ESTO
+        categoryFilter: 'all'  // <--- Y ESTO
+    })
 
     const handleSort = (key: SortKey) => {
         setTableState(prev => ({
+            ...prev,
             sortBy: key,
             // Si la columna es la misma, alterna el orden; si no, por defecto es descendente
             sortOrder: prev.sortBy === key && prev.sortOrder === 'desc' ? 'asc' : 'desc',
