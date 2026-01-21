@@ -592,11 +592,11 @@ export async function importBankTransactions(
         // A. Buscamos si el grupo tiene cuenta por defecto
         const { data: group } = await supabase
             .from('finance_shared_groups')
-            .select('default_account')
+            .select('default_account_id')
             .eq('id', groupId)
             .single()
 
-        let targetAccountId = group?.default_account
+        let targetAccountId = group?.default_account_id
 
         // B. Si no hay default, cogemos la primera que encontremos (Fallback)
         if (!targetAccountId) {
