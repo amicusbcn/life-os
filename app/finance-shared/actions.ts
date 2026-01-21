@@ -2,7 +2,7 @@
 'use server'
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { CreateGroupInput,AddMemberInput, UpdateMemberInput, CreateSharedCategoryInput, SharedCategory, AssignAccountManagerInput,CreateTransactionInput } from '@/types/finance-shared'
+import { CreateGroupInput,AddMemberInput, UpdateMemberInput, CreateSharedCategoryInput, SharedCategory, AssignAccountManagerInput,CreateTransactionInput, SharedAccount } from '@/types/finance-shared'
 
 // ... funciones anteriores (getSharedGroups, etc)
 
@@ -647,16 +647,46 @@ export async function importBankTransactions(
 
 export async function updateTransactionCategory(transactionId: string, categoryId: string) {
     const supabase = await createClient()
+
+    // 1. Obtenemos la info de la NUEVA categoría (para ver si is_loan es true)
+    const { data: category, error: catError } = await supabase
+        .from('finance_shared_categories')
+        .select('is_loan')
+        .eq('id', categoryId)
+        .single()
+
+    if (catError || !category) return { error: 'Categoría no encontrada' }
+
+    // 2. Obtenemos el importe del movimiento actual (para recalcular income/expense si deja de ser préstamo)
+    const { data: transaction, error: txError } = await supabase
+        .from('finance_shared_transactions')
+        .select('amount')
+        .eq('id', transactionId)
+        .single()
+
+    if (txError || !transaction) return { error: 'Transacción no encontrada' }
+
+    // 3. LÓGICA DE TIPO (Igual que en el formulario)
+    let newType = transaction.amount >= 0 ? 'income' : 'expense' // Por defecto según signo
+
+    if (category.is_loan) {
+        newType = 'loan' // Si la categoría es préstamo, forzamos tipo préstamo
+    }
+
+    // 4. Actualizamos Categoría Y Tipo
     const { error } = await supabase
         .from('finance_shared_transactions')
-        .update({ category_id: categoryId })
+        .update({ 
+            category_id: categoryId,
+            type: newType 
+        })
         .eq('id', transactionId)
 
     if (error) return { error: error.message }
+    
     revalidatePath('/finance-shared')
     return { success: true }
 }
-
 // CAMBIO RÁPIDO DE REPARTO (Para Aportaciones: Asigna todo a uno)
 export async function setTransactionContributor(transactionId: string, memberId: string, amount: number) {
     const supabase = await createClient()
@@ -680,6 +710,312 @@ export async function setTransactionContributor(transactionId: string, memberId:
 
     if (insError) return { error: insError.message }
     
+    revalidatePath('/finance-shared')
+    return { success: true }
+}
+
+export async function upsertAccount(
+    groupId: string, 
+    account: Partial<SharedAccount>
+) {
+    const supabase = await createClient()
+    
+    // Validación básica
+    if (!account.name) return { error: 'El nombre es obligatorio' }
+
+    const { error } = await supabase
+        .from('finance_shared_accounts')
+        .upsert({
+            id: account.id, // undefined = crear
+            group_id: groupId,
+            name: account.name,
+            balance: account.balance || 0, // Por ahora gestionamos saldo inicial
+            type: account.type || 'bank',
+            responsible_member_id: account.responsible_member_id || null,
+            color: account.color || '#64748b',
+            icon_name: account.icon_name || 'Landmark'
+        })
+
+    if (error) return { error: error.message }
+    revalidatePath('/finance-shared')
+    return { success: true }
+}
+
+export async function deleteAccount(accountId: string) {
+    const supabase = await createClient()
+    
+    // TODO: En el futuro, comprobar si hay transacciones vinculadas a esta cuenta_id
+    // Por ahora, borramos directo (CUIDADO)
+
+    const { error } = await supabase
+        .from('finance_shared_accounts')
+        .delete()
+        .eq('id', accountId)
+
+    if (error) return { error: error.message }
+    revalidatePath('/finance-shared')
+    return { success: true }
+}
+
+export async function upsertSharedTransaction(groupId: string, transaction: any) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'No autorizado' }
+
+  // 1. Preparamos el objeto principal
+  const isTransfer = transaction.type === 'transfer'
+  const payload: any = {
+    group_id: groupId,
+    date: transaction.date,
+    amount: parseFloat(transaction.amount),
+    description: transaction.description,
+    notes: transaction.notes,
+    category_id: isTransfer ? null : transaction.category_id, // Transferencias no suelen tener categoría
+    payer_member_id: transaction.payer_member_id,
+    account_id: transaction.account_id,
+    payment_source: transaction.payment_source,
+    type: transaction.type,
+    // Nuevos campos
+    transfer_account_id: isTransfer ? transaction.transfer_account_id : null,
+    parent_transaction_id: transaction.parent_transaction_id,
+    // El linked_id no lo tocamos aquí directamente si ya existe, lo gestionamos abajo
+  }
+
+  // Si es nuevo, insertamos el principal primero para tener ID
+  let mainTxId = transaction.id
+  let linkedTxId = transaction.linked_transaction_id
+
+  // A. GUARDAR TRANSACCIÓN PRINCIPAL (ORIGEN)
+  const { data: mainTx, error } = await supabase
+    .from('finance_shared_transactions')
+    .upsert(transaction.id ? { ...payload, id: transaction.id } : payload)
+    .select()
+    .single()
+
+  if (error) return { error: error.message }
+  mainTxId = mainTx.id
+
+  // B. GESTIÓN DE TRANSFERENCIAS (LA MAGIA) 🪄
+  if (isTransfer && transaction.transfer_account_id) {
+      // Calculamos el importe inverso (si origen es -500, destino es +500)
+      const inverseAmount = payload.amount * -1
+
+      const mirrorPayload = {
+          group_id: groupId,
+          date: payload.date,
+          amount: inverseAmount,
+          description: payload.description, // Misma descripción
+          notes: 'Transferencia automática',
+          type: 'transfer',
+          account_id: transaction.transfer_account_id, // La cuenta destino
+          transfer_account_id: payload.account_id, // La cuenta origen
+          payment_source: 'account', // Siempre es movimiento de cuenta
+          linked_transaction_id: mainTxId, // Apunta al padre
+          created_by: user.id
+      }
+
+      if (linkedTxId) {
+          // Si ya existía gemela, la actualizamos
+          await supabase
+            .from('finance_shared_transactions')
+            .update(mirrorPayload)
+            .eq('id', linkedTxId)
+      } else {
+          // Si no existía, la creamos
+          const { data: newMirror } = await supabase
+            .from('finance_shared_transactions')
+            .insert(mirrorPayload)
+            .select()
+            .single()
+          
+          linkedTxId = newMirror?.id
+
+          // Y actualizamos la principal para que apunte a la nueva gemela
+          await supabase
+            .from('finance_shared_transactions')
+            .update({ linked_transaction_id: linkedTxId })
+            .eq('id', mainTxId)
+      }
+  } 
+  // C. LIMPIEZA: Si antes era transferencia y ahora no, borramos la gemela
+  else if (!isTransfer && linkedTxId) {
+      await supabase.from('finance_shared_transactions').delete().eq('id', linkedTxId)
+      // Y limpiamos el campo en la principal
+      await supabase.from('finance_shared_transactions').update({ linked_transaction_id: null }).eq('id', mainTxId)
+  }
+
+  // D. GESTIÓN DE ALLOCATIONS (Solo si NO es transferencia)
+  // Las transferencias no se reparten entre personas, es movimiento de fondos.
+  if (!isTransfer && transaction.allocations) {
+      // 1. Borrar anteriores
+      await supabase.from('finance_shared_allocations').delete().eq('transaction_id', mainTxId)
+      
+      // 2. Insertar nuevas
+      if (transaction.allocations.length > 0) {
+          const allocs = transaction.allocations.map((a: any) => ({
+              transaction_id: mainTxId,
+              member_id: a.member_id,
+              amount: a.amount
+          }))
+          const { error: allocError } = await supabase.from('finance_shared_allocations').insert(allocs)
+          if (allocError) console.error('Error allocations:', allocError)
+      }
+  }
+
+  revalidatePath('/finance-shared')
+  return { success: true, data: mainTx }
+}
+
+// Acción para buscar gastos huérfanos (Bottom-Up)
+export async function getOrphanExpenses(groupId: string, accountId: string, maxDate: string) {
+    const supabase = await createClient()
+
+    if (!accountId) {
+        console.log("   ❌ ABORTANDO: No hay Account ID")
+        return []
+    }
+
+    const { data, error } = await supabase
+        .from('finance_shared_transactions')
+        .select('id, description, amount, date, account_id, type, parent_transaction_id') // Pedimos campos clave para verlos en el log
+        .eq('group_id', groupId)
+        .eq('type', 'expense')
+        .is('parent_transaction_id', null)
+        .eq('account_id', accountId) // <--- AQUÍ ESTÁ LA CLAVE
+        .lte('date', maxDate)
+        .order('date', { ascending: false })
+        .limit(50)
+
+    if (error) {
+        console.error("   🔥 ERROR SUPABASE:", error.message)
+        return []
+    }
+
+    console.log(`   ✅ Encontrados: ${data?.length} registros.`)
+    if (data && data.length > 0) {
+        console.log("   📝 Ejemplo 1:", data[0].description, "| Cuenta:", data[0].account_id)
+    }
+
+    return data || []
+}
+// Acción para crear un hijo directamente vinculado
+export async function createChildTransaction(groupId: string, payload: any) {
+    return await upsertSharedTransaction(groupId, payload)
+}
+
+// Acción para vincular
+export async function linkOrphansToParent(orphanIds: string[], parentTxId: string) {
+    const supabase = await createClient()
+    
+    const { error } = await supabase
+        .from('finance_shared_transactions')
+        .update({ parent_transaction_id: parentTxId })
+        .in('id', orphanIds)
+        
+    if (error) console.error('Error linking orphans:', error)
+    return { error: error?.message }
+}
+// === PLANTILLAS DE REPARTO ===
+
+// Crear Plantilla
+export async function createSplitTemplate(input: { 
+    group_id: string, 
+    name: string, 
+    description?: string,
+    members: { member_id: string, shares: number }[] 
+}) {
+    const supabase = await createClient()
+    
+    // 1. Crear Cabecera
+    const { data: template, error: tmplError } = await supabase
+        .from('finance_shared_split_templates')
+        .insert({
+            group_id: input.group_id,
+            name: input.name,
+            description: input.description || null
+        })
+        .select()
+        .single()
+
+    if (tmplError) return { error: tmplError.message }
+
+    // 2. Crear Miembros con pesos
+    // Filtramos solo los que tienen shares > 0 para no llenar la BD de ceros, 
+    // aunque guardar los ceros puede ser útil para saber explícitamente que alguien no paga.
+    // Vamos a guardar TODOS para que la plantilla sea estable.
+    const memberRows = input.members.map(m => ({
+        template_id: template.id,
+        member_id: m.member_id,
+        shares: m.shares
+    }))
+
+    const { error: membersError } = await supabase
+        .from('finance_shared_split_template_members')
+        .insert(memberRows)
+
+    if (membersError) {
+        // Rollback manual (borrar la cabecera si fallan los hijos)
+        await supabase.from('finance_shared_split_templates').delete().eq('id', template.id)
+        return { error: membersError.message }
+    }
+
+    revalidatePath('/finance-shared')
+    return { success: true }
+}
+
+export async function updateSplitTemplate(templateId: string, input: {
+    name: string,
+    description?: string,
+    members: { member_id: string, shares: number }[]
+}) {
+    const supabase = await createClient()
+
+    // 1. Actualizar Cabecera (Nombre y Descripción)
+    const { error: headError } = await supabase
+        .from('finance_shared_split_templates')
+        .update({
+            name: input.name,
+            description: input.description || null
+        })
+        .eq('id', templateId)
+
+    if (headError) return { error: headError.message }
+
+    // 2. Actualizar Miembros (Estrategia: Borrar todos y recrear)
+    // Primero borramos los antiguos
+    const { error: delError } = await supabase
+        .from('finance_shared_split_template_members')
+        .delete()
+        .eq('template_id', templateId)
+    
+    if (delError) return { error: delError.message }
+
+    // Ahora insertamos los nuevos
+    const memberRows = input.members.map(m => ({
+        template_id: templateId,
+        member_id: m.member_id,
+        shares: m.shares
+    }))
+
+    const { error: insError } = await supabase
+        .from('finance_shared_split_template_members')
+        .insert(memberRows)
+
+    if (insError) return { error: insError.message }
+
+    revalidatePath('/finance-shared')
+    return { success: true }
+}
+
+// Borrar Plantilla
+export async function deleteSplitTemplate(templateId: string) {
+    const supabase = await createClient()
+    const { error } = await supabase
+        .from('finance_shared_split_templates')
+        .delete()
+        .eq('id', templateId)
+
+    if (error) return { error: error.message }
     revalidatePath('/finance-shared')
     return { success: true }
 }

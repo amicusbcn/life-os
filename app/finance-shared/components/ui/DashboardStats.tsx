@@ -1,222 +1,212 @@
-'use client'
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { formatCurrency } from "@/lib/utils"
+import { Wallet, Scale, AlertCircle, CheckCircle2, Calculator, PiggyBank, TrendingUp, TrendingDown, Building2 } from "lucide-react"
 
-import { useState } from 'react'
-import { DashboardData } from '@/app/finance-shared/data'
-import { formatCurrency } from '@/lib/utils'
-import { Wallet, Landmark, CheckCircle2, PieChart, CreditCard, ChevronDown, ChevronUp, RefreshCw, ArrowRight, LogIn, LogOut } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+export function DashboardStats({ data, currentMemberId, isAdmin, defaultAccountId, }: any) {
+    const { accounts, members, transactions,provisions } = data
+console.log("1. ID que buscamos (currentMemberId):", currentMemberId)
+    console.log("2. Lista de miembros disponible:", members.map((m: any) => ({ 
+        id: m.id, 
+        name: m.name, 
+        balance_raw: m.balance,
+        balance_num: Number(m.balance)
+    })))
+    // 1. SALDO BANCARIO
+    const mainAccount = accounts.find((a: any) => a.id === defaultAccountId) || accounts[0]
+    const mainBalance = mainAccount?.balance || 0
+    const balanceDate = mainAccount?.balance_date 
+        ? new Date(mainAccount.balance_date).toLocaleDateString() 
+        : 'Sin fecha'
 
-interface Props {
-  data: DashboardData
-  currentUserId: string
-}
+    // 2. ACTIVOS TOTALES
+    const totalAssets = accounts.reduce((acc: number, curr: any) => acc + (curr.balance || 0), 0)
 
-export function DashboardStats({ data, currentUserId }: Props) {
-  if (!data || !data.stats) {
-      return <div className="p-4 border rounded-xl bg-red-50 text-red-600 text-sm">Esperando datos...</div>
-  }
+    // 3. CÁLCULO DE PROVISIONES (Nueva Lógica Robusta)
+    const activeProvisions = transactions.reduce((acc: number, tx: any) => {
+        if (tx.is_provision) {
+            return acc + Math.abs(tx.amount)
+        }
+        return acc
+    }, 0)
 
-  const { stats, members } = data
-  const [showLiquidation, setShowLiquidation] = useState(false)
-  
-  const myMember = members.find(m => m.user_id === currentUserId)
-  const isAdmin = myMember?.role === 'admin'
-  const isCardAdmin = false 
-  const myBalance = myMember?.total_balance || 0
+    // 4. DEUDAS
+    let totalMembersDebt = 0 
+    let totalGroupDebt = 0   
+    const myMemberProfile = members.find((m: any) => m.id === currentMemberId)
+    let myBalance = Number(myMemberProfile?.balance) || 0 // Si no te encuentra, 0
+    members.forEach((m: any) => {
+        const bal = Number(m.balance) || 0
+        if (bal < 0) totalMembersDebt += Math.abs(bal)
+        if (bal > 0) totalGroupDebt += bal
+    })
 
-  // --- ALGORITMO DE LIQUIDACIÓN CONTRA CUENTA ---
-  // 1. Deudores: Tienen saldo negativo. Deben INGRESAR dinero a la cuenta.
-  const debtors = members
-      .filter(m => m.total_balance < -0.01)
-      .map(m => ({ name: m.name, amount: Math.abs(m.total_balance) }))
-      .sort((a, b) => b.amount - a.amount)
+    // 5. PATRIMONIO NETO
+    // Activos (Banco) - Provisiones (Reservas) + Deudas a cobrar - Deudas a pagar
+    const netBalance = totalAssets - activeProvisions + totalMembersDebt - totalGroupDebt
 
-  // 2. Acreedores: Tienen saldo positivo. Deben RETIRAR dinero de la cuenta.
-  const creditors = members
-      .filter(m => m.total_balance > 0.01)
-      .map(m => ({ name: m.name, amount: m.total_balance }))
-      .sort((a, b) => b.amount - a.amount)
+    //6. Mi saldo
+    
+    // --- GESTIÓN (Logica mantenida igual) ---
+    // --- GESTIÓN ---
+    const pendingAllocation = transactions.filter((tx: any) => !tx.is_virtual && tx.type !== 'transfer' && (!tx.allocations || tx.allocations.length === 0))
+    const pendingAllocationAmount = pendingAllocation.reduce((acc:number, tx:any) => acc + Math.abs(tx.amount), 0)
 
-  const totalToCollect = debtors.reduce((acc, curr) => acc + curr.amount, 0)
-  const totalToPayOut = creditors.reduce((acc, curr) => acc + curr.amount, 0)
+    const pendingApproval = transactions.filter((tx: any) => tx.approval_status === 'pending')
+    const pendingApprovalAmount = pendingApproval.reduce((acc:number, tx:any) => acc + Math.abs(tx.amount), 0)
 
-  // 3. Predicción del Saldo Bancario Final
-  // Saldo Actual + Lo que ingresan los deudores - Lo que retiran los acreedores
-  const projectedBankBalance = stats.bankBalance + totalToCollect - totalToPayOut
+    const pendingJustificationRows = transactions.filter((tx: any) => tx.type === 'transfer' && !tx.parent_transaction_id && tx.amount > 0)
+    let pendingJustificationCount = 0
+    let pendingJustificationAmount = 0
+    
+    pendingJustificationRows.forEach((parent: any) => {
+        const children = transactions.filter((t:any) => t.parent_transaction_id === parent.id)
+        const spent = children.reduce((sum:number, c:any) => sum + Math.abs(c.amount), 0)
+        const remaining = Math.abs(parent.amount) - spent
+        if (remaining > 0.01) {
+            pendingJustificationAmount += remaining
+            pendingJustificationCount++
+        }
+    })
 
-  // Detectar si hay movimientos que hacer
-  const hasMovements = debtors.length > 0 || creditors.length > 0
-
-  return (
-    <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-      
-      {/* CABECERA: SALDO NETO (Patrimonio del Grupo) */}
-      <div className="p-4 bg-slate-50 border-b flex justify-between items-center">
-        <div>
-           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Patrimonio Neto</p>
-           <h2 className="text-2xl font-bold text-slate-900">{formatCurrency(stats.netBalance)}</h2>
-        </div>
-        <div className="h-10 w-10 bg-white rounded-full flex items-center justify-center border shadow-sm">
-            <Landmark className="h-5 w-5 text-indigo-600" />
-        </div>
-      </div>
-
-      <div className="divide-y divide-slate-100">
-        
-        {/* 1. SALDO BANCO REAL */}
-        <StatRow 
-            label="Saldo en Banco" 
-            value={stats.bankBalance} 
-            icon={<Wallet className="h-4 w-4 text-slate-400"/>}
-            subtext={stats.activeLoans > 0 || stats.activeProvisions > 0 ? "Incluye provisiones" : undefined}
-        />
-
-        {/* 2. MI SITUACIÓN */}
-        <div className="p-3 flex items-center justify-between hover:bg-slate-50 transition-colors border-l-4 border-l-transparent">
-            <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full bg-indigo-50 flex items-center justify-center">
-                   <span className="text-xs font-bold text-indigo-700">YO</span>
-                </div>
-                <div className="flex flex-col">
-                    <span className="text-sm font-medium text-slate-700">Mi Situación</span>
-                </div>
-            </div>
-            <div className="text-right">
-                 <span className={`text-sm font-bold ${myBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {myBalance >= 0 ? '+' : ''}{formatCurrency(myBalance)}
-                 </span>
-                 <p className="text-[10px] text-slate-400">
-                    {myBalance >= 0 ? 'Retirable' : 'A ingresar'}
-                 </p>
-            </div>
-        </div>
-
-        {/* 3. SIMULACIÓN LIQUIDACIÓN CONTRA CUENTA */}
-        <div className="flex flex-col">
-            <div 
-                className="p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
-                onClick={() => setShowLiquidation(!showLiquidation)}
-            >
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center w-8">
-                        <RefreshCw className="h-4 w-4 text-slate-400" />
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            
+            {/* 1. SALDO PRINCIPAL */}
+            <Card className="border-l-4 border-l-slate-600 shadow-sm bg-white">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        {mainAccount?.name || 'Saldo Principal'}
+                    </CardTitle>
+                    <Building2 className="h-4 w-4 text-slate-400" />
+                </CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold text-slate-800">{formatCurrency(mainBalance)}</div>
+                    <div className="flex justify-between items-center mt-1">
+                        <p className="text-[10px] text-slate-400">Disponible operativo</p>
+                        <p className="text-[9px] text-slate-300 italic">Act: {balanceDate}</p>
                     </div>
-                    <span className="text-sm font-medium text-slate-600">Simular Liquidación</span>
-                </div>
-                <div className="flex items-center gap-2">
-                     <Badge variant={hasMovements ? "secondary" : "outline"} className="text-[10px] h-5 font-normal">
-                         {hasMovements ? 'Ver movimientos' : 'Al día'}
-                     </Badge>
-                    {showLiquidation ? <ChevronUp className="h-4 w-4 text-slate-300"/> : <ChevronDown className="h-4 w-4 text-slate-300"/>}
-                </div>
-            </div>
+                </CardContent>
+            </Card>
 
-            {/* DESPLEGABLE */}
-            {showLiquidation && hasMovements && (
-                <div className="bg-slate-50 p-4 space-y-4 border-t border-slate-100 shadow-inner animate-in slide-in-from-top-2">
+            {/* 2. PATRIMONIO NETO */}
+            <Card className={`border-l-4 shadow-sm bg-white ${netBalance >= 0 ? 'border-l-indigo-500' : 'border-l-red-500'}`}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-xs font-bold text-slate-400 uppercase tracking-wider">Patrimonio Real</CardTitle>
+                    <Calculator className="h-4 w-4 text-slate-300" />
+                </CardHeader>
+                <CardContent>
+                    {/* CIFRA PRINCIPAL */}
+                    <div className={`text-2xl font-bold ${netBalance >= 0 ? 'text-indigo-600' : 'text-red-600'}`}>
+                        {formatCurrency(netBalance)}
+                    </div>
                     
-                    {/* A. INGRESOS (Deudores pagan a la cuenta) */}
-                    {debtors.length > 0 && (
-                        <div className="space-y-2">
-                            <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                                <LogIn className="h-3 w-3" /> Deben ingresar en cuenta
-                            </p>
-                            {debtors.map((d, i) => (
-                                <div key={i} className="flex justify-between text-xs bg-white p-2 rounded border border-red-100 text-red-700">
-                                    <span>{d.name}</span>
-                                    <span className="font-mono font-bold">+{formatCurrency(d.amount)}</span>
-                                </div>
-                            ))}
+                    {/* DESGLOSE EXPLICATIVO */}
+                    <div className="text-[10px] text-slate-500 mt-2 space-y-1 pt-2 border-t border-dashed border-slate-100">
+                        
+                        {/* 1. DINERO REAL */}
+                        <div className="flex justify-between items-center">
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> 
+                                En Banco
+                            </span>
+                            <span className="font-mono font-medium text-slate-700">{formatCurrency(totalAssets)}</span>
                         </div>
-                    )}
 
-                    {/* B. RETIRADAS (Acreedores cobran de la cuenta) */}
-                    {creditors.length > 0 && (
-                        <div className="space-y-2">
-                            <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                                <LogOut className="h-3 w-3" /> Pueden retirar de cuenta
-                            </p>
-                            {creditors.map((c, i) => (
-                                <div key={i} className="flex justify-between text-xs bg-white p-2 rounded border border-green-100 text-green-700">
-                                    <span>{c.name}</span>
-                                    <span className="font-mono font-bold">-{formatCurrency(c.amount)}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* C. RESULTADO FINAL */}
-                    <div className="pt-2 border-t border-slate-200 mt-2">
-                        <div className="flex justify-between items-center text-xs mb-1">
-                            <span className="text-slate-500">Saldo actual Banco:</span>
-                            <span className="font-mono">{formatCurrency(stats.bankBalance)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm font-bold">
-                            <span className="text-slate-900">Saldo tras liquidar:</span>
-                            {/* Si es 0 o provisiones, es bueno. Si es negativo, falta dinero */}
-                            <span className={projectedBankBalance < -0.01 ? 'text-red-600' : 'text-slate-900'}>
-                                {formatCurrency(projectedBankBalance)}
+                        {/* 2. AJUSTE DE DEUDAS (NETO) */}
+                        {/* Calculamos el neto de deudas para simplificar la vista */}
+                        <div className="flex justify-between items-center">
+                            <span className="flex items-center gap-1.5">
+                                <span className={`w-1.5 h-1.5 rounded-full ${(totalMembersDebt - totalGroupDebt) >= 0 ? 'bg-green-400' : 'bg-red-400'}`}></span>
+                                Ajuste Deudas
+                            </span>
+                            <span className={`font-mono font-medium ${(totalMembersDebt - totalGroupDebt) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                {(totalMembersDebt - totalGroupDebt) >= 0 ? '+' : ''}
+                                {formatCurrency(totalMembersDebt - totalGroupDebt)}
                             </span>
                         </div>
-                        {Math.abs(projectedBankBalance) > 0.01 && (
-                            <p className="text-[10px] text-slate-400 mt-1 italic">
-                                *El remanente corresponde a provisiones (regalos) o deudas externas.
-                            </p>
+
+                        {/* 3. PROVISIONES (RESTA) */}
+                        {activeProvisions > 0 && (
+                            <div className="flex justify-between items-center bg-amber-50 px-1.5 py-0.5 rounded -mx-1.5 mt-1">
+                                <span className="flex items-center gap-1.5 text-amber-700 font-medium">
+                                    <PiggyBank className="h-3 w-3"/> Reservado
+                                </span>
+                                <span className="font-mono font-bold text-amber-700">-{formatCurrency(activeProvisions)}</span>
+                            </div>
                         )}
                     </div>
-                </div>
+                </CardContent>
+            </Card>
+
+            {/* 3. MI POSICIÓN */}
+            <Card className={`border-l-4 shadow-sm bg-white ${myBalance >= 0 ? "border-l-emerald-500" : "border-l-rose-500"}`}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mi Posición (Total)</CardTitle>
+                    <Scale className="h-4 w-4 text-slate-300" />
+                </CardHeader>
+                <CardContent>
+                    {/* SALDO GLOBAL (GRANDE) */}
+                    <div className="flex items-center gap-2">
+                        <div className={`text-2xl font-bold ${myMemberProfile?.global_balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {myMemberProfile?.global_balance > 0 ? '+' : ''}
+                            {formatCurrency(myMemberProfile?.global_balance || 0)}
+                        </div>
+                        {myMemberProfile?.global_balance !== 0 && (
+                            myMemberProfile?.global_balance > 0 
+                                ? <TrendingUp className="h-5 w-5 text-emerald-500" /> 
+                                : <TrendingDown className="h-5 w-5 text-rose-500" />
+                        )}
+                    </div>
+                    
+                    <p className="text-[10px] text-slate-500 mt-1 font-medium mb-3">
+                        {myMemberProfile?.global_balance === 0 ? "Estás al día" : (myMemberProfile?.global_balance > 0 ? "Te deben en total" : "Debes en total")}
+                    </p>
+
+                    {/* SALDO ANUAL (PEQUEÑO) */}
+                    <div className="pt-2 border-t border-dashed border-slate-100 flex justify-between items-center text-xs">
+                        <span className="text-slate-400">Este año (2025):</span>
+                        <span className={`font-mono font-medium ${myMemberProfile?.annual_balance >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                           {myMemberProfile?.annual_balance > 0 ? '+' : ''}
+                           {formatCurrency(myMemberProfile?.annual_balance || 0)}
+                        </span>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* 4. GESTIÓN PENDIENTE (Igual que antes) */}
+            {isAdmin && (
+                <Card className="lg:col-span-1 border-dashed border-slate-300 bg-slate-50/50 shadow-none">
+                    <CardHeader className="pb-2 pt-4 px-4">
+                        <CardTitle className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gestión</CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4 space-y-2">
+                        {pendingAllocation.length > 0 && (
+                            <div className="flex justify-between items-center text-xs bg-white p-1.5 rounded border border-slate-100 shadow-sm">
+                                <span className="flex items-center gap-1.5 text-slate-600 font-medium"><AlertCircle className="h-3.5 w-3.5 text-rose-500" /> Repartir ({pendingAllocation.length})</span>
+                                <span className="font-bold text-slate-700">{formatCurrency(pendingAllocationAmount)}</span>
+                            </div>
+                        )}
+                        {pendingApproval.length > 0 && (
+                            <div className="flex justify-between items-center text-xs bg-white p-1.5 rounded border border-slate-100 shadow-sm">
+                                <span className="flex items-center gap-1.5 text-slate-600 font-medium"><CheckCircle2 className="h-3.5 w-3.5 text-amber-500" /> Validar ({pendingApproval.length})</span>
+                                <span className="font-bold text-slate-700">{formatCurrency(pendingApprovalAmount)}</span>
+                            </div>
+                        )}
+                        {pendingJustificationCount > 0 && (
+                            <div className="flex justify-between items-center text-xs bg-white p-1.5 rounded border border-slate-100 shadow-sm">
+                                <span className="flex items-center gap-1.5 text-slate-600 font-medium"><PiggyBank className="h-3.5 w-3.5 text-purple-500" /> Detallar ({pendingJustificationCount})</span>
+                                <span className="font-bold text-purple-700">{formatCurrency(pendingJustificationAmount)}</span>
+                            </div>
+                        )}
+                        {pendingAllocation.length === 0 && pendingApproval.length === 0 && pendingJustificationCount === 0 && (
+                            <div className="flex flex-col items-center justify-center py-2 text-center">
+                                <CheckCircle2 className="h-8 w-8 text-slate-200 mb-1" />
+                                <span className="text-[10px] text-slate-400 italic">Todo al día</span>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
             )}
-        </div>
-
-        {/* 4. ALERTAS ADMIN */}
-        {isAdmin && stats.pendingApproval > 0 && (
-             <ActionRow label="Pendiente de Aprobar" count={stats.pendingApproval} color="amber" icon={<CheckCircle2 className="h-4 w-4" />} />
-        )}
-        {isAdmin && stats.unallocatedCount > 0 && (
-             <ActionRow label="Sin asignar (Repartir)" count={stats.unallocatedCount} color="red" icon={<PieChart className="h-4 w-4" />} />
-        )}
-        {(isAdmin || isCardAdmin) && stats.pendingCardJustification > 0 && (
-             <ActionRow label="Tarjeta sin justificar" count={stats.pendingCardJustification} type="currency" color="purple" icon={<CreditCard className="h-4 w-4" />} />
-        )}
-      </div>
-    </div>
-  )
-}
-
-// Subcomponentes auxiliares (StatRow y ActionRow) se mantienen igual que antes
-function StatRow({ label, value, icon, subtext }: any) {
-    return (
-        <div className="p-3 flex items-center justify-between group">
-            <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-8">{icon}</div>
-                <div>
-                    <span className="text-sm font-medium text-slate-600">{label}</span>
-                    {subtext && <p className="text-[10px] text-slate-400 hidden group-hover:block">{subtext}</p>}
-                </div>
-            </div>
-            <span className="text-sm font-semibold text-slate-900">{formatCurrency(value)}</span>
-        </div>
-    )
-}
-
-function ActionRow({ label, count, color, icon, type = 'count' }: any) {
-    const colors: any = {
-        red: 'bg-red-50 text-red-700 border-red-100',
-        amber: 'bg-amber-50 text-amber-700 border-amber-100',
-        purple: 'bg-purple-50 text-purple-700 border-purple-100',
-    }
-    return (
-        <div className={`p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 border-l-4 ${color === 'red' ? 'border-l-red-500' : color === 'amber' ? 'border-l-amber-500' : 'border-l-purple-500'}`}>
-            <div className="flex items-center gap-3">
-                 <div className={`h-8 w-8 rounded-full flex items-center justify-center ${colors[color]} bg-opacity-50`}>
-                    {icon}
-                 </div>
-                 <span className="text-sm font-medium text-slate-700">{label}</span>
-            </div>
-            <Badge variant="outline" className={`${colors[color]} border shadow-sm`}>
-                {type === 'currency' ? formatCurrency(count) : count}
-                {type === 'count' && <ArrowRight className="h-3 w-3 ml-1 opacity-50" />}
-            </Badge>
         </div>
     )
 }

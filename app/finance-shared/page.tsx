@@ -9,6 +9,8 @@ import { FinanceSharedView } from './components/FinanceSharedView'
 import { FinanceSharedMenu } from './components/FinanceSharedMenu'
 import { CreateGroupDialog } from './components/dialogs/CreateGroupDialog'
 import { Button } from '@/components/ui/button'
+import { ImpersonationProvider } from './components/ui/ImpersonationContext'
+import { ImpersonationBar } from './components/ui/ImpersonationBar'
 
 // Definimos los tipos correctamente para Next.js 15
 interface Props {
@@ -40,13 +42,14 @@ export default async function FinanceSharedPage(props: Props) {
   // 4. CALCULAR EL ESTADO ACTUAL
   const groupIdParam = typeof searchParams.groupId === 'string' ? searchParams.groupId : undefined
   const activeGroupId = groupIdParam || groups[0]?.id
+  const defaultAccountId =  groupIdParam || groups[0]?.default_account_id
 
   const yearParam = typeof searchParams.year === 'string' ? searchParams.year : undefined
   const selectedYear = yearParam ? parseInt(yearParam) : new Date().getFullYear()
 
   // Solo buscamos datos si hay un grupo activo
   const [dashboardData, transactions] = await Promise.all([
-      getGroupDashboardData(activeGroupId),
+      getGroupDashboardData(activeGroupId,selectedYear),
       getGroupTransactions(activeGroupId, selectedYear) // <--- AQUÍ
   ])
 
@@ -64,6 +67,7 @@ export default async function FinanceSharedPage(props: Props) {
         />
         
         <main className="max-w-7xl mx-auto p-4 md:p-6 mt-12 text-center">
+
             <div className="max-w-md mx-auto space-y-6">
                 <div className="p-8 bg-white rounded-lg shadow border border-slate-200">
                     <h2 className="text-2xl font-bold tracking-tight text-slate-900 mb-2">
@@ -96,6 +100,12 @@ export default async function FinanceSharedPage(props: Props) {
   // 6. Renderizado Principal (Dashboard)
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-24">
+                <ImpersonationProvider 
+                realUserId={user?.id || ''} 
+                members={dashboardData.members}
+            >
+                {/* 1. LA BARRA GLOBAL (Se gestiona sola) */}
+                <ImpersonationBar />
       <UnifiedAppHeader
         title="Finanzas Compartidas"
         backHref="/"
@@ -112,15 +122,16 @@ export default async function FinanceSharedPage(props: Props) {
       />
 
       <main className="max-w-7xl mx-auto p-4 md:p-6 mt-6">
+        
         <FinanceSharedView 
            groups={groups} 
            activeGroupId={activeGroupId || ''} 
+           defaultAccountId={defaultAccountId}
            dashboardData={dashboardData}
-           transactions={transactions}
-           currentUserId={user.id}
-           selectedYear={selectedYear}
         />
       </main>
+      
+            </ImpersonationProvider>
     </div>
   )
 }

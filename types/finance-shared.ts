@@ -2,6 +2,7 @@ export type SharedTransactionType = 'expense' | 'income' | 'loan' | 'repayment' 
 export type SharedTransactionStatus = 'pending' | 'approved' | 'rejected';
 export type SharedPaymentSource = 'account' | 'member';
 export type SharedMemberRole = 'admin' | 'member';
+export type SharedAccountType = 'checking' | 'credit' | 'cash'; 
 
 export interface SharedGroup {
   id: string;
@@ -9,6 +10,7 @@ export interface SharedGroup {
   owner_id: string;
   currency: string;
   created_at: string;
+  default_account?:string | null;
 }
 
 export interface SharedMember {
@@ -31,6 +33,11 @@ export interface SharedAccount {
   group_id: string;
   name: string;
   balance: number;
+  balance_date?:Date;
+  type:  SharedAccountType;
+  responsible_member_id?: string | null;
+  color?: string;
+  icon_name?: string;
 }
 
 export interface SharedAllocation {
@@ -55,13 +62,17 @@ export interface SharedTransaction {
   created_by: string;
   receipt_url?: string;
   reimbursement_status: 'none' | 'pending' | 'paid';
-  approval_status: 'pending' | 'approved' | 'rejected';
   // Joins comunes
   allocations?: SharedAllocation[];
   payer_member?: SharedMember;
   account?: SharedAccount;
   notes?:string;
   bank_balance?:number;
+  linked_transaction_id?: string | null // El ID de la transacción espejo
+  transfer_account_id?: string | null   // La otra cuenta implicada
+  parent_transaction_id?: string | null 
+  parent_transaction?: { description: string, date: string }
+  is_provision: boolean
 }
 
 
@@ -84,6 +95,7 @@ export interface SharedSplitTemplate {
   group_id: string;
   name: string; // Ej: "Solo Chicos", "Todos menos Juan"
   created_at: string;
+  description?:string;
   // Join con los detalles
   template_members?: SharedSplitTemplateMember[];
 }
@@ -107,8 +119,6 @@ export interface CreateSplitTemplateInput {
     shares: number;
   }[];
 }
-
-export type SharedAccountType = 'checking' | 'credit';
 
 export interface SharedAccountManager {
   member_id: string;
@@ -162,6 +172,7 @@ export interface SharedCategory {
   parent_id?: string;
   level?: number; // Para UI
   is_individual_assignment:boolean;
+  is_loan?:boolean;
 }
 
 export interface CreateSharedCategoryInput {
@@ -187,4 +198,12 @@ export interface CreateTransactionInput {
   split_type: 'equal' | 'weighted'; // Cambiamos 'percentage' por 'weighted' que es más preciso
   involved_member_ids: string[]; // Quiénes participan en el gasto
   split_weights?: Record<string, number>;
+}
+
+export interface DashboardData {
+    accounts: SharedAccount[]
+    members: SharedMember[]
+    categories: SharedCategory[]
+    transactions: SharedTransaction[]
+    splitTemplates: SharedSplitTemplate[]
 }

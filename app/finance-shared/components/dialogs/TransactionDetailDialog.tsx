@@ -1,43 +1,36 @@
 'use client'
 
-import { useState,useEffect } from 'react'
-import { SharedTransaction, SharedMember, SharedCategory } from '@/types/finance-shared'
-import { approveTransaction, markReimbursementPaid, deleteTransaction, updateTransactionCategory, setTransactionContributor } from '@/app/finance-shared/actions'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import LoadIcon from '@/utils/LoadIcon'
-import { CheckCircle2, Trash2, ArrowRightLeft, Users, Pencil, RefreshCw, AlertTriangle } from 'lucide-react'
-import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
+import { CheckCircle2, Trash2, Pencil, Users, RefreshCw, AlertTriangle, X } from 'lucide-react'
 
-// ID ESPECIAL DE APORTACIÓN
-const CONTRIBUTION_CAT_ID = '8bd98f3f-9c28-4ebf-90ba-219087f5548e'
-
-interface ExtendedTransaction extends Omit<SharedTransaction, 'allocations'> {
-    payer?: { name: string } | null
-    category?: { name: string, icon_name: string, color?: string } | null
-    allocations?: { member_id: string, amount: number }[]
-    category_id?:string | null
-}
+// Importaciones de tipos y acciones (Asegúrate de que las rutas sean correctas)
+import { SharedTransaction, SharedMember, SharedCategory } from '@/types/finance-shared'
+import { approveTransaction, markReimbursementPaid, deleteTransaction, updateTransactionCategory, setTransactionContributor } from '@/app/finance-shared/actions'
 
 interface Props {
-    transaction: ExtendedTransaction | null
+    transaction: any // Tipado laxo para facilitar integración, o usa tu ExtendedTransaction
     open: boolean
     onClose: () => void
     members: SharedMember[]
-    categories: SharedCategory[] // <--- NECESITAMOS CATEGORÍAS AHORA
+    categories: SharedCategory[]
     isAdmin: boolean
-    onEdit: () => void
+    onEdit: () => void // Callback para abrir el formulario de edición completa
 }
 
 export function TransactionDetailDialog({ transaction, open, onClose, members, categories, isAdmin, onEdit }: Props) {
     const router = useRouter()
     const [loading, setLoading] = useState(false)
-    const [selectedCategoryId, setSelectedCategoryId] = useState(transaction?.category_id || 'uncategorized')
+    const [selectedCategoryId, setSelectedCategoryId] = useState('')
 
+    // Sincronizar estado local al abrir
     useEffect(() => {
         if (transaction) {
             setSelectedCategoryId(transaction.category_id || 'uncategorized')
@@ -46,236 +39,235 @@ export function TransactionDetailDialog({ transaction, open, onClose, members, c
 
     if (!transaction) return null
 
-    const activeCategoryObj = categories.find(c => c.id === selectedCategoryId) // <--- CORRECCIÓN
-    const isIndividualMode = activeCategoryObj?.is_individual_assignment || false // <--- CORRECCIÓN
+    // Datos derivados
+    const activeCategoryObj = categories.find(c => c.id === selectedCategoryId)
+    // Usamos el flag de la categoría para saber si es "Modo Individual" (Aportación, Deuda...)
+    const isIndividualMode = activeCategoryObj?.is_individual_assignment || false
     
-    // Handlers existentes (Approve, Reimburse, Delete...) se mantienen igual
-    const handleApprove = async () => { /* ... código anterior ... */ }
-    const handleReimburse = async () => { /* ... código anterior ... */ }
-    const handleDelete = async () => {
-        if (!confirm('¿Seguro?')) return
-        setLoading(true)
-        const res = await deleteTransaction(transaction.id, transaction.group_id)
-        if (res.error) toast.error(res.error)
-        else { toast.success('Eliminado'); onClose(); router.refresh() }
-        setLoading(false)
-    }
+    // Detectar quién es el contribuidor asignado (si lo hay)
+    const currentContributorId = transaction.allocations?.length === 1 ? transaction.allocations[0].member_id : undefined
+    const isUnassigned = (!transaction.allocations || transaction.allocations.length === 0)
 
-    // --- NUEVOS HANDLERS ---
-    
+    // --- ACCIONES RÁPIDAS (Solo Admin) ---
+
     const handleCategoryChange = async (catId: string) => {
-        // 1. Actualización visual inmediata (Optimistic UI)
-        setSelectedCategoryId(catId) 
-
-        // 2. Actualización en servidor
+        if (!isAdmin) return
+        setSelectedCategoryId(catId) // Optimistic UI
+        
         toast.promise(updateTransactionCategory(transaction.id, catId), {
             loading: 'Actualizando...',
             success: 'Categoría guardada',
-            error: 'Error al cambiar categoría'
+            error: 'Error al actualizar'
         })
         router.refresh()
     }
 
     const handleContributorChange = async (memberId: string) => {
+        if (!isAdmin) return
         toast.promise(setTransactionContributor(transaction.id, memberId, transaction.amount), {
-            loading: 'Reasignando aportación...',
-            success: 'Aportación asignada',
+            loading: 'Reasignando...',
+            success: 'Asignado correctamente',
             error: 'Error al asignar'
         })
         router.refresh()
     }
 
+    const handleDelete = async () => {
+        if (!confirm('¿Seguro que quieres eliminar este movimiento?')) return
+        setLoading(true)
+        const res = await deleteTransaction(transaction.id, transaction.group_id)
+        if (res.error) toast.error(res.error)
+        else { 
+            toast.success('Eliminado')
+            onClose()
+            router.refresh() 
+        }
+        setLoading(false)
+    }
+
+    const handleApprove = async () => {
+        setLoading(true)
+        const res = await approveTransaction(transaction.id, transaction.group_id)
+        if (res.error) toast.error(res.error)
+        else { 
+            toast.success('Aprobado')
+            router.refresh() 
+        }
+        setLoading(false)
+    }
+
     // Datos visuales
     const isPending = transaction.approval_status === 'pending'
-    const needsReimbursement = transaction.reimbursement_status === 'pending'
     const isIncome = transaction.type === 'income'
     const sign = isIncome ? '+' : '-'
     const colorClass = isIncome ? 'text-green-600' : 'text-slate-900'
-    
-    // Detectar si es la categoría especial
-    const isContribution = transaction.category_id === CONTRIBUTION_CAT_ID
-    
-    // Buscar quién hace la aportación (el único allocation)
-    const contributorId = isContribution && transaction.allocations?.length === 1 
-        ? transaction.allocations[0].member_id 
-        : undefined
-    const isUnassigned = (!transaction.allocations || transaction.allocations.length === 0) || (isIndividualMode && !contributorId)
+
     return (
         <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
-            <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                    <div className="flex items-center gap-3 mb-2">
-                        {/* Icono dinámico según categoría seleccionada */}
+            <DialogContent className="sm:max-w-[425px] p-0 overflow-hidden bg-white">
+                
+                {/* HEADER CON COLOR DE CATEGORÍA */}
+                <div 
+                    className="h-2 w-full"
+                    style={{ backgroundColor: activeCategoryObj?.color || '#cbd5e1' }}
+                />
+
+                <DialogHeader className="px-6 pt-6 pb-2">
+                    <div className="flex items-start gap-4">
+                        {/* Icono Grande */}
                         <div 
-                            className="h-10 w-10 rounded-full flex items-center justify-center border transition-colors"
+                            className="h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-slate-100"
                             style={{ 
-                                backgroundColor: transaction.category?.color ? `${transaction.category.color}20` : '#f1f5f9',
-                                color: transaction.category?.color || '#64748b'
+                                backgroundColor: activeCategoryObj?.color ? `${activeCategoryObj.color}15` : '#f8fafc',
+                                color: activeCategoryObj?.color || '#64748b'
                             }}
                         >
-                            <LoadIcon name={transaction.category?.icon_name || 'HelpCircle'} className="h-5 w-5" />
+                            <LoadIcon name={activeCategoryObj?.icon_name || 'HelpCircle'} className="h-6 w-6" />
                         </div>
-                        <div className="flex-1">
-                            <DialogTitle className="text-lg line-clamp-1">{transaction.description}</DialogTitle>
-                            <p className="text-xs text-muted-foreground">{new Date(transaction.date).toLocaleDateString()}</p>
+                        
+                        <div className="flex-1 min-w-0">
+                            <DialogTitle className="text-xl font-bold truncate leading-tight mb-1">
+                                {transaction.description}
+                            </DialogTitle>
+                            <p className="text-sm text-slate-500 font-medium">
+                                {new Date(transaction.date).toLocaleDateString()} 
+                                <span className="mx-2 text-slate-300">|</span>
+                                {transaction.payment_source === 'account' ? 'Cuenta' : transaction.payer?.name}
+                            </p>
                         </div>
                     </div>
                 </DialogHeader>
 
-                <div className="space-y-4">
-                    {/* IMPORTE */}
-                    <div className="text-center py-4 bg-slate-50 rounded-lg border border-slate-100 relative">
-                        <span className={`text-3xl font-bold ${colorClass}`}>
+                <div className="px-6 py-4 space-y-6">
+                    
+                    {/* IMPORTE Y ESTADO */}
+                    <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-xl border border-slate-100">
+                        <span className={`text-4xl font-bold tracking-tight ${colorClass}`}>
                             {sign}{formatCurrency(transaction.amount)}
                         </span>
-                         {transaction.bank_balance !== undefined && transaction.bank_balance !== null && (
-                            <div className="text-xs text-slate-400 mt-1 font-mono">
+                        {transaction.bank_balance !== null && transaction.bank_balance !== undefined && (
+                            <span className="text-xs text-slate-400 font-mono mt-1">
                                 Saldo: {formatCurrency(transaction.bank_balance)}
-                            </div>
+                            </span>
                         )}
-                        <div className="flex justify-center gap-2 mt-2">
-                            {isPending && <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Pendiente</Badge>}
-                            {needsReimbursement && <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">Reembolso</Badge>}
-                        </div>
+                        
+                        {isPending && (
+                            <Badge variant="outline" className="mt-3 bg-amber-50 text-amber-700 border-amber-200">
+                                Pendiente de Revisión
+                            </Badge>
+                        )}
                     </div>
 
-                    {/* DATOS CAMBIABLES */}
-                    <div className="text-sm space-y-3">
-                        <div className="flex items-center justify-between">
-                            <span className="text-slate-500 w-1/3">Origen:</span>
-                            <span className="font-medium text-right flex-1">
-                                {transaction.payment_source === 'account' 
-                                    ? '🏦 Movimiento Cuenta'  // <--- CAMBIO 1
-                                    : `👤 ${transaction.payer?.name || 'Miembro'}`}
-                            </span>
-                        </div>
-                        
-                        {/* CAMBIO 2: SELECTOR DE CATEGORÍA */}
-                        <div className="flex items-center justify-between">
-                            <span className="text-slate-500 w-1/3">Categoría:</span>
-                            <div className="flex-1">
-                                <Select 
-                                    value={selectedCategoryId}
-                                    defaultValue={transaction.category_id || 'uncategorized'} 
-                                    onValueChange={handleCategoryChange}
-                                    disabled={!isAdmin} // Solo admin cambia categorías rápido
-                                >
-                                    <SelectTrigger className="h-8 text-xs w-full justify-between">
-                                        <SelectValue />
+                    {/* SELECTOR DE CATEGORÍA (Solo Admin edita, otros ven texto) */}
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Categoría</label>
+                        {isAdmin ? (
+                            <Select value={selectedCategoryId} onValueChange={handleCategoryChange}>
+                                <SelectTrigger className="w-full bg-white border-slate-200">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="uncategorized">📁 Sin Categoría</SelectItem>
+                                    {categories.map(c => (
+                                        <SelectItem key={c.id} value={c.id}>
+                                            <div className="flex items-center gap-2">
+                                                <LoadIcon name={c.icon_name} className="h-4 w-4 text-slate-400"/>
+                                                {c.name}
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        ) : (
+                            <div className="flex items-center gap-2 p-2 border rounded-md bg-slate-50 text-sm text-slate-700">
+                                <LoadIcon name={activeCategoryObj?.icon_name || 'HelpCircle'} className="h-4 w-4 text-slate-400"/>
+                                {activeCategoryObj?.name || 'Sin Categoría'}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* SECCIÓN REPARTO / APORTACIÓN */}
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                            <Users className="h-3 w-3" />
+                            {isIndividualMode ? 'Asignado a' : 'Repartido entre'}
+                        </label>
+
+                        {/* A. MODO INDIVIDUAL (Selector para Admin, Texto para resto) */}
+                        {isIndividualMode ? (
+                            isAdmin ? (
+                                <Select value={currentContributorId || ''} onValueChange={handleContributorChange}>
+                                    <SelectTrigger className="w-full bg-white border-indigo-200 text-indigo-700">
+                                        <SelectValue placeholder="Seleccionar miembro..." />
                                     </SelectTrigger>
-                                    <SelectContent align="end">
-                                        <SelectItem value="uncategorized">📁 Sin Categoría</SelectItem>
-                                        {categories.map(c => (
-                                            <SelectItem key={c.id} value={c.id}>
-                                                <span className="flex items-center gap-2">
-                                                    <LoadIcon name={c.icon_name} className="h-3 w-3"/> {c.name}
-                                                </span>
-                                            </SelectItem>
+                                    <SelectContent>
+                                        {members.map(m => (
+                                            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="h-px bg-slate-100 my-4" />
-
-                        {/* REPARTO O APORTACIÓN */}
-                        <div>
-                            <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
-                                <Users className="h-3 w-3"/> 
-                                {isIndividualMode ? 'Aportado por' : 'Reparto del gasto'}
-                            </h4>
-
-                            {/* CAMBIO 3: LÓGICA ESPECIAL APORTACIÓN */}
-                            <div>
-
-                                {/* CASO A: ESTÁ SIN ASIGNAR (Importado) */}
-                                {isUnassigned && !isIndividualMode && (
-                                    <div className="bg-red-50 p-3 rounded-lg border border-red-100 text-center space-y-3">
-                                        <p className="text-xs text-red-600 font-medium">
-                                            <AlertTriangle className="h-3 w-3 inline mr-1"/>
-                                            Este movimiento no afecta al saldo de nadie todavía.
-                                        </p>
-                                        {isAdmin && (
-                                            <Button 
-                                                size="sm" 
-                                                variant="outline" 
-                                                className="w-full bg-white border-red-200 text-red-700 hover:bg-red-50"
-                                                onClick={() => { onClose(); onEdit() }} // Mandamos a editar para repartir bien
-                                            >
-                                                Repartir ahora
-                                            </Button>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* CASO B: MODO INDIVIDUAL (Aportaciones/Deudas) */}
-                                {isIndividualMode && (
-                                    <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <RefreshCw className="h-3 w-3 text-indigo-600" />
-                                            <span className="text-xs text-indigo-800 font-medium">
-                                                {activeCategoryObj?.name || 'Asignación Única'}
-                                            </span>
-                                        </div>
-                                        <Select 
-                                            value={contributorId} 
-                                            onValueChange={handleContributorChange} // Usamos la action que creamos antes
-                                            disabled={!isAdmin}
-                                        >
-                                            <SelectTrigger className="bg-white border-indigo-200">
-                                                <SelectValue placeholder="Seleccionar miembro..." />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {members.map(m => (
-                                                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                )}
-
-                                {/* CASO C: REPARTO ESTÁNDAR (Si ya está asignado) */}
-                                {!isUnassigned && !isIndividualMode && (
-                                    // LISTA ESTÁNDAR DE REPARTO
-                                    <div className="space-y-2 max-h-[150px] overflow-y-auto pr-2">
-                                        {transaction.allocations?.map(alloc => {
-                                            const memberName = members.find(m => m.id === alloc.member_id)?.name || '...'
-                                            return (
-                                                <div key={alloc.member_id} className="flex justify-between items-center text-sm">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                                                            {memberName.substring(0,2).toUpperCase()}
-                                                        </div>
-                                                        <span>{memberName}</span>
+                            ) : (
+                                <div className="p-2 border border-indigo-100 bg-indigo-50 rounded-md text-sm text-indigo-800 font-medium">
+                                    {members.find(m => m.id === currentContributorId)?.name || 'Sin asignar'}
+                                </div>
+                            )
+                        ) : (
+                            /* B. MODO REPARTO (Lista estática) */
+                            <div className="bg-white border rounded-lg divide-y max-h-32 overflow-y-auto">
+                                {isUnassigned ? (
+                                    <div className="p-3 text-sm text-slate-400 text-center italic">Sin asignar</div>
+                                ) : (
+                                    transaction.allocations?.map((alloc: any) => {
+                                        const m = members.find(mem => mem.id === alloc.member_id)
+                                        return (
+                                            <div key={alloc.member_id} className="p-2 flex justify-between items-center text-sm">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                                                        {m?.name.substring(0,2).toUpperCase()}
                                                     </div>
-                                                    <span className="font-medium text-slate-700">
-                                                        {formatCurrency(alloc.amount)}
-                                                    </span>
+                                                    <span>{m?.name}</span>
                                                 </div>
-                                            )
-                                        })}
-                                    </div>
+                                                <span className="font-mono text-slate-600">{formatCurrency(alloc.amount)}</span>
+                                            </div>
+                                        )
+                                    })
                                 )}
-                        </div>
+                            </div>
+                        )}
                     </div>
+
                 </div>
 
-                <DialogFooter className="flex-col sm:justify-between gap-2 border-t pt-4 mt-2">
-                    {/* ... (Botones Editar, Aprobar, etc. - Copiar del anterior) ... */}
-                    {isAdmin && (
-                        <div className="grid grid-cols-2 gap-2 w-full">
-                            <Button variant="outline" onClick={() => { onClose(); onEdit() }} className="col-span-2 border-dashed">
-                                <Pencil className="mr-2 h-4 w-4" /> Editar Completo
-                            </Button>
-                            {/* ... Resto de botones igual ... */}
-                             <Button variant="destructive" onClick={handleDelete} className="col-span-2">
-                                <Trash2 className="mr-2 h-4 w-4" /> Eliminar
+                {/* FOOTER DE ACCIONES */}
+                {/* Si NO es Admin, ocultamos el footer completamente (ya tiene la X arriba) */}
+                {isAdmin && (
+                    <DialogFooter className="bg-slate-50 p-4 gap-2 sm:justify-between flex-col-reverse sm:flex-row border-t">
+                        
+                        {/* Botón Borrar (Izquierda) */}
+                        <div className="flex-1 sm:flex-none">
+                            <Button variant="ghost" onClick={handleDelete} className="text-red-500 hover:text-red-700 hover:bg-red-50 w-full sm:w-auto">
+                                <Trash2 className="h-4 w-4" />
                             </Button>
                         </div>
-                    )}
-                </DialogFooter>
+
+                        {/* Botones Derecha */}
+                        <div className="flex gap-2 w-full sm:w-auto justify-end">
+                            <Button variant="outline" onClick={() => { onClose(); onEdit() }}>
+                                <Pencil className="mr-2 h-4 w-4" /> Editar
+                            </Button>
+
+                            {isPending && (
+                                <Button onClick={handleApprove} disabled={loading} className="bg-green-600 hover:bg-green-700 text-white">
+                                    <CheckCircle2 className="mr-2 h-4 w-4" /> Aprobar
+                                </Button>
+                            )}
+                        </div>
+                    </DialogFooter>
+                )}
+                
+                {/* Opcional: Si quieres mantener el footer para todos pero sin el botón cerrar duplicado */}
+                {/* Simplemente eliminamos el bloque {!isAdmin && <Button>Cerrar</Button>} */}
+
             </DialogContent>
         </Dialog>
     )

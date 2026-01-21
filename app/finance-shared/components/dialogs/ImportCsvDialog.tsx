@@ -11,16 +11,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { FileSpreadsheet, ArrowRight, Loader2, UploadCloud, RefreshCw } from 'lucide-react'
+import { FileSpreadsheet, ArrowRight, Loader2, UploadCloud, RefreshCw, FileUp } from 'lucide-react'
 import { importBankTransactions } from '@/app/finance-shared/actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 
 interface Props {
     groupId: string
+    children?: React.ReactNode
 }
 
-export function ImportCsvDialog({ groupId }: Props) {
+export function ImportCsvDialog({ groupId,children }: Props) {
     const [open, setOpen] = useState(false)
     const [step, setStep] = useState(1) 
     const [loading, setLoading] = useState(false)
@@ -39,6 +40,12 @@ export function ImportCsvDialog({ groupId }: Props) {
     const [invertSign, setInvertSign] = useState(false)
     const [processedData, setProcessedData] = useState<any[]>([])
 
+    const trigger = children || (
+        <Button variant="outline">
+            <FileUp className="mr-2 h-4 w-4" /> Importar CSV
+        </Button>
+    )
+    
     // ---------------------------------------------------------
     // 🧠 AUTO-MAPEO INTELIGENTE
     // ---------------------------------------------------------
@@ -190,9 +197,7 @@ export function ImportCsvDialog({ groupId }: Props) {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="outline" className="border-dashed gap-2 text-slate-600">
-                    <FileSpreadsheet className="h-4 w-4" /> Importar CSV
-                </Button>
+                {trigger}
             </DialogTrigger>
             <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
