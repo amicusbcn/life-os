@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/supabase/server';
-import { UserProfile, FullProfileData } from '@/types/settings';
+import { UserProfile, FullProfileData } from '@/types/users';
 
 /**
  * Obtiene los datos completos del usuario y su perfil asociado.

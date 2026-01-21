@@ -3,8 +3,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { ActionResponse } from '@/types/common'
 import { revalidatePath } from 'next/cache'
-import { FeedbackCategory } from '@/types/settings';
-import { AppFeedback } from '@/types/settings';
+import { FeedbackCategory,AppFeedback } from '@/types/feedback';
 import { sendNotification } from '@/utils/notification-helper'
 import { AppNotification,NotificationType, NotificationPriority } from '@/types/notifications'
 export async function getMyNotifications(limit = 20) {

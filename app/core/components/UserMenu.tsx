@@ -37,12 +37,9 @@ export function UserMenu({ userEmail, userRole, additionalItems = [], currentPat
                 {/* 1. RENDERIZADO DE ELEMENTOS ADICIONALES */}
                 {additionalItems.length > 0 && (
                     <>
-                        <DropdownMenuSeparator />
                         {additionalItems}
                     </>
                 )}
-
-                <DropdownMenuSeparator />
 
                 {/* 2. OPCIONES DE ADMIN (NUEVO) */}
                 {isAdmin && (

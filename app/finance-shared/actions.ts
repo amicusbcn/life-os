@@ -3,8 +3,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { CreateGroupInput,AddMemberInput, UpdateMemberInput, CreateSharedCategoryInput, SharedCategory, AssignAccountManagerInput,CreateTransactionInput, SharedAccount } from '@/types/finance-shared'
-
-// ... funciones anteriores (getSharedGroups, etc)
+import { sendNotification } from '@/utils/notification-helper'
 
 export async function createSharedGroup(input: CreateGroupInput) {
   const supabase = await createClient()
@@ -879,6 +878,34 @@ export async function upsertSharedTransaction(groupId: string, transaction: any)
           if (allocError) console.error('Error allocations:', allocError)
       }
   }
+
+  // --- E. NOTIFICACIÓN AL ADMIN (Punto 1) ---
+  // Solo notificamos si la operación ha ido bien (mainTx existe)
+  if (mainTx) {
+      // 1. Buscamos al dueño del grupo
+      const { data: group } = await supabase
+          .from('finance_shared_groups')
+          .select('owner_id, name')
+          .eq('id', groupId)
+          .single()
+
+      // 2. Si el usuario actual NO es el dueño, le avisamos
+      if (group && group.owner_id !== user.id) {
+          const isUpdate = !!transaction.id
+          
+          await sendNotification({
+              recipientIds: [group.owner_id],
+              title: isUpdate ? 'Gasto Editado' : 'Nuevo Gasto',
+              message: `${mainTx.description} (${mainTx.amount}€) - ${isUpdate ? 'Modificado' : 'Añadido'} por un miembro del grupo.`,
+              type: 'action_needed',
+              priority: 'normal',
+              sender_module: 'finance-shared',
+              // Enlace directo a la pestaña de aprobación o general
+              link_url: `/finance-shared?group=${groupId}&tab=pending_approval`
+          })
+      }
+  }
+  // -------------------------------------------
 
   revalidatePath('/finance-shared')
   return { success: true, data: mainTx }

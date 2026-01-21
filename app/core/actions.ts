@@ -3,8 +3,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { ActionResponse } from '@/types/common'
 import { revalidatePath } from 'next/cache'
-import { FeedbackCategory } from '@/types/settings';
-import { AppFeedback } from '@/types/settings';
+import { FeedbackCategory,AppFeedback } from '@/types/feedback';
 
 /**
  * Guarda una petición de cambio/feedback enviada por el usuario.

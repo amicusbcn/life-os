@@ -2,6 +2,7 @@
 'use server'
 
 import { createClient } from '@supabase/supabase-js'
+import { sendNotification } from '@/utils/notification-helper'
 
 // --- HELPER: CLIENTE ADMIN (BYPASS DE SEGURIDAD) ---
 function createAdminClient() {
@@ -62,25 +63,37 @@ export async function getPublicGroupData(groupId: string) {
 export async function createPublicTransaction(payload: any) {
     const supabase = createAdminClient()
 
-    // PASO 1: Buscar al dueño del grupo para usar su ID como "creador"
-    // (Necesitamos un UUID válido para cumplir con la restricción de la BBDD)
+    // PASO 1: Buscar al dueño del grupo
     const { data: group } = await supabase
         .from('finance_shared_groups')
         .select('owner_id')
-        .eq('id', payload.group_id)
+        .eq('id', payload.group_id) // <--- Aquí usas el ID del grupo
         .single()
 
     if (!group) return { error: 'Grupo no encontrado al intentar guardar' }
 
-    // PASO 2: Insertar usando el ID del dueño
+    // PASO 2: Insertar la transacción
     const { error } = await supabase
         .from('finance_shared_transactions')
         .insert({
             ...payload,
             status: 'pending', 
-            created_by: group.owner_id // <--- AHORA SÍ ES UN UUID VÁLIDO
+            created_by: group.owner_id 
         })
 
     if (error) return { error: error.message }
+    
+    // PASO 3: NOTIFICACIÓN (Punto 1)
+    // Usamos payload.group_id para el enlace y group.owner_id para el destinatario
+    await sendNotification({
+        recipientIds: [group.owner_id],
+        title: 'Nuevo Gasto (Kiosco)',
+        message: `${payload.description} (${payload.amount}€) - Requiere revisión`,
+        type: 'action_needed',
+        priority: 'normal',
+        sender_module: 'finance-shared',
+        link_url: `/finance-shared?group=${payload.group_id}&tab=pending_approval`
+    })
+    
     return { success: true }
 }

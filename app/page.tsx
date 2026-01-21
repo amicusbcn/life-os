@@ -10,7 +10,7 @@ import LoadIcon from '@/utils/LoadIcon'
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader'
 import { SettingsMenu } from './settings/components/SettingsMenu'
 // IMPORTAMOS EL TIPO DE LA ENTIDAD APP_MODULES
-import { AppModule } from '@/types/settings' 
+import { AppModule } from '@/types/users' 
 
 // 2. YA NO NECESITAMOS EL MAPA MANUAL NI LOS ICONOS SUELTOS
 // const LucideIconMap = { ... } <- ELIMINADO
