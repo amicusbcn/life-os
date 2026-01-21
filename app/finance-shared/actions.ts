@@ -572,14 +572,13 @@ export async function importBankTransactions(
         amount: number, 
         description: string, 
         notes?: string, 
-        bank_balance?: number // <--- NUEVO CAMPO
+        bank_balance?: number 
     }[]
 ) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'No autorizado' }
 
-    // Validación básica antes de intentar nada
     if (!transactions || transactions.length === 0) {
         return { error: 'No se han recibido datos para importar.' }
     }
@@ -588,12 +587,33 @@ export async function importBankTransactions(
         const isAdmin = await checkGroupAdminPermission(supabase, groupId, user.id)
         if (!isAdmin) return { error: 'Permiso denegado' }
 
-        const { data: members } = await supabase
-            .from('finance_shared_members')
-            .select('id')
-            .eq('group_id', groupId)
+        // --- PASO 1: DETECTAR CUENTA DESTINO AUTOMÁTICAMENTE ---
         
-        if (!members || members.length === 0) return { error: 'No hay miembros.' }
+        // A. Buscamos si el grupo tiene cuenta por defecto
+        const { data: group } = await supabase
+            .from('finance_shared_groups')
+            .select('default_account')
+            .eq('id', groupId)
+            .single()
+
+        let targetAccountId = group?.default_account
+
+        // B. Si no hay default, cogemos la primera que encontremos (Fallback)
+        if (!targetAccountId) {
+            const { data: firstAccount } = await supabase
+                .from('finance_shared_accounts')
+                .select('id')
+                .eq('group_id', groupId)
+                .limit(1)
+                .single()
+            
+            targetAccountId = firstAccount?.id
+        }
+
+        if (!targetAccountId) {
+            return { error: 'Error crítico: No existe ninguna cuenta bancaria creada en este grupo para asignar los movimientos.' }
+        }
+        // -------------------------------------------------------
 
         let count = 0;
         const errors = [];
@@ -602,18 +622,16 @@ export async function importBankTransactions(
             const isExpense = tx.amount < 0
             const amountAbs = Math.abs(tx.amount)
             
-            // Permitimos importar 0 si es un apunte informativo, aunque no suele pasar
-            
-            // A. Insertar Transacción
             const { data: newTx, error: txError } = await supabase
                 .from('finance_shared_transactions')
                 .insert({
                     group_id: groupId,
+                    account_id: targetAccountId, // <--- AQUI USAMOS LA CUENTA DETECTADA
                     date: tx.date,
                     amount: amountAbs, 
                     description: tx.description,
                     notes: tx.notes || null,
-                    bank_balance: tx.bank_balance !== undefined ? tx.bank_balance : null, // <--- GUARDAMOS SALDO
+                    bank_balance: tx.bank_balance !== undefined ? tx.bank_balance : null,
                     type: isExpense ? 'expense' : 'income', 
                     payment_source: 'account',
                     reimbursement_status: 'none',
