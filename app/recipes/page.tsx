@@ -1,31 +1,12 @@
-/**
- * app/recipes/page.tsx
- * 
- * 🍳 PÁGINA PRINCIPAL DE RECETAS
- * * Muestra el grid de recetas disponibles, permite filtrar por categorías
- * y buscar por texto.
- * * - Server Component: Sí
- * - Data Fetching: Supabase (menu_recipes, menu_recipe_categories)
- * - Acciones: Navegación a detalle, Crear Receta (Floating Button)
- */
- 
-
 import { createClient } from '@/utils/supabase/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Utensils } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
-import { fetchAllCategoriesWithCount, fetchAllCategories } from './data';
-import { MenuRecipeCategoryWithCount } from '@/types/recipes';
+import { getCategoriesWithCount, getAllCategories } from './data';
 import { RecipesMenu } from './components/RecipesMenu';
-
-
-
-// 🚨 IMPORTAR EL COMPONENTE CLIENTE EXTERNO PARA EL HUB
 import CategoryHub from './components/CategoryHub'; 
-
-// 🚨 YA NO NECESITAMOS CategoryCard aquí, lo eliminamos.
 
 export default async function RecipesPage() {
     const supabase = await createClient();
@@ -33,12 +14,10 @@ export default async function RecipesPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) redirect('/login'); 
     
-    // 1. OBTENCIÓN DE DATOS REALES DESDE DATA.TS
-    // Esta función ya devuelve [Todas las recetas, ...categorías] con sus conteos correctos
-    const categoriesWithCount = await fetchAllCategoriesWithCount(); 
-    const categoriesRaw = await fetchAllCategories();
+    // Obtención de datos usando las nuevas funciones estandarizadas en data.ts
+    const categoriesWithCount = await getCategoriesWithCount(); 
+    const categoriesRaw = await getAllCategories();
 
-    // Obtenemos el perfil para el header
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
     const userRole = profile?.role || 'user';
 
@@ -49,9 +28,7 @@ export default async function RecipesPage() {
                 backHref="/"
                 userEmail={user.email || ''} 
                 userRole={userRole}
-                moduleMenu={
-                    <RecipesMenu categories={categoriesRaw} />
-                }
+                moduleMenu={<RecipesMenu categories={categoriesRaw} />}
             />
 
             <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
@@ -68,7 +45,6 @@ export default async function RecipesPage() {
                     </Link>
                 </header>
 
-                {/* Grid de Tarjetas de Categorías (Hub) */}
                 {categoriesWithCount.length === 0 ? (
                     <div className="text-center p-16 bg-white rounded-xl border border-dashed border-slate-300">
                         <Utensils className="w-10 h-10 text-gray-400 mx-auto mb-4" />
@@ -76,10 +52,7 @@ export default async function RecipesPage() {
                         <p className="text-sm text-gray-500 mt-1">Empieza creando una receta para generar tu primera categoría.</p>
                     </div>
                 ) : (
-                    <CategoryHub 
-                        // Pasamos las categorías con el conteo simulado
-                        categories={categoriesWithCount} 
-                    />
+                    <CategoryHub categories={categoriesWithCount} />
                 )}
             </main>
         </div>

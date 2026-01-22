@@ -1,7 +1,7 @@
-// app/travel/settings/mileage/MileageTemplatesList.tsx (CORREGIDO)
+// app/travel/settings/mileage/MileageTemplatesList.tsx
 'use client' 
 
-import { deleteMileageTemplate } from '@/app/travel/actions'; // <-- La Server Action original
+import { deleteMileageTemplate } from '@/app/travel/actions'; 
 import { TravelMileageTemplate } from '@/types/travel';
 import { formatNumber } from '@/utils/formatters'; 
 import {
@@ -15,23 +15,24 @@ import {
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ActionResponse } from '@/types/common';
 import { useRouter } from 'next/navigation';
 
-// Componente Cliente para la acción de borrado y recarga
+/**
+ * COMPONENTE CLIENTE: Botón de borrar
+ * Maneja la interacción con la Server Action y el feedback visual.
+ */
 function DeleteButtonClient({ templateId, name }: { templateId: string, name: string }) {
     const router = useRouter();
 
-    // Función que llama a la Server Action IMPOTADA (ya marcada con 'use server' en actions.ts)
     const handleDelete = () => {
-        
-        // Llamamos directamente a la función deleteMileageTemplate
         toast.promise(deleteMileageTemplate(templateId), { 
             loading: `Eliminando plantilla '${name}'...`,
             success: (res) => {
-                // Siempre que una Server Action devuelva { success: true }
-                if (res.error) throw new Error(res.error); 
-                router.refresh(); // Recarga los datos de la página actual
+                // CORRECCIÓN: TypeScript exige comprobar el discriminante 'success' antes de acceder a 'error'
+                if (!res.success) {
+                    throw new Error(res.error); 
+                }
+                router.refresh(); 
                 return 'Plantilla eliminada con éxito.';
             },
             error: (err) => err.message,
@@ -50,14 +51,15 @@ function DeleteButtonClient({ templateId, name }: { templateId: string, name: st
     )
 }
 
-// Componente Server que muestra la lista
+/**
+ * LISTADO DE PLANTILLAS DE KILOMETRAJE
+ * Muestra una tabla con las rutas guardadas.
+ */
 interface MileageTemplatesListProps {
     templates: TravelMileageTemplate[];
 }
 
-// Este componente ahora es solo de presentación (Server Component)
 export function MileageTemplatesList({ templates }: MileageTemplatesListProps) {
-    
     return (
         <div className="space-y-4">
             <h2 className="text-xl font-semibold">Recorridos Fijos ({templates.length})</h2>
