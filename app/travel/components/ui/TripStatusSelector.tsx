@@ -74,8 +74,8 @@ export function TripStatusSelector({ trip, hasPendingReceipts, hasExpenses }: Tr
     
     const res = await updateTripStatus(trip.id, statusToSend);
     
-    if (res?.error) {
-      toast.error("Error al actualizar estado");
+    if (!res.success) {
+      toast.error(res.error || "Error al actualizar estado");
     } else {
       toast.success("Estado actualizado");
     }
@@ -86,8 +86,7 @@ export function TripStatusSelector({ trip, hasPendingReceipts, hasExpenses }: Tr
     const res = await deleteTrip(trip.id);
     setIsDeleting(false);
     
-    if (res?.error) {
-      // Si el error es por "No se puede eliminar un viaje cerrado o reportado", avisamos
+    if (!res.success) {
       if (res.error.includes('cerrado o reportado')) {
         toast.error('❌ Error: El viaje no puede eliminarse en su estado actual.');
       } else {
