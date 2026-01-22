@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useState, useMemo } from "react"
+import React, { useState } from "react"
 import { useRouter } from 'next/navigation'
-import { upsertCategoryAction, deleteCategoryAction} from '../actions'
+// ✅ FIX: Importamos las acciones individuales nuevas
+import { createRecipeCategory, updateRecipeCategory, deleteRecipeCategory } from '../actions'
 import { MenuRecipeCategory } from "@/types/recipes" 
 
 // UI Components
@@ -14,7 +15,7 @@ import LoadIcon from "@/utils/LoadIcon"
 
 // Icons
 import { 
-    Tag, Trash2, Plus, Settings, X, Check, Loader2, Search, Utensils
+    Tag, Trash2, Plus, X, Check, Loader2, Search, Utensils
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -26,22 +27,16 @@ function CategoryRow({ category }: { category: MenuRecipeCategory }) {
     const [name, setName] = useState(category.name)
     const [icon, setIcon] = useState(category.icon || 'Tag')
     const [color, setColor] = useState(category.color || '#f97316')
-    const [isChanged, setIsChanged] = useState(false)
     const [loading, setLoading] = useState(false)
     const router = useRouter()
 
+    // ✅ FIX: Usamos la lógica separada para actualizar
     const handleSave = async () => {
         setLoading(true)
-        const result = await upsertCategoryAction({
-            id: category.id,
-            name,
-            icon: icon, // Asegúrate de que tu acción acepte icon_name o icon
-            color
-        })
+        const result = await updateRecipeCategory(category.id, name, icon, color)
         
         if (result.success) {
             toast.success('Guardado')
-            setIsChanged(false)
             setIsEditing(false)
             router.refresh()
         } else {
@@ -52,10 +47,12 @@ function CategoryRow({ category }: { category: MenuRecipeCategory }) {
 
     const handleDelete = async () => {
         if (!confirm(`¿Borrar "${category.name}"?`)) return;
-        const res = await deleteCategoryAction(category.id);
+        const res = await deleteRecipeCategory(category.id);
         if (res.success) {
             toast.success("Eliminada");
             router.refresh();
+        } else {
+            toast.error(res.error);
         }
     };
 
@@ -69,7 +66,7 @@ function CategoryRow({ category }: { category: MenuRecipeCategory }) {
                     <input 
                         type="color" 
                         value={color} 
-                        onChange={(e) => { setColor(e.target.value); setIsChanged(true) }}
+                        onChange={(e) => { setColor(e.target.value); setIsEditing(true) }}
                         className="absolute inset-0 scale-150 cursor-pointer"
                     />
                 </div>
@@ -85,12 +82,12 @@ function CategoryRow({ category }: { category: MenuRecipeCategory }) {
 
                 <Input 
                     value={name} 
-                    onChange={(e) => { setName(e.target.value); setIsChanged(true) }} 
+                    onChange={(e) => { setName(e.target.value); setIsEditing(true) }} 
                     className="flex-1 h-8 text-sm border-transparent focus:border-slate-100 bg-transparent font-bold text-slate-700"
                 />
 
                 <div className="flex gap-1">
-                    {(isChanged || isEditing) && (
+                    {(isEditing) && (
                         <Button size="icon" variant="ghost" onClick={handleSave} disabled={loading} className="h-8 w-8 text-green-600 hover:bg-green-50">
                             {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-4 w-4" />}
                         </Button>
@@ -119,7 +116,7 @@ function CategoryRow({ category }: { category: MenuRecipeCategory }) {
                                 size="icon" 
                                 variant={icon === i ? 'default' : 'outline'} 
                                 className={cn("h-8 w-8 rounded-lg", icon === i ? "bg-orange-500 hover:bg-orange-600" : "")}
-                                onClick={() => { setIcon(i); setIsChanged(true) }}
+                                onClick={() => { setIcon(i); setIsEditing(true) }}
                             >
                                 <LoadIcon name={i} className={cn("h-3.5 w-3.5", icon === i ? "text-white" : "")} />
                             </Button>
@@ -130,7 +127,7 @@ function CategoryRow({ category }: { category: MenuRecipeCategory }) {
                         <Input 
                             placeholder="Buscar icono..." 
                             value={icon} 
-                            onChange={(e) => { setIcon(e.target.value); setIsChanged(true) }}
+                            onChange={(e) => { setIcon(e.target.value); setIsEditing(true) }}
                             className="h-8 pl-7 text-[10px] bg-slate-50 border-none"
                         />
                     </div>
@@ -144,7 +141,6 @@ export function RecipeCategorySettingsDialog({ initialCategories, children }: an
     const [open, setOpen] = useState(false)
     const [showNewForm, setShowNewForm] = useState(false)
 
-    // Clonamos el trigger para manejar la apertura desde el menú dropdown
     const childElement = children as React.ReactElement;
     const trigger = React.cloneElement(childElement as React.ReactElement<any>, {
             onSelect: (e: Event) => {
@@ -206,11 +202,12 @@ function NewCategoryForm({ onSuccess }: { onSuccess: () => void }) {
         e.preventDefault()
         setLoading(true)
         const fd = new FormData(e.currentTarget)
-        const result = await upsertCategoryAction({
-            name: fd.get('name') as string,
-            icon: fd.get('icon_name') as string, // ✅ Cambiado a 'icon'
-            color: fd.get('color') as string
-        })
+        // ✅ FIX: Usamos createRecipeCategory en vez de upsert
+        const result = await createRecipeCategory(
+            fd.get('name') as string,
+            fd.get('icon_name') as string || 'Utensils',
+            fd.get('color') as string
+        )
 
         if (result.success) {
             toast.success("Categoría creada")

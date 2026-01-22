@@ -122,6 +122,7 @@ export async function updateRecipe(formData: FormData): Promise<ActionResponse> 
   }
 }
 
+
 /**
  * Elimina una receta y sus recursos asociados.
  * @param formData - FormData conteniendo 'id' y opcionalmente 'categorySlug' para redirección
@@ -197,6 +198,24 @@ export async function createRecipeCategory(name: string, color: string, icon: st
     return { success: true }
 }
 
+/**
+ * Actualiza una categoría de recetas.
+ * 
+ */
+
+export async function updateRecipeCategory(id: string, name: string, icon: string, color: string): Promise<ActionResponse> {
+    const supabase = await createClient()
+    
+    const { error } = await supabase
+        .from('menu_recipe_categories')
+        .update({ name, icon, color })
+        .eq('id', id)
+
+    if (error) return { success: false, error: error.message }
+    
+    revalidatePath('/recipes')
+    return { success: true }
+}
 /**
  * Elimina una categoría de recetas.
  * Nota: Fallará si hay recetas vinculadas (Foreign Key Constraint), lo cual es el comportamiento deseado.
