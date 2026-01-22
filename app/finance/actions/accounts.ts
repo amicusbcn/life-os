@@ -7,9 +7,7 @@ import { FinanceAccountType, FinanceTransactionSplit } from '@/types/finance';
 
 
 
-export interface CreateAccountResult extends ActionResponse {
-    data?: { id: string }; // Sobrescribe data con el tipo específico
-}
+type CreateAccountResult = ActionResponse<{ id: string }>;
 
 
 export async function createAccount(

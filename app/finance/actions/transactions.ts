@@ -4,9 +4,8 @@ import {ActionResponse } from '@/types/common'
 import {FinanceCategory} from '@/types/finance'; 
 import { revalidatePath } from 'next/cache'
 
-export interface CreateCategoryResult extends ActionResponse {
-    data?: { id: string, category: FinanceCategory }; // Devolver el objeto categoría
-}
+type CreateCategoryResult = ActionResponse<{ id: string, category: FinanceCategory }>;
+
 
 export async function createCategory(
     _prevState: ActionResponse, 

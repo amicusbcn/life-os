@@ -90,3 +90,31 @@ export interface MenuRecipeFullData extends MenuRecipe {
  */
 export type MenuRecipeSimple = MenuRecipeWithDetails;
 
+export interface Recipe {
+  id: string;
+  user_id: string;
+  created_at?: string;
+  name: string;
+  ingredients: string;   // HTML/Rich text
+  instructions: string;  // HTML/Rich text
+  prep_time: number;     // minutos
+  servings: number;
+  category_id?: string | null;
+  photo_path?: string | null;
+  source_url?: string | null;
+  rating?: number;
+  is_favorite?: boolean;
+}
+
+export interface RecipeCategory {
+  id: string;
+  name: string;
+  slug: string;
+  icon?: string;
+  color?: string;
+  user_id?: string;
+  recipeCount?: number; // Campo calculado a veces en SQL
+}
+
+// Tipo útil para el formulario
+export type RecipeFormData = Omit<Recipe, 'id' | 'user_id' | 'created_at'>;

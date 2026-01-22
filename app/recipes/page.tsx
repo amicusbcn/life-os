@@ -1,4 +1,14 @@
-// app/recipes/page.tsx (Home Principal / Category Hub - VERSIÓN FINAL Y CORRECTA)
+/**
+ * app/recipes/page.tsx
+ * 
+ * 🍳 PÁGINA PRINCIPAL DE RECETAS
+ * * Muestra el grid de recetas disponibles, permite filtrar por categorías
+ * y buscar por texto.
+ * * - Server Component: Sí
+ * - Data Fetching: Supabase (menu_recipes, menu_recipe_categories)
+ * - Acciones: Navegación a detalle, Crear Receta (Floating Button)
+ */
+ 
 
 import { createClient } from '@/utils/supabase/server';
 import { redirect } from 'next/navigation';
