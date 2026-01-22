@@ -1,29 +1,20 @@
-// En app/login/page.tsx (Código CORREGIDO)
+// app/login/page.tsx
 
-import { login, signup } from './actions'
+import { login } from './actions' // signup si lo usas
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { ForgotPasswordDialog } from './components/ForgotPasswordDialog' // <--- IMPORTAR
 
 export default async function LoginPage({ 
   searchParams,
 }: {
-  // Nota: El tipo real de searchParams es Promise<Record<string, string | string[]>>
-  // Lo corregiremos al usar 'await'. Por ahora, este tipo es suficiente.
-  searchParams: { message: string } // Next.js lo maneja como Promise
+  searchParams: { message: string } 
 }) {
-  // ✅ CORRECCIÓN: Usa 'await' para obtener el objeto de parámetros real.
-  // Esto resuelve la Promesa (Proxy Promise) que Next.js utiliza.
   const params = await searchParams;
-  const message = params.message; // Ahora 'message' es una string (o undefined)
-  
+  const message = params?.message; // El ? por seguridad si params es undefined
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 pb-32">
       <Card className="w-full max-w-md shadow-lg border-0">
@@ -37,26 +28,17 @@ export default async function LoginPage({
           <form className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input 
-                id="email" 
-                name="email" 
-                type="email" 
-                placeholder="tu@email.com" 
-                required 
-              />
+              <Input id="email" name="email" type="email" placeholder="tu@email.com" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
-              <Input 
-                id="password" 
-                name="password" 
-                type="password" 
-                required 
-                minLength={6}
-              />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Contraseña</Label>
+                {/* 👇 AQUÍ PONEMOS EL BOTÓN */}
+                <ForgotPasswordDialog />
+              </div>
+              <Input id="password" name="password" type="password" required minLength={6} />
             </div>
             
-            {/* ✅ CORRECCIÓN: Usamos la variable 'message' que ya ha sido esperada (await) */}
             {message && (
               <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded">
                 {message}
@@ -64,7 +46,7 @@ export default async function LoginPage({
             )}
 
             <div className="flex flex-col gap-2 pt-4">
-              <Button formAction={login} className="w-full">
+              <Button formAction={login} className="w-full bg-slate-900 hover:bg-slate-800">
                 Iniciar Sesión
               </Button>
             </div>

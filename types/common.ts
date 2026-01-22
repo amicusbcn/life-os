@@ -10,15 +10,10 @@ export interface UnifiedAppHeaderProps {
     userRole: string | null; 
 }
 
-export interface ActionResponse {
-    success: boolean;
-    error?: string;
-    message?: string;
-}
+export type ActionResponse<T = undefined> = 
+  | { success: true; message?: string; data?: T }
+  | { success: false; error: string; message?: string };
 
-export interface CreateReportResponse extends ActionResponse {
-    reportId?: string;
-}
 
 export interface UserMenuProps {
     userEmail: string;

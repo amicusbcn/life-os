@@ -2,7 +2,7 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { ActionResponse, CreateReportResponse } from '@/types/common' 
+import { ActionResponse } from '@/types/common' 
 import { ReportCandidatesResponse, TravelTrip, TravelReport, TripDbStatus } from '@/types/travel'
 import React from 'react'
 import { renderToStream } from '@react-pdf/renderer'
@@ -54,7 +54,7 @@ async function _createReportCore(
     name: string, 
     code: string, 
     tripIds: string[]
-): Promise<CreateReportResponse> {
+): Promise<ActionResponse<{ reportId: string }>> {
     const supabase = await createClient()
     const user = (await supabase.auth.getUser()).data.user
 
@@ -88,10 +88,10 @@ async function _createReportCore(
     }
 
     revalidatePath('/travel')
-    return { success: true, reportId: report.id, message: "Reporte creado con éxito." }
+    return { success: true, data:{reportId: report.id}, message: "Reporte creado con éxito." }
 }
 
-export async function createReport(formData: FormData): Promise<CreateReportResponse> {
+export async function createReport(formData: FormData): Promise<ActionResponse<{ reportId: string }>> {
     const employerId = formData.get('employerId') as string;
     const name = formData.get('reportName') as string;
     const code = formData.get('reportCode') as string;
