@@ -28,7 +28,7 @@ interface AllocationState {
 
 export function TransactionFormDialog({ 
     open, onOpenChange, groupId, members, categories, transactionToEdit, 
-    accounts = [], defaultAccountId,
+    accounts = [], defaultAccountId,mainBankAccountId,
     splitTemplates = []
 }: any) {
     
@@ -41,8 +41,10 @@ export function TransactionFormDialog({
     const isAccountOwner = myResponsibleAccounts.length > 0
     const isStandardUser = !isGroupAdmin && !isAccountOwner
 
-    const isMainAccountTx = transactionToEdit && transactionToEdit.account_id === defaultAccountId
+    // CONSTANTES DE BLOQUEO BANCARIO
+    const isMainAccountTx = transactionToEdit && transactionToEdit.account_id === mainBankAccountId;
     const isCurrentlyPending = transactionToEdit?.status === 'pending'
+
     // --- 2. ESTADOS ---
     const [loading, setLoading] = useState(false)
     
@@ -111,7 +113,7 @@ export function TransactionFormDialog({
                 if (transactionToEdit.allocations?.length > 0) {
                     const mapped = members.map((m: any) => {
                         const existing = transactionToEdit.allocations.find((a: any) => a.member_id === m.id)
-                        return { memberId: m.id, isSelected: !!existing, amount: existing ? existing.amount : 0 }
+                        return { memberId: m.id, isSelected: !!existing, amount: existing ? existing.amount : 0, weight: 1 }
                     })
                     setAllocations(mapped)
                 } else {
@@ -139,9 +141,9 @@ export function TransactionFormDialog({
         setTransferAccountId('')
         setUserIntent('reimbursement')
         
-        // Asignar origen por defecto
-        setOriginMemberId(currentUserMemberId) // Siempre preparamos el usuario actual
+        setOriginMemberId(currentUserMemberId)
 
+        // IMPORTANTE: Al crear, nunca seleccionamos la cuenta principal por defecto
         if (isGroupAdmin) {
             const secondaryAccount = accounts.find((a:any) => a.id !== defaultAccountId)
             if (secondaryAccount) {
@@ -160,6 +162,7 @@ export function TransactionFormDialog({
         resetAllocations(0)
     }
 
+    // FILTRO DE CUENTAS DISPONIBLES (No permitimos la principal en nuevos movimientos)
     const availableOriginAccounts = accounts.filter((acc: any) => {
         if (!transactionToEdit && acc.id === defaultAccountId) return false
         if (isGroupAdmin) return true
@@ -167,62 +170,49 @@ export function TransactionFormDialog({
         return false
     })
 
-    const recalculateAllocations = (
-        currentTotal: number, 
-        currentList: AllocationState[], 
-        mode: string = splitMode // Pasamos el modo actual para saber cómo calcular
-    ) => {
+    const recalculateAllocations = (currentTotal: number, currentList: AllocationState[], mode: string = splitMode) => {
         const absTotal = Math.abs(currentTotal)
         let list = [...currentList]
-
-        // 1. Calcular Peso Total
-        // Si modo es 'equal' o 'manual', usamos isSelected como peso (1 o 0)
-        // Si modo es plantilla, usamos el weight (puede ser 2, 0.5, etc)
         let totalWeight = 0
         
         list = list.map(item => {
-            // Si el peso es > 0, se considera "seleccionado" visualmente
             const effectiveWeight = item.isSelected ? item.weight : 0
             totalWeight += effectiveWeight
             return item
         })
 
-        // 2. Repartir Dinero
         return list.map(item => {
             const effectiveWeight = item.isSelected ? item.weight : 0
             let share = 0
-            
             if (totalWeight > 0) {
-                // Fórmula ponderada: (Total * MiPeso) / PesoTotal
                 share = (absTotal * effectiveWeight) / totalWeight
             }
-
-            return {
-                ...item,
-                amount: share
-            }
+            return { ...item, amount: share }
         })
     }
 
-    // Inicializar allocations
     const resetAllocations = (total: number) => {
-        const initialList = members.map((m: any) => ({
-            memberId: m.id,
-            isSelected: true,
-            amount: 0,
-            weight: 1 // Por defecto peso 1
-        }))
-        setSplitMode('equal')
-        setAllocations(recalculateAllocations(total, initialList, 'equal'))
+    // Si tienes plantillas, usamos la primera por defecto (que será tu 'Equitativo' personalizado)
+        if (splitTemplates.length > 0) {
+            handleSplitModeChange(splitTemplates[0].id);
+        } else {
+            // Fallback si no hay plantillas
+            const initialList = members.map((m: any) => ({
+                memberId: m.id,
+                isSelected: true,
+                amount: 0,
+                weight: 1
+            }));
+            setSplitMode('manual');
+            setAllocations(recalculateAllocations(total, initialList, 'manual'));
+        }
     }
+
     const handleSplitModeChange = (newMode: string) => {
         setSplitMode(newMode)
         const currentAmount = parseFloat(amount) || 0
         
         if (newMode === 'equal' || newMode === 'manual') {
-            // Modo Básico: Todos peso 1. 
-            // Si es equal -> todos selected. Si es manual -> mantenemos selección previa o reseteamos?
-            // Mejor resetear a todos selected para empezar limpio.
             const newList = members.map((m:any) => ({
                 memberId: m.id,
                 isSelected: true,
@@ -232,14 +222,11 @@ export function TransactionFormDialog({
             setAllocations(recalculateAllocations(currentAmount, newList, newMode))
         } 
         else {
-            // MODO PLANTILLA (newMode es un UUID)
             const template = (splitTemplates as SharedSplitTemplate[]).find(t => t.id === newMode)
             if (template && template.template_members) {
                 const newList = members.map((m:any) => {
-                    // Buscar peso en la plantilla
                     const tm = template.template_members?.find((tm:any) => tm.member_id === m.id)
-                    const weight = tm ? tm.shares : 1 // Si no está en la lista (raro), 1 por defecto? O 0? Mejor 1 o buscar lógica.
-                    // Si el peso es 0, no está seleccionado
+                    const weight = tm ? tm.shares : 0
                     return {
                         memberId: m.id,
                         isSelected: weight > 0,
@@ -259,7 +246,8 @@ export function TransactionFormDialog({
              const initialList = members.map((m:any) => ({ 
                  memberId: m.id, 
                  isSelected: m.id === currentUserMemberId, 
-                 amount: 0 
+                 amount: 0,
+                 weight: 1
              }))
              setAllocations(recalculateAllocations(parseFloat(amount)||0, initialList))
         } else {
@@ -267,21 +255,12 @@ export function TransactionFormDialog({
         }
     }
 
-    // AL HACER CLIC EN UN AVATAR
     const handleAvatarClick = (idx: number) => {
-        // Si estamos en modo 'equal' o plantilla, al tocar manualmente pasamos a 'manual'
-        // para indicar que se ha personalizado.
         if (splitMode !== 'manual') setSplitMode('manual')
-
         const newAllocs = [...allocations]
         const item = newAllocs[idx]
-
-        // Toggle selección
         item.isSelected = !item.isSelected
-        
-        // Si lo activamos y tenía peso 0 (venía de una plantilla excluyente), le ponemos peso 1
         if (item.isSelected && item.weight === 0) item.weight = 1
-
         setAllocations(recalculateAllocations(parseFloat(amount)||0, newAllocs, 'manual'))
     }
 
@@ -319,13 +298,8 @@ export function TransactionFormDialog({
             else finalAmount = -Math.abs(inputAmount)
         } 
         else {
-            if (direction === 1) {
-                type = 'income'
-                finalAmount = Math.abs(inputAmount)
-            } else {
-                type = 'expense'
-                finalAmount = Math.abs(inputAmount)
-            }
+            type = (direction === 1) ? 'income' : 'expense'
+            finalAmount = Math.abs(inputAmount)
         }
 
         const weightsPayload: Record<string, number> = {}
@@ -333,15 +307,15 @@ export function TransactionFormDialog({
             if (a.isSelected) weightsPayload[a.memberId] = a.weight
         })
 
+        // LÓGICA DE STATUS SEGÚN VALIDACIÓN ADMIN
         let status = 'approved'
         if (isStandardUser) status = 'pending'
         if (isAccountOwner && originType === 'member') status = 'pending'
+        
         if (transactionToEdit) {
-            // Si eres Admin y el movimiento estaba pendiente, lo aprobamos al guardar
             if (isGroupAdmin && isCurrentlyPending) {
                 status = 'approved'
             } else {
-                // Si no, mantenemos el estado que ya tenía
                 status = transactionToEdit.status
             }
         }
@@ -360,7 +334,7 @@ export function TransactionFormDialog({
             payer_member_id: isProvision ? null : (originType === 'member' ? originMemberId : null),
             category_id: isTransfer ? null : categoryId,
             transfer_account_id: isTransfer ? transferAccountId : null,
-            split_type: 'weighted', // Siempre usamos weighted, es más genérico
+            split_type: 'weighted',
             split_weights: weightsPayload,
             allocations: (isTransfer) ? [] : allocations.filter(a => a.isSelected).map(a => ({ member_id: a.memberId, amount: a.amount }))
         }
@@ -374,9 +348,12 @@ export function TransactionFormDialog({
         }
     }
 
-    // --- UI HELPERS ---
     const LockedBadge = () => <Lock className="h-3 w-3 text-amber-500 ml-2 inline" />
-
+    const handleDeselectAll = () => {
+        setSplitMode('manual');
+        const resetList = allocations.map(a => ({ ...a, isSelected: false, amount: 0 }));
+        setAllocations(resetList);
+    };
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden bg-white border shadow-lg max-h-[90vh] flex flex-col">
@@ -388,13 +365,13 @@ export function TransactionFormDialog({
                         <div className="flex items-center gap-2">
                             {isMainAccountTx ? (
                                 <span className="text-amber-600 font-bold flex items-center gap-1">
-                                    <Lock className="h-3 w-3" /> Movimiento Bancario
+                                    <Lock className="h-3 w-3" /> Movimiento Bancario Bloqueado
                                 </span>
                             ) : (
                                 <span className="text-slate-500">Editando movimiento manual</span>
                             )}
                         </div>
-                        {transactionToEdit.status === 'pending' && (
+                        {isCurrentlyPending && (
                             <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">PENDIENTE VALIDACIÓN</span>
                         )}
                     </div>
@@ -425,7 +402,6 @@ export function TransactionFormDialog({
                             </Button>
                         </div>
 
-                        {/* INPUT DE IMPORTE */}
                         <div className="relative w-full flex items-center justify-center my-2">
                             <input 
                                 type="number" 
@@ -438,43 +414,34 @@ export function TransactionFormDialog({
                                     setAllocations(prev => recalculateAllocations(parseFloat(e.target.value) || 0, prev))
                                 }}
                                 className={cn(
-                                    // Reset de estilos nativos
                                     "w-full bg-transparent border-none outline-none p-0",
                                     "text-center font-bold tracking-tight focus:ring-0 shadow-none appearance-none",
-                                    
-                                    // TAMAÑO AJUSTADO (Grande pero no gigante)
                                     "text-5xl h-16", 
-                                    
-                                    // Colores
                                     direction === -1 
                                         ? "text-red-500 placeholder:text-red-200" 
                                         : "text-emerald-500 placeholder:text-emerald-200",
-                                    
                                     isMainAccountTx && "opacity-50 cursor-not-allowed"
                                 )}
                             />
-                            
-                            {/* EUR Pegado a la derecha, verticalmente centrado */}
-                            <span className="text-xs font-bold text-slate-500 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none select-none">
-                                EUR
-                            </span>
+                            <span className="text-xs font-bold text-slate-500 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none select-none">EUR</span>
                         </div>
 
-                        {/* FECHA (Sin icono extra) */}
                         <div className="flex justify-center mt-2">
                             <input 
                                 type="date" 
                                 value={date} 
                                 disabled={isMainAccountTx} 
                                 onChange={e => setDate(e.target.value)} 
-                                className="text-sm text-slate-500 bg-slate-50 px-3 py-1 rounded-full border border-slate-200 font-medium cursor-pointer focus:outline-none" 
+                                className={cn(
+                                    "text-sm text-slate-500 bg-slate-50 px-3 py-1 rounded-full border border-slate-200 font-medium cursor-pointer focus:outline-none",
+                                    isMainAccountTx && "opacity-60 cursor-not-allowed"
+                                )}
                             />
                         </div>
                     </div>
 
                     <div className="px-6 space-y-6 pb-6">
                         
-                        {/* 3. CONCEPTO */}
                         <div className="space-y-3">
                             <Input value={desc} onChange={e => setDesc(e.target.value)} placeholder="Concepto (ej: Cena)" className="text-lg font-medium border-x-0 border-t-0 border-b rounded-none px-0 focus-visible:ring-0 bg-transparent" />
                             <div className="flex gap-3">
@@ -495,21 +462,19 @@ export function TransactionFormDialog({
                             </div>
                         </div>
 
-                        {/* 4. PROVISIÓN */}
                         <div className="flex items-center justify-between p-3 bg-amber-50 border border-amber-100 rounded-lg">
                             <Label htmlFor="is-prov" className="cursor-pointer text-xs font-bold uppercase flex items-center gap-2 text-amber-700">
                                 <PiggyBank className="h-4 w-4" /> Es solo una Provisión
                             </Label>
-                            <Switch id="is-prov" checked={isProvision} onCheckedChange={setIsProvision} disabled={transactionToEdit?.is_provision} />
+                            <Switch id="is-prov" checked={isProvision} onCheckedChange={setIsProvision} disabled={transactionToEdit?.is_provision || isMainAccountTx} />
                         </div>
 
-                        {/* 5. TRASPASO */}
                         {transactionToEdit && !isProvision && (
                             <div className="flex items-center justify-between py-2 border-b border-dashed">
                                 <Label htmlFor="tr-switch" className="text-slate-600 text-sm font-medium cursor-pointer flex items-center gap-2">
                                     <ArrowRightLeft className="h-4 w-4" /> ¿Es un traspaso?
                                 </Label>
-                                <Switch id="tr-switch" checked={isTransfer} onCheckedChange={setIsTransfer} />
+                                <Switch id="tr-switch" checked={isTransfer} onCheckedChange={setIsTransfer} disabled={isMainAccountTx} />
                             </div>
                         )}
                         {isTransfer && (
@@ -524,7 +489,6 @@ export function TransactionFormDialog({
                             </div>
                         )}
 
-                        {/* 6. ORIGEN COMPACTO */}
                         {!isProvision && (
                             <div className="space-y-3">
                                 <Label className="text-xs text-slate-400 uppercase font-bold tracking-wider block">
@@ -532,14 +496,12 @@ export function TransactionFormDialog({
                                 </Label>
                                 
                                 <div className="flex gap-3">
-                                    {/* SWITCH ICONOS */}
                                     <div className="flex bg-slate-100 p-1 rounded-lg shrink-0 h-10 items-center">
                                         <button 
                                             type="button" 
                                             disabled={isMainAccountTx || (!isGroupAdmin && !isAccountOwner && originType !== 'member')}
                                             onClick={() => setOriginType('account')} 
                                             className={cn("w-10 h-8 rounded-md flex items-center justify-center transition-all", originType === 'account' ? "bg-white shadow-sm text-slate-900" : "text-slate-400")}
-                                            title="Cuenta / Tarjeta"
                                         >
                                             <Wallet className="h-4 w-4" />
                                         </button>
@@ -548,13 +510,11 @@ export function TransactionFormDialog({
                                             disabled={isMainAccountTx} 
                                             onClick={() => { setOriginType('member'); setOriginMemberId(currentUserMemberId); }} 
                                             className={cn("w-10 h-8 rounded-md flex items-center justify-center transition-all", originType === 'member' ? "bg-white shadow-sm text-slate-900" : "text-slate-400")}
-                                            title="Bolsillo (Pagado por mí)"
                                         >
                                             <User className="h-4 w-4" />
                                         </button>
                                     </div>
 
-                                    {/* SELECTOR */}
                                     <div className="flex-1">
                                         {originType === 'account' ? (
                                             <Select value={originAccountId} onValueChange={setOriginAccountId} disabled={isMainAccountTx}>
@@ -564,7 +524,6 @@ export function TransactionFormDialog({
                                                 </SelectContent>
                                             </Select>
                                         ) : (
-                                            // MODO BOLSILLO
                                             <div className="flex gap-2">
                                                 <div className="flex-1">
                                                     {isGroupAdmin ? (
@@ -579,13 +538,12 @@ export function TransactionFormDialog({
                                                         </div>
                                                     )}
                                                 </div>
-                                                {/* Intención Compacta */}
                                                 <div className="flex bg-slate-50 rounded-lg p-1 shrink-0 h-10 items-center border">
-                                                    <button type="button" onClick={() => setUserIntent('reimbursement')} className={cn("p-1.5 rounded transition-all text-xs flex", userIntent==='reimbursement' ? "bg-white shadow text-indigo-600" : "text-slate-300")} title="Pedir Reembolso">
+                                                    <button type="button" onClick={() => setUserIntent('reimbursement')} className={cn("p-1.5 rounded transition-all text-xs flex", userIntent==='reimbursement' ? "bg-white shadow text-indigo-600" : "text-slate-300")}>
                                                         <HandCoins className="h-3 w-3 mr-2 mt-0.5" /> Reembolso
                                                     </button>
-                                                    <button type="button" onClick={() => setUserIntent('contribution')} className={cn("p-1.5 rounded transition-all text-xs flex", userIntent==='contribution' ? "bg-white shadow text-emerald-600" : "text-slate-300")} title="Es Aportación">
-                                                        <PiggyBank className="h-3 w-3 mr-2 mt-0.5" />  Aportación
+                                                    <button type="button" onClick={() => setUserIntent('contribution')} className={cn("p-1.5 rounded transition-all text-xs flex", userIntent==='contribution' ? "bg-white shadow text-emerald-600" : "text-slate-300")}>
+                                                        <PiggyBank className="h-3 w-3 mr-2 mt-0.5" /> Aportación
                                                     </button>
                                                 </div>
                                             </div>
@@ -595,99 +553,77 @@ export function TransactionFormDialog({
                             </div>
                         )}
 
-                        {/* 7. REPARTO */}
                         {!isTransfer && (
                             <div className="space-y-3 pt-2">
                                 <div className="flex items-center justify-between">
-                                    <Label className="text-xs text-slate-400 uppercase font-bold tracking-wider">Reparto</Label>
+                                    <Label className="text-xs text-slate-400 uppercase font-bold tracking-wider">Modo de Reparto</Label>
                                     
-                                    {/* SELECTOR DE PLANTILLA */}
                                     <Select value={splitMode} onValueChange={handleSplitModeChange}>
-                                        <SelectTrigger className="h-7 text-xs w-[140px] bg-slate-50 border-none">
-                                            <SelectValue />
+                                        <SelectTrigger className="h-8 text-xs w-[180px] bg-indigo-50 border-indigo-100 text-indigo-700 font-medium">
+                                            <SelectValue placeholder="Selecciona reparto..." />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="equal">Equitativo (Todos)</SelectItem>
-                                            <SelectItem value="manual">Manual / Personalizado</SelectItem>
-                                            {splitTemplates.length > 0 && <div className="h-px bg-slate-100 my-1" />}
+                                            {/* 1. Tus Plantillas primero */}
                                             {splitTemplates.map((t: any) => (
-                                                <SelectItem key={t.id} value={t.id} className="font-medium text-indigo-600">
+                                                <SelectItem key={t.id} value={t.id} className="font-medium">
                                                     {t.name}
                                                 </SelectItem>
                                             ))}
+                                            
+                                            <div className="h-px bg-slate-100 my-1" />
+                                            
+                                            {/* 2. Manual al final */}
+                                            <SelectItem value="manual" className="text-slate-500 italic">
+                                                Personalizado / Manual
+                                            </SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
-
+<div className="flex justify-end">
+    <button 
+        type="button" 
+        onClick={handleDeselectAll}
+        className="text-[10px] text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1"
+    >
+        <User className="h-3 w-3" /> Desmarcar todos
+    </button>
+</div>
                                 <div className="flex flex-wrap justify-center gap-4">
                                     {allocations.map((alloc, idx) => {
                                         const member = members.find((m: any) => m.id === alloc.memberId)
                                         if (!member) return null
-                                        
-                                        // Mostrar badge de peso si es != 1 y está seleccionado
                                         const showWeightBadge = alloc.isSelected && alloc.weight !== 1
-
                                         return (
-                                            <button 
-                                                key={member.id} 
-                                                type="button" 
-                                                onClick={() => handleAvatarClick(idx)}
-                                                className={cn(
-                                                    "flex flex-col items-center gap-2 outline-none group transition-all relative", 
-                                                    !alloc.isSelected && "opacity-40 grayscale scale-95"
-                                                )}
-                                            >
-                                                <div className={cn("p-1 rounded-full border-2 transition-all", alloc.isSelected ? "border-indigo-500 ring-2 ring-indigo-100" : "border-transparent")}>
-                                                    <Avatar className="h-10 w-10"><AvatarFallback className="bg-slate-100 font-bold text-slate-600">{member.name.substring(0,2).toUpperCase()}</AvatarFallback></Avatar>
-                                                </div>
-                                                
-                                                {/* BADGE DE PESO (x2, x0.5) */}
-                                                {showWeightBadge && (
-                                                    <span className="absolute top-0 right-0 bg-slate-900 text-white text-[9px] font-bold px-1 rounded-full shadow-sm">
-                                                        x{alloc.weight}
-                                                    </span>
-                                                )}
-
-                                                <div className="flex flex-col items-center">
-                                                    <span className="text-[10px] font-medium">{member.name}</span>
-                                                    {alloc.isSelected && (
-                                                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 rounded-full">
-                                                            {formatCurrency(alloc.amount)}
-                                                        </span>
-                                                    )}
-                                                </div>
+                                            <button key={member.id} type="button" onClick={() => handleAvatarClick(idx)} className={cn("flex flex-col items-center gap-2 outline-none group transition-all relative", !alloc.isSelected && "opacity-40 grayscale scale-95")}>
+                                                <div className={cn("p-1 rounded-full border-2 transition-all", alloc.isSelected ? "border-indigo-500 ring-2 ring-indigo-100" : "border-transparent")}><Avatar className="h-10 w-10"><AvatarFallback className="bg-slate-100 font-bold text-slate-600">{member.name.substring(0,2).toUpperCase()}</AvatarFallback></Avatar></div>
+                                                {showWeightBadge && <span className="absolute top-0 right-0 bg-slate-900 text-white text-[9px] font-bold px-1 rounded-full shadow-sm">x{alloc.weight}</span>}
+                                                <div className="flex flex-col items-center"><span className="text-[10px] font-medium">{member.name}</span>{alloc.isSelected && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 rounded-full">{formatCurrency(alloc.amount)}</span>}</div>
                                             </button>
                                         )
                                     })}
                                 </div>
-                                
-                                {/* Mensaje informativo si estamos en modo manual o plantilla */}
-                                {splitMode !== 'equal' && (
-                                    <p className="text-[10px] text-center text-slate-400">
-                                        {splitMode === 'manual' ? 'Modo manual activado' : 'Usando plantilla de reparto'}
-                                    </p>
-                                )}
                             </div>
                         )}
-
                     </div>
                 </div>
 
-                {/* FOOTER */}
-                <Button 
-                    onClick={handleSave} 
-                    disabled={loading} 
-                    className={cn(
-                        "min-w-[100px]",
-                        isGroupAdmin && isCurrentlyPending ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-900"
-                    )}
-                >
-                    {loading ? (
-                        <LoadIcon name="Loader2" className="animate-spin h-4 w-4"/>
-                    ) : (
-                        isGroupAdmin && isCurrentlyPending ? 'Validar y Guardar' : 'Guardar'
-                    )}
-                </Button>
+                <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 shrink-0">
+                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                     <Button 
+                        onClick={handleSave} 
+                        disabled={loading} 
+                        className={cn(
+                            "min-w-[120px] transition-all",
+                            isGroupAdmin && isCurrentlyPending ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-slate-900 text-white hover:bg-slate-800"
+                        )}
+                    >
+                        {loading ? (
+                            <LoadIcon name="Loader2" className="animate-spin h-4 w-4"/>
+                        ) : (
+                            isGroupAdmin && isCurrentlyPending ? 'Validar y Guardar' : (isMainAccountTx ? 'Actualizar Reparto' : 'Guardar')
+                        )}
+                     </Button>
+                </div>
             </DialogContent>
         </Dialog>
     )

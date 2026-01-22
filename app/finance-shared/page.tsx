@@ -27,7 +27,7 @@ export default async function FinanceSharedPage(props: Props) {
   } = await validateModuleAccess('finance-shared')
 
   const searchParams = await props.searchParams;
-  
+  const showImpersonationBar = isAdmin && searchParams.debug === 'true';
 
   const groups = await getSharedGroups();
   const groupIdParam = typeof searchParams.groupId === 'string' ? searchParams.groupId : undefined;
@@ -107,7 +107,7 @@ export default async function FinanceSharedPage(props: Props) {
         members={dashboardData?.members || []}
       >
         {/* La barra solo se muestra visualmente si es admin */}
-        {isAdmin && <ImpersonationBar />}
+        {showImpersonationBar && <ImpersonationBar />}
         
         <UnifiedAppHeader
           title="Finanzas Compartidas"
@@ -120,6 +120,8 @@ export default async function FinanceSharedPage(props: Props) {
               groupId={activeGroupId} 
               data={dashboardData} 
               currentUserId={user.id}
+              isAdminGlobal={isAdmin}
+              isDebugActive={showImpersonationBar}
             />
           }
         />

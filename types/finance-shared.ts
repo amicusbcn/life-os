@@ -10,7 +10,7 @@ export interface SharedGroup {
   owner_id: string;
   currency: string;
   created_at: string;
-  default_account?:string | null;
+  default_account_id?:string | null;
 }
 
 export interface SharedMember {

@@ -25,6 +25,7 @@ import { MemberEquityCard } from "./ui/MemberEquityCard"
 
 // CONTEXTO
 import { useImpersonation } from "./ui/ImpersonationContext"
+import { toast } from "sonner"
 
 interface Props {
     groups: SharedGroup[]
@@ -55,6 +56,7 @@ export function FinanceSharedView({ groups, activeGroupId,defaultAccountId, dash
     const safeData = dashboardData || { accounts: [], members: [], categories: [], stats: {}, transactions: [], splitTemplates: [] }
     const { members, categories, accounts, splitTemplates } = safeData
     const rawTransactions = (safeData as any).transactions || [] 
+    const mainBankAccountId = groups.find(g => g.id === activeGroupId)?.default_account_id;
 
     // --- PERMISOS (IMPERSONATION) ---
     const { activeMember } = useImpersonation()    
@@ -247,6 +249,27 @@ export function FinanceSharedView({ groups, activeGroupId,defaultAccountId, dash
         setIsFormOpen(true)    // Abrimos form
     }
 
+    const handleNextDetail = () => {
+    if (!detailTx) return;
+    // Cambiado 'transactions' por 'rawTransactions'
+    const currentIndex = rawTransactions.findIndex((t: any) => t.id === detailTx.id);
+    if (currentIndex !== -1 && currentIndex < rawTransactions.length - 1) {
+        setDetailTx(rawTransactions[currentIndex + 1]);
+    } else {
+        toast.info("Es el último movimiento de la lista");
+    }
+};
+
+const handlePrevDetail = () => {
+    if (!detailTx) return;
+    // Cambiado 'transactions' por 'rawTransactions'
+    const currentIndex = rawTransactions.findIndex((t: any) => t.id === detailTx.id);
+    if (currentIndex > 0) {
+        setDetailTx(rawTransactions[currentIndex - 1]);
+    } else {
+        toast.info("Es el primer movimiento de la lista");
+    }
+};
 
     return (
         <div className="space-y-6 pb-20">
@@ -362,8 +385,14 @@ export function FinanceSharedView({ groups, activeGroupId,defaultAccountId, dash
                 onClose={() => setDetailTx(null)}
                 members={members}
                 categories={categories}
+                accounts={accounts} // O rawAccounts si te da error
                 isAdmin={isAdmin}
-                onEdit={handleEditFromDetail} // Conecta Detalle -> Formulario
+                onEdit={handleEditFromDetail}
+                splitTemplates={splitTemplates}
+                onNext={handleNextDetail}
+                onPrev={handlePrevDetail}
+                // Buscamos dinámicamente el ID de la cuenta bancaria principal
+                mainBankAccountId={accounts.find((a: any) => a.is_main)?.id} 
             />
 
             {/* 2. GESTOR DE CUBOS */}
@@ -382,6 +411,7 @@ export function FinanceSharedView({ groups, activeGroupId,defaultAccountId, dash
                 onOpenChange={setIsFormOpen}
                 groupId={activeGroupId}
                 defaultAccountId={defaultAccountId}
+                mainBankAccountId={mainBankAccountId}
                 members={members}
                 categories={categories}
                 accounts={accounts}

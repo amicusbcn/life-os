@@ -586,9 +586,7 @@ export async function importBankTransactions(
         const isAdmin = await checkGroupAdminPermission(supabase, groupId, user.id)
         if (!isAdmin) return { error: 'Permiso denegado' }
 
-        // --- PASO 1: DETECTAR CUENTA DESTINO AUTOMÁTICAMENTE ---
-        
-        // A. Buscamos si el grupo tiene cuenta por defecto
+        // --- PASO 1: DETECTAR CUENTA DESTINO ---
         const { data: group } = await supabase
             .from('finance_shared_groups')
             .select('default_account_id')
@@ -597,7 +595,6 @@ export async function importBankTransactions(
 
         let targetAccountId = group?.default_account_id
 
-        // B. Si no hay default, cogemos la primera que encontremos (Fallback)
         if (!targetAccountId) {
             const { data: firstAccount } = await supabase
                 .from('finance_shared_accounts')
@@ -605,15 +602,28 @@ export async function importBankTransactions(
                 .eq('group_id', groupId)
                 .limit(1)
                 .single()
-            
             targetAccountId = firstAccount?.id
         }
 
-        if (!targetAccountId) {
-            return { error: 'Error crítico: No existe ninguna cuenta bancaria creada en este grupo para asignar los movimientos.' }
-        }
-        // -------------------------------------------------------
+        if (!targetAccountId) return { error: 'No existe cuenta bancaria destino.' }
 
+        // --- PASO 2: ACTUALIZACIÓN MAESTRA DEL SALDO (ANTES DE INSERTAR) ---
+        // Tal como dices: la primera fila es la más reciente y dicta el saldo real
+        const mostRecentTx = transactions[0];
+        
+        if (mostRecentTx && mostRecentTx.bank_balance !== undefined) {
+            const { error: accError } = await supabase
+                .from('finance_shared_accounts')
+                .update({ 
+                    balance: mostRecentTx.bank_balance,
+                    last_sync: new Date().toISOString() 
+                })
+                .eq('id', targetAccountId)
+
+            if (accError) console.error("Error al actualizar saldo cuenta:", accError)
+        }
+
+        // --- PASO 3: PROCESAR E INSERTAR FILAS ---
         let count = 0;
         const errors = [];
 
@@ -621,11 +631,11 @@ export async function importBankTransactions(
             const isExpense = tx.amount < 0
             const amountAbs = Math.abs(tx.amount)
             
-            const { data: newTx, error: txError } = await supabase
+            const { error: txError } = await supabase
                 .from('finance_shared_transactions')
                 .insert({
                     group_id: groupId,
-                    account_id: targetAccountId, // <--- AQUI USAMOS LA CUENTA DETECTADA
+                    account_id: targetAccountId,
                     date: tx.date,
                     amount: amountAbs, 
                     description: tx.description,
@@ -633,15 +643,13 @@ export async function importBankTransactions(
                     bank_balance: tx.bank_balance !== undefined ? tx.bank_balance : null,
                     type: isExpense ? 'expense' : 'income', 
                     payment_source: 'account',
+                    approval_status: 'approved', // Corregido según tu código original
                     reimbursement_status: 'none',
-                    approval_status: 'approved',
                     created_by: user.id
                 })
-                .select()
-                .single()
 
             if (txError) {
-                console.error('Error insertando fila:', tx, txError.message)
+                console.error('Error insertando fila:', txError.message)
                 errors.push(`Fila ${tx.date}: ${txError.message}`)
                 continue
             }            
@@ -650,10 +658,6 @@ export async function importBankTransactions(
 
         revalidatePath('/finance-shared')
         
-        if (count === 0 && errors.length > 0) {
-            return { error: `Fallaron todas las filas. Ej: ${errors[0]}` }
-        }
-
         return { success: true, count }
 
     } catch (error: any) {
@@ -727,6 +731,35 @@ export async function setTransactionContributor(transactionId: string, memberId:
 
     if (insError) return { error: insError.message }
     
+    revalidatePath('/finance-shared')
+    return { success: true }
+}
+
+export async function updateTransactionSplitMode(transactionId: string, templateId: string, totalAmount: number) {
+    const supabase = await createClient()
+    
+    // 1. Obtener la plantilla y sus miembros
+    const { data: template } = await supabase
+        .from('finance_shared_split_templates')
+        .select('*, template_members(*)')
+        .eq('id', templateId)
+        .single()
+
+    if (!template) return { error: 'Plantilla no encontrada' }
+
+    // 2. Calcular el reparto basado en pesos (shares)
+    const totalShares = template.template_members.reduce((sum: number, m: any) => sum + m.shares, 0)
+    const allocations = template.template_members.map((tm: any) => ({
+        transaction_id: transactionId,
+        member_id: tm.member_id,
+        amount: (Math.abs(totalAmount) * tm.shares) / totalShares
+    }))
+
+    // 3. Limpiar e insertar
+    await supabase.from('finance_shared_allocations').delete().eq('transaction_id', transactionId)
+    const { error } = await supabase.from('finance_shared_allocations').insert(allocations)
+
+    if (error) return { error: error.message }
     revalidatePath('/finance-shared')
     return { success: true }
 }
