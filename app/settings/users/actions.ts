@@ -1,4 +1,4 @@
-// app/users/actions.ts
+// /app/settings/users/actions.ts
 'use server'
 
 import { createClient } from '@/utils/supabase/server';
@@ -126,7 +126,7 @@ export async function inviteUser(email: string): Promise<ActionResponse> {
         return { success: false, error: "Error de conexión con el servicio de email." };
     }
 
-    revalidatePath('/admin/users');
+    revalidatePath('/settings/users');
     return { success: true, message: 'Usuario invitado correctamente.' };
 }
 
@@ -157,7 +157,7 @@ export async function toggleGlobalAdmin(userId: string): Promise<ActionResponse>
 
     if (updateError) return { success: false, error: "Error al actualizar rol global." };
 
-    revalidatePath('/admin/users');
+    revalidatePath('/settings/users');
     return { success: true, message: `Rol global cambiado a '${newRole}'.` };
 }
 
@@ -168,27 +168,26 @@ export async function toggleGlobalAdmin(userId: string): Promise<ActionResponse>
 export async function setModulePermission(userId: string, moduleKey: string, role: AppRole): Promise<ActionResponse> {
     const supabaseAdmin = await createAdminClient();
 
-    // Upsert en la tabla nueva app_permissions
-    const { error } = await supabaseAdmin
+    console.log('Intentando guardar permiso:', { userId, moduleKey, role });
+
+    const { data, error } = await supabaseAdmin
         .from('app_permissions')
         .upsert({ 
             user_id: userId, 
             module_key: moduleKey, 
             role: role 
-        }, { onConflict: 'user_id, module_key' });
+        }, { 
+            onConflict: 'user_id, module_key' 
+        })
+        .select(); // Agregamos select para confirmar la respuesta
 
-    if (error) return { success: false, error: error.message };
+    if (error) {
+        console.error('ERROR EN BBDD:', error); // Esto te dirá si es un tema de RLS o Foreign Key
+        return { success: false, error: error.message };
+    }
 
-    // Opcional: Notificar cambio
-    await sendNotification({
-        recipientIds: [userId],
-        title: 'Permisos Actualizados',
-        message: `Tu acceso al módulo ${moduleKey} ahora es: ${role}`,
-        type: 'info',
-        sender_module: 'system'
-    });
-
-    revalidatePath('/admin/users');
+    console.log('Guardado con éxito:', data);
+    revalidatePath('/settings/users'); 
     return { success: true, message: `Permiso para ${moduleKey} actualizado.` };
 }
 
@@ -202,7 +201,7 @@ export async function removeModulePermission(userId: string, moduleKey: string):
 
     if (error) return { success: false, error: error.message };
 
-    revalidatePath('/admin/users');
+    revalidatePath('/settings/users');
     return { success: true, message: 'Acceso al módulo revocado.' };
 }
 

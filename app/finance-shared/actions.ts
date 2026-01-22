@@ -792,7 +792,7 @@ export async function upsertSharedTransaction(groupId: string, transaction: any)
     account_id: transaction.account_id,
     payment_source: transaction.payment_source,
     type: transaction.type,
-    // Nuevos campos
+    status: transaction.status || 'approved',
     transfer_account_id: isTransfer ? transaction.transfer_account_id : null,
     parent_transaction_id: transaction.parent_transaction_id,
     // El linked_id no lo tocamos aquí directamente si ya existe, lo gestionamos abajo
@@ -824,6 +824,7 @@ export async function upsertSharedTransaction(groupId: string, transaction: any)
           description: payload.description, // Misma descripción
           notes: 'Transferencia automática',
           type: 'transfer',
+          status: transaction.status || 'approved',
           account_id: transaction.transfer_account_id, // La cuenta destino
           transfer_account_id: payload.account_id, // La cuenta origen
           payment_source: 'account', // Siempre es movimiento de cuenta

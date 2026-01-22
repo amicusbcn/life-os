@@ -68,8 +68,7 @@ export async function forgotPassword(formData: FormData) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    // ⚠️ AQUÍ ESTÁ LA MAGIA: Forzamos ir al callback y luego a cambiar password
-    redirectTo: `${siteUrl}/auth/callback?next=/update-password`,
+    redirectTo: `${siteUrl}/auth/callback?next=/settings/update-password`,
   })
 
   if (error) {

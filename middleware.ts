@@ -38,6 +38,12 @@ export async function middleware(request: NextRequest) {
   // 2. Verificar usuario
   const { data: { user } } = await supabase.auth.getUser()
   const path = request.nextUrl.pathname
+  
+  //si es una url que empieza por /public, dejamos pasar
+
+  if (path.startsWith('/shared')) {
+    return response
+  }
 
   // ============================================================
   // 3. LÓGICA DE AUTENTICACIÓN (El "Portero" Básico)

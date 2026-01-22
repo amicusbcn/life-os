@@ -2,16 +2,26 @@ import { SharedMember, SharedAccount, SharedCategory, DashboardData } from '@/ty
 import { createClient } from '@/utils/supabase/server'
 
 export async function getSharedGroups() {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('finance_shared_groups')
-    .select('*')
-    .order('created_at', { ascending: false })
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) return []
 
-  if (error) console.error('Error fetching groups:', error)
-  return data || []
+    const { data, error } = await supabase
+        .from('finance_shared_groups')
+        .select(`
+            *,
+            finance_shared_members!inner(user_id)
+        `)
+        .eq('finance_shared_members.user_id', user.id) // <--- ESTO FILTRA POR MEMBRESÍA
+
+    if (error) {
+        console.error("Error al obtener grupos:", error)
+        return []
+    }
+
+    return data
 }
-
 export async function getGroupTransactions(groupId: string, year: number) {
   if (!groupId) return []
   const supabase = await createClient()

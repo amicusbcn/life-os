@@ -42,7 +42,7 @@ export function TransactionFormDialog({
     const isStandardUser = !isGroupAdmin && !isAccountOwner
 
     const isMainAccountTx = transactionToEdit && transactionToEdit.account_id === defaultAccountId
-
+    const isCurrentlyPending = transactionToEdit?.status === 'pending'
     // --- 2. ESTADOS ---
     const [loading, setLoading] = useState(false)
     
@@ -64,7 +64,7 @@ export function TransactionFormDialog({
     const [transferAccountId, setTransferAccountId] = useState<string>('')
 
     // BLOQUE ORIGEN
-    const [originType, setOriginType] = useState<'pocket' | 'account'>('account')
+    const [originType, setOriginType] = useState<'member' | 'account'>('account')
     const [originAccountId, setOriginAccountId] = useState<string>('') 
     const [originMemberId, setOriginMemberId] = useState<string>('')
     const [userIntent, setUserIntent] = useState<'reimbursement' | 'contribution'>('reimbursement')
@@ -148,13 +148,13 @@ export function TransactionFormDialog({
                 setOriginType('account')
                 setOriginAccountId(secondaryAccount.id)
             } else {
-                setOriginType('pocket')
+                setOriginType('member')
             }
         } else if (isAccountOwner) {
             setOriginType('account')
             setOriginAccountId(myResponsibleAccounts[0]?.id || '')
         } else {
-            setOriginType('pocket')
+            setOriginType('member')
         }
 
         resetAllocations(0)
@@ -297,7 +297,7 @@ export function TransactionFormDialog({
         }
 
         let finalNotes = notes
-        if (!isProvision && originType === 'pocket') {
+        if (!isProvision && originType === 'member') {
             const tag = userIntent === 'reimbursement' ? '[SOLICITA REEMBOLSO]' : '[APORTACIÓN]'
             finalNotes = `${notes} ${tag}`.trim()
         }
@@ -335,8 +335,16 @@ export function TransactionFormDialog({
 
         let status = 'approved'
         if (isStandardUser) status = 'pending'
-        if (isAccountOwner && originType === 'pocket') status = 'pending'
-        if (transactionToEdit) status = transactionToEdit.status
+        if (isAccountOwner && originType === 'member') status = 'pending'
+        if (transactionToEdit) {
+            // Si eres Admin y el movimiento estaba pendiente, lo aprobamos al guardar
+            if (isGroupAdmin && isCurrentlyPending) {
+                status = 'approved'
+            } else {
+                // Si no, mantenemos el estado que ya tenía
+                status = transactionToEdit.status
+            }
+        }
 
         const payload = {
             id: transactionToEdit?.id,
@@ -349,7 +357,7 @@ export function TransactionFormDialog({
             is_provision: isProvision,
             payment_source: isProvision ? 'provision' : originType,
             account_id: isProvision ? null : (originType === 'account' ? originAccountId : null),
-            payer_member_id: isProvision ? null : (originType === 'pocket' ? originMemberId : null),
+            payer_member_id: isProvision ? null : (originType === 'member' ? originMemberId : null),
             category_id: isTransfer ? null : categoryId,
             transfer_account_id: isTransfer ? transferAccountId : null,
             split_type: 'weighted', // Siempre usamos weighted, es más genérico
@@ -528,7 +536,7 @@ export function TransactionFormDialog({
                                     <div className="flex bg-slate-100 p-1 rounded-lg shrink-0 h-10 items-center">
                                         <button 
                                             type="button" 
-                                            disabled={isMainAccountTx || (!isGroupAdmin && !isAccountOwner && originType !== 'pocket')}
+                                            disabled={isMainAccountTx || (!isGroupAdmin && !isAccountOwner && originType !== 'member')}
                                             onClick={() => setOriginType('account')} 
                                             className={cn("w-10 h-8 rounded-md flex items-center justify-center transition-all", originType === 'account' ? "bg-white shadow-sm text-slate-900" : "text-slate-400")}
                                             title="Cuenta / Tarjeta"
@@ -538,8 +546,8 @@ export function TransactionFormDialog({
                                         <button 
                                             type="button" 
                                             disabled={isMainAccountTx} 
-                                            onClick={() => { setOriginType('pocket'); setOriginMemberId(currentUserMemberId); }} 
-                                            className={cn("w-10 h-8 rounded-md flex items-center justify-center transition-all", originType === 'pocket' ? "bg-white shadow-sm text-slate-900" : "text-slate-400")}
+                                            onClick={() => { setOriginType('member'); setOriginMemberId(currentUserMemberId); }} 
+                                            className={cn("w-10 h-8 rounded-md flex items-center justify-center transition-all", originType === 'member' ? "bg-white shadow-sm text-slate-900" : "text-slate-400")}
                                             title="Bolsillo (Pagado por mí)"
                                         >
                                             <User className="h-4 w-4" />
@@ -666,12 +674,20 @@ export function TransactionFormDialog({
                 </div>
 
                 {/* FOOTER */}
-                <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 shrink-0">
-                     <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                     <Button onClick={handleSave} disabled={loading} className="bg-slate-900 text-white hover:bg-slate-800 min-w-[100px]">
-                        {loading ? <LoadIcon name="Loader2" className="animate-spin h-4 w-4"/> : 'Guardar'}
-                     </Button>
-                </div>
+                <Button 
+                    onClick={handleSave} 
+                    disabled={loading} 
+                    className={cn(
+                        "min-w-[100px]",
+                        isGroupAdmin && isCurrentlyPending ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-900"
+                    )}
+                >
+                    {loading ? (
+                        <LoadIcon name="Loader2" className="animate-spin h-4 w-4"/>
+                    ) : (
+                        isGroupAdmin && isCurrentlyPending ? 'Validar y Guardar' : 'Guardar'
+                    )}
+                </Button>
             </DialogContent>
         </Dialog>
     )
