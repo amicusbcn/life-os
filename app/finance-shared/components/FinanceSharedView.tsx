@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Search, Plus, Settings } from "lucide-react"
+import { Search, Plus, Settings, HandCoins } from "lucide-react"
 
 // UI COMPONENTS
 import { SharedTransactionRow } from "./ui/SharedTransactionRow" 
@@ -30,12 +30,11 @@ import { toast } from "sonner"
 interface Props {
     groups: SharedGroup[]
     activeGroupId: string
-    defaultAccountId: string
     dashboardData: DashboardData
     // currentUserId ya no es necesario aquí, lo coge el contexto
 }
 
-export function FinanceSharedView({ groups, activeGroupId,defaultAccountId, dashboardData }: Props) {
+export function FinanceSharedView({ groups, activeGroupId, dashboardData }: Props) {
     const searchParams = useSearchParams()
     const currentYear = Number(searchParams.get('year')) || new Date().getFullYear()
 
@@ -56,7 +55,7 @@ export function FinanceSharedView({ groups, activeGroupId,defaultAccountId, dash
     const safeData = dashboardData || { accounts: [], members: [], categories: [], stats: {}, transactions: [], splitTemplates: [] }
     const { members, categories, accounts, splitTemplates } = safeData
     const rawTransactions = (safeData as any).transactions || [] 
-    const mainBankAccountId = groups.find(g => g.id === activeGroupId)?.default_account_id;
+    const mainBankAccountId = groups.find(g => g.id === activeGroupId)?.default_account_id || '';
 
     // --- PERMISOS (IMPERSONATION) ---
     const { activeMember } = useImpersonation()    
@@ -142,10 +141,24 @@ export function FinanceSharedView({ groups, activeGroupId,defaultAccountId, dash
         return result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     }, [rawTransactions, members])
 
+    // --- OCULTAMOS LOS PRÉSTAMOS DEVUELTOS
+
+    const visibleTransactions = useMemo(() => {
+        // 1. Tomamos las transacciones procesadas (con cubos, etc.)
+        // 2. Filtramos las que tienen el vínculo de deuda cerrado
+        return processedTransactions.filter(tx => {
+            // REGLA: Si tiene debt_link_id, es un préstamo saldado o una devolución vinculada.
+            // Lo ocultamos del listado principal para limpiar el ruido.
+            if (tx.debt_link_id) {
+                return false;
+            }
+            return true;
+        });
+    }, [processedTransactions]);
 
     // --- FILTRADO POR PESTAÑAS ---
     const getTabTransactions = (tab: string) => {
-        let data = processedTransactions
+        let data = visibleTransactions
 
         // Filtros Globales
         data = data.filter(tx => {
@@ -210,16 +223,16 @@ export function FinanceSharedView({ groups, activeGroupId,defaultAccountId, dash
 
     // --- CONTADORES (BADGES) ---
     const tabCounts = useMemo(() => {
-        const allnotDetailed = processedTransactions.filter(tx => tx.not_detailed)
+        const allnotDetailed = visibleTransactions.filter(tx => tx.not_detailed)
         let justificationCount = 0
         if (isAdmin) justificationCount = allnotDetailed.length
         else if (isCardOwner) justificationCount = allnotDetailed.filter(tx => myResponsibleAccountIds.includes(tx.account_id)).length
 
-        const allocationCount = isAdmin ? processedTransactions.filter(tx => !tx.not_detailed && tx.type !== 'transfer' && (!tx.allocations || tx.allocations.length === 0)).length : 0
-        const approvalCount = isAdmin ? processedTransactions.filter(tx => tx.status === 'pending').length : 0
+        const allocationCount = isAdmin ? visibleTransactions.filter(tx => !tx.not_detailed && tx.type !== 'transfer' && (!tx.allocations || tx.allocations.length === 0)).length : 0
+        const approvalCount = isAdmin ? visibleTransactions.filter(tx => tx.status === 'pending').length : 0
 
         return { justification: justificationCount, allocation: allocationCount, approval: approvalCount }
-    }, [processedTransactions, isAdmin, isCardOwner, myResponsibleAccountIds])
+    }, [visibleTransactions, isAdmin, isCardOwner, myResponsibleAccountIds])
 
 
     // --- HANDLERS CLICS ---
@@ -288,7 +301,7 @@ const handlePrevDetail = () => {
             </div>
 
             {/* DASHBOARD */}
-            <DashboardStats data={safeData} currentMemberId={activeMember?.id}  defaultAccountId={defaultAccountId} />
+            <DashboardStats data={safeData} currentMemberId={activeMember?.id}  mainBankAccountId={mainBankAccountId} />
 
             {/* TABS Y LISTADO */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -316,6 +329,11 @@ const handlePrevDetail = () => {
                             </TabsTrigger>
                         )}
                         <TabsTrigger value="balances">Saldos</TabsTrigger>
+                        {isAdmin && (
+                            <TabsTrigger value="debt_history" className="gap-2 border-l ml-2 pl-4">
+                                <HandCoins className="h-3.5 w-3.5" /> Préstamos
+                            </TabsTrigger>
+                        )}
                     </TabsList>
 
                     {/* FILTROS */}
@@ -356,6 +374,7 @@ const handlePrevDetail = () => {
                                                         account={accounts.find((a: any) => a.id === tx.account_id)}
                                                         currentMemberId={activeMember?.id}
                                                         viewPersonal={activeTab === 'mine'}
+                                                        splitTemplates={splitTemplates}
                                                     />
                                                 </div>
                                             ))}
@@ -374,12 +393,33 @@ const handlePrevDetail = () => {
                         ))}
                     </div>
                 </TabsContent>
+                <TabsContent value="debt_history">
+                    <div className="space-y-4">
+                        <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-700 italic">
+                            Aquí aparecen los préstamos y devoluciones que ya han sido vinculados y saldados.
+                        </div>
+                        {processedTransactions
+                            .filter(tx => !!tx.debt_link_id)
+                            .map(tx => (
+                                <SharedTransactionRow 
+                                    transaction={tx} 
+                                    members={members}
+                                    category={tx.category} 
+                                    account={accounts.find((a: any) => a.id === tx.account_id)}
+                                    currentMemberId={activeMember?.id}
+                                    viewPersonal={activeTab === 'mine'}
+                                    splitTemplates={splitTemplates}
+                                />
+                            ))}
+                    </div>
+                </TabsContent>
             </Tabs>
 
             {/* --- DIÁLOGOS --- */}
 
             {/* 1. VISOR DETALLE */}
             <TransactionDetailDialog 
+                key={detailTx?.id ? `detail-${detailTx.id}` : 'detail-none'}
                 open={!!detailTx}
                 transaction={detailTx}
                 onClose={() => setDetailTx(null)}
@@ -392,7 +432,7 @@ const handlePrevDetail = () => {
                 onNext={handleNextDetail}
                 onPrev={handlePrevDetail}
                 // Buscamos dinámicamente el ID de la cuenta bancaria principal
-                mainBankAccountId={accounts.find((a: any) => a.is_main)?.id} 
+                mainBankAccountId={mainBankAccountId}
             />
 
             {/* 2. GESTOR DE CUBOS */}
@@ -410,13 +450,13 @@ const handlePrevDetail = () => {
                 open={isFormOpen}
                 onOpenChange={setIsFormOpen}
                 groupId={activeGroupId}
-                defaultAccountId={defaultAccountId}
                 mainBankAccountId={mainBankAccountId}
                 members={members}
                 categories={categories}
                 accounts={accounts}
                 transactionToEdit={editingTx}
                 splitTemplates={splitTemplates || []}
+                allTransactions={visibleTransactions}
             />
 
         </div>

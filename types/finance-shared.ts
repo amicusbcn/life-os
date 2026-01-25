@@ -73,20 +73,11 @@ export interface SharedTransaction {
   parent_transaction_id?: string | null 
   parent_transaction?: { description: string, date: string }
   is_provision: boolean
+  split_template_id?: string | null
+  category_id?:string | null
+  debt_link_id?: string | null
 }
 
-
-export interface SharedSplitTemplate {
-  id: string;
-  name: string;
-  group_id: string;
-  members: {
-    member_id: string;
-    shares: number;
-  }[];
-}
-
-// ... (Tipos anteriores)
 
 // === NUEVOS TIPOS PARA PLANTILLAS ===
 

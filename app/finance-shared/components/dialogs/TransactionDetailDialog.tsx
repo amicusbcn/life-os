@@ -11,7 +11,8 @@ import { formatCurrency, cn } from '@/lib/utils'
 import LoadIcon from '@/utils/LoadIcon'
 import { 
     CheckCircle2, Trash2, Pencil, Users, Lock, 
-    ChevronLeft, ChevronRight, MessageSquare, ArrowRightLeft, Clock, AlertCircle 
+    ChevronLeft, ChevronRight, MessageSquare, ArrowRightLeft, Clock, AlertCircle, 
+    User
 } from 'lucide-react'
 
 import { SharedMember, SharedCategory, SharedAccount } from '@/types/finance-shared'
@@ -20,7 +21,8 @@ import {
     deleteTransaction, 
     updateTransactionCategory, 
     setTransactionContributor,
-    updateTransactionSplitMode // Necesitarás crear esta acción o usar una genérica
+    updateTransactionSplitMode, // Necesitarás crear esta acción o usar una genérica
+    upsertSharedTransaction
 } from '@/app/finance-shared/actions'
 
 interface Props {
@@ -40,80 +42,86 @@ interface Props {
 }
 
 export function TransactionDetailDialog({ 
-    transaction, open, onClose, members, categories, accounts,
-    isAdmin, onEdit, onNext, onPrev, splitTemplates, defaultAccountId,mainBankAccountId
+    transaction: initialTransaction, // Renombramos la prop para evitar conflictos
+    open, onClose, members, categories, accounts,
+    isAdmin, onEdit, onNext, onPrev, splitTemplates, defaultAccountId, mainBankAccountId
 }: Props) {
     const router = useRouter()
     const [loading, setLoading] = useState(false)
-    const [selectedCategoryId, setSelectedCategoryId] = useState('')
     
-    // Estado local para forzar el valor del Select de asignado (Punto 3)
+    // 1. ESTADO MAESTRO LOCAL
+    const [localTx, setLocalTx] = useState(initialTransaction)
+
+    // 2. TUS ESTADOS ACTUALES (Ahora se sincronizan con localTx)
+    const [selectedCategoryId, setSelectedCategoryId] = useState('')
     const [contributorId, setContributorId] = useState<string>('')
 
+    // 3. EFECTO DE SINCRONIZACIÓN (Cuando cambia la prop o el estado local)
     useEffect(() => {
-        if (transaction) {
-            setSelectedCategoryId(transaction.category_id || 'uncategorized')
-            const currentCId = transaction.allocations?.length === 1 ? transaction.allocations[0].member_id : ''
+        if (initialTransaction) {
+            setLocalTx(initialTransaction)
+        }
+    }, [initialTransaction])
+
+    useEffect(() => {
+        if (localTx) {
+            setSelectedCategoryId(localTx.category_id || (localTx.type === 'transfer' ? 'transfer' : 'uncategorized'))
+            const currentCId = localTx.allocations?.length === 1 ? localTx.allocations[0].member_id : ''
             setContributorId(currentCId)
         }
-    }, [transaction])
+    }, [localTx])
 
-    if (!transaction) return null
+    if (!localTx) return null
 
     // --- LÓGICA DE ESTADOS (Punto 6) ---
-    const isPending = transaction.status === 'pending' || transaction.approval_status === 'pending'
-    const isUnassigned = (!transaction.allocations || transaction.allocations.length === 0)
-    const isMainAccount = transaction.account_id === mainBankAccountId
+    const isPending = localTx.status === 'pending' || localTx.approval_status === 'pending'
+    const isUnassigned = (!localTx.allocations || localTx.allocations.length === 0)
+    const isMainAccount = localTx.account_id === mainBankAccountId
 
     const getStatusBadge = () => {
         if (isPending) return <Badge className="bg-amber-100 text-amber-700 border-amber-200"><Clock className="w-3 h-3 mr-1"/> Pendiente Validar</Badge>
-        if (isUnassigned && transaction.type !== 'transfer') return <Badge className="bg-rose-100 text-rose-700 border-rose-200"><AlertCircle className="w-3 h-3 mr-1"/> Sin Repartir</Badge>
+        if (isUnassigned && localTx.type !== 'transfer') return <Badge className="bg-rose-100 text-rose-700 border-rose-200"><AlertCircle className="w-3 h-3 mr-1"/> Sin Repartir</Badge>
         return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200"><CheckCircle2 className="w-3 h-3 mr-1"/> Validado</Badge>
     }
 
     // --- ACCIONES ---
+    const handleQuickUpdate = async (updates: any) => {
+        if (!isAdmin) return;
+        setLoading(true)
 
-    const handleCategoryChange = async (catId: string) => {
-        if (!isAdmin) return
-        setSelectedCategoryId(catId)
-        toast.promise(updateTransactionCategory(transaction.id, catId), {
-            loading: 'Actualizando...',
-            success: 'Categoría guardada',
-            error: 'Error al actualizar'
-        })
-        router.refresh()
-    }
+        // Combinamos todo: lo que tiene la tx + los cambios
+        const payload = {
+            ...localTx,
+            ...updates
+        };
+        const res = await upsertSharedTransaction(localTx.group_id, payload)
 
-    const handleContributorChange = async (memberId: string) => {
-        if (!isAdmin) return
-        setContributorId(memberId) // Actualizamos estado local inmediatamente
-        const res = await setTransactionContributor(transaction.id, memberId, transaction.amount)
-        if (res.error) toast.error(res.error)
-        else {
-            toast.success('Asignado correctamente')
+        if (res.error) {
+            toast.error(res.error)
+        } else {
+            // ACTUALIZACIÓN DE LA UI SIN ESPERAR AL SERVER
+            // Si el servidor te devuelve la data completa con allocations, úsala:
+            if (res.data) {
+                setLocalTx(res.data) 
+            } else {
+                // Si no, mergeamos manual para que al menos el Select se mueva
+                setLocalTx((prev: any) => ({ ...prev, ...updates }))
+            }
+            
             router.refresh()
+            toast.success('Cambio guardado')
         }
-    }
+        setLoading(false)
+    };
 
     const handleDelete = async () => {
         if (!confirm('¿Seguro que quieres eliminar este movimiento?')) return
         setLoading(true)
-        const res = await deleteTransaction(transaction.id, transaction.group_id)
+        const res = await deleteTransaction(localTx.id, localTx.group_id)
         if (res.error) toast.error(res.error)
         else { 
             toast.success('Eliminado')
             onClose()
-            router.refresh() 
-        }
-        setLoading(false)
-    }
-
-    const handleApprove = async () => {
-        setLoading(true)
-        const res = await approveTransaction(transaction.id, transaction.group_id)
-        if (res.error) toast.error(res.error)
-        else { 
-            toast.success('Aprobado')
             router.refresh() 
         }
         setLoading(false)
@@ -130,11 +138,19 @@ export function TransactionDetailDialog({
     }
 
     const handleTemplateChange = async (templateId: string) => {
-        // Aquí llamarías a una acción que aplique la plantilla al movimiento
-        toast.info("Aplicando plantilla de reparto...")
-        // Implementar en actions: updateTransactionSplitMode(transaction.id, templateId)
-    }
+        if (templateId === 'manual') {
+            onClose(); // Cerramos el detalle
+            onEdit();  // Abrimos el formulario de edición completa
+            return;
+        }
 
+        // Si es una plantilla, usamos nuestra acción maestra
+        // El servidor detectará el split_template_id y recalculará todo
+        await handleQuickUpdate({ 
+            split_template_id: templateId,
+            type: 'expense' // Al aplicar plantilla nos aseguramos de que no sea transfer
+        });
+    }
     // --- RENDERING ---
 
     const activeCategoryObj = categories.find(c => c.id === selectedCategoryId)
@@ -164,14 +180,14 @@ export function TransactionDetailDialog({
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                                 <DialogTitle className="text-xl font-bold truncate tracking-tight">
-                                    {transaction.description}
+                                    {localTx.description}
                                 </DialogTitle>
                                 {isMainAccount && <Lock className="h-3.5 w-3.5 text-slate-400" />}
                             </div>
                             {/* Punto 2: Nota bajo el concepto */}
-                            {transaction.notes && (
+                            {localTx.notes && (
                                 <p className="text-xs text-slate-500 flex items-center gap-1 mt-1 italic">
-                                    <MessageSquare className="h-3 w-3" /> {transaction.notes}
+                                    <MessageSquare className="h-3 w-3" /> {localTx.notes}
                                 </p>
                             )}
                         </div>
@@ -182,11 +198,11 @@ export function TransactionDetailDialog({
                     {/* IMPORTE Y BADGES (Punto 6) */}
                     <div className="flex flex-col items-center p-6 bg-slate-50 rounded-2xl border border-slate-100 relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-2">{getStatusBadge()}</div>
-                        <span className={cn("text-4xl font-black tracking-tighter", transaction.amount < 0 || transaction.type === 'expense' ? 'text-slate-900' : 'text-emerald-600')}>
-                            {formatCurrency(transaction.amount)}
+                        <span className={cn("text-4xl font-black tracking-tighter", localTx.amount < 0 || localTx.type === 'expense' ? 'text-slate-900' : 'text-emerald-600')}>
+                            {formatCurrency(localTx.amount)}
                         </span>
                         <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mt-2">
-                            {new Date(transaction.date).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                            {new Date(localTx.date).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                         </p>
                     </div>
 
@@ -194,49 +210,130 @@ export function TransactionDetailDialog({
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Categoría</label>
-                            <Select value={selectedCategoryId} onValueChange={handleCategoryChange} disabled={!isAdmin}>
-                                <SelectTrigger className="h-9 text-sm">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="uncategorized">📁 Sin Categoría</SelectItem>
-                                    {/* Punto 5: Traspaso como opción rápida */}
-                                    <SelectItem value="transfer" className="text-indigo-600 font-bold">
-                                        <div className="flex items-center gap-2"><ArrowRightLeft className="h-4 w-4"/> Traspaso</div>
-                                    </SelectItem>
-                                    {categories.map(c => (
-                                        <SelectItem key={c.id} value={c.id}>
+                            {isAdmin ? (
+                                <Select 
+                                    value={selectedCategoryId} 
+                                    onValueChange={(catId) => {
+                                        setSelectedCategoryId(catId);
+                                        
+                                        if (catId === 'transfer') {
+                                            // CONVERSIÓN A TRASPASO
+                                            handleQuickUpdate({ 
+                                                category_id: null, 
+                                                type: 'transfer',
+                                                allocations: [], // Las transferencias no llevan reparto
+                                                // No tocamos transfer_account_id aquí para que el usuario 
+                                                // pueda elegirlo después en el segundo selector
+                                            });
+                                        } else {
+                                            // CONVERSIÓN A GASTO NORMAL
+                                            handleQuickUpdate({ 
+                                                category_id: catId, 
+                                                type: 'expense',
+                                                transfer_account_id: null // Limpiamos rastro de transferencia
+                                            });
+                                        }
+                                    }}
+                                >
+                                    <SelectTrigger className="w-full bg-white border-slate-200 h-9 text-sm">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="uncategorized">📁 Sin Categoría</SelectItem>
+                                        {/* Opción especial de Traspaso */}
+                                        <SelectItem value="transfer" className="text-indigo-600 font-bold italic">
                                             <div className="flex items-center gap-2">
-                                                <LoadIcon name={c.icon_name} className="h-3.5 w-3.5"/> {c.name}
+                                                <ArrowRightLeft className="h-4 w-4" /> 
+                                                Traspaso / Transferencia
                                             </div>
                                         </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                        
+                                        <div className="h-px bg-slate-100 my-1" />
+                                        
+                                        {categories.map(c => (
+                                            <SelectItem key={c.id} value={c.id}>
+                                                <div className="flex items-center gap-2">
+                                                    <LoadIcon name={c.icon_name} className="h-4 w-4 text-slate-400"/>
+                                                    {c.name}
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <div className="flex items-center gap-2 p-2 border rounded-md bg-slate-50 text-sm text-slate-700">
+                                    <LoadIcon name={activeCategoryObj?.icon_name || 'HelpCircle'} className="h-4 w-4 text-slate-400"/>
+                                    {localTx.type === 'transfer' ? 'Traspaso' : (activeCategoryObj?.name || 'Sin Categoría')}
+                                </div>
+                            )}
                         </div>
 
-                        {/* Punto 4: Plantillas de Reparto o Asignado */}
+                        {/* SECCIÓN DINÁMICA: CUENTA DESTINO | MIEMBRO | PLANTILLA */}
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                {isIndividualMode ? 'Beneficiario' : 'Plantilla Reparto'}
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                {selectedCategoryId === 'transfer' || localTx.type === 'transfer' ? (
+                                    <><ArrowRightLeft className="h-3 w-3 text-indigo-500" /> Cuenta Destino</>
+                                ) : isIndividualMode ? (
+                                    <><User className="h-3 w-3 text-amber-500" /> Asignar a</>
+                                ) : (
+                                    <><Users className="h-3 w-3 text-emerald-500" /> Plantilla de Reparto</>
+                                )}
                             </label>
-                            
-                            {isIndividualMode ? (
-                                <Select value={contributorId} onValueChange={handleContributorChange} disabled={!isAdmin}>
-                                    <SelectTrigger className="h-9 text-sm border-indigo-100 bg-indigo-50/50">
-                                        <SelectValue placeholder="Elegir..." />
+
+                            {/* CASO A: ES UNA TRANSFERENCIA (Selector de Cuentas) */}
+                            {(selectedCategoryId === 'transfer' || localTx.type === 'transfer') ? (
+                                <Select 
+                                    value={localTx.transfer_account_id || ''} 
+                                    onValueChange={(accId) => handleQuickUpdate({ transfer_account_id: accId })}
+                                    disabled={!isAdmin}
+                                >
+                                    <SelectTrigger className="h-9 text-sm border-indigo-100 bg-indigo-50/30">
+                                        <SelectValue placeholder="Seleccionar destino..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {accounts
+                                            .filter((a: any) => a.id !== localTx.account_id)
+                                            .map((a: any) => (
+                                                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                                            ))
+                                        }
+                                    </SelectContent>
+                                </Select>
+                            ) : isIndividualMode ? (
+                                /* CASO B: CATEGORÍA DE ASIGNACIÓN ÚNICA (Selector de Miembros) */
+                                <Select value={contributorId} 
+                                    onValueChange={(mId) => {
+                                        setContributorId(mId)
+                                        handleQuickUpdate({ allocations: [{ member_id: mId, amount: localTx.amount }] })
+                                    }}
+                                    disabled={!isAdmin}>
+                                    <SelectTrigger className="h-9 text-sm border-amber-100 bg-amber-50/50">
+                                        <SelectValue placeholder="Elegir miembro..." />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {members.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             ) : (
-                                <Select onValueChange={handleTemplateChange} disabled={!isAdmin || transaction.type === 'transfer'}>
-                                    <SelectTrigger className="h-9 text-sm">
-                                        <SelectValue placeholder="Cargar plantilla..." />
+                                /* CASO C: GASTO COMÚN (Selector de Plantillas) */
+                                <Select 
+                                    value={localTx.split_template_id || 'manual'} 
+                                    onValueChange={handleTemplateChange} 
+                                    disabled={!isAdmin}
+                                >
+                                    <SelectTrigger className="h-9 text-sm border-emerald-100 bg-emerald-50/30">
+                                        <SelectValue placeholder="Reparto..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {splitTemplates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                                        {splitTemplates.map(t => (
+                                            <SelectItem key={t.id} value={t.id}>
+                                                ⚡ {t.name}
+                                            </SelectItem>
+                                        ))}
+                                        <div className="h-px bg-slate-100 my-1" />
+                                        <SelectItem value="manual" className="text-slate-400 italic">
+                                            ✍️ Personalizado / Manual
+                                        </SelectItem>
                                     </SelectContent>
                                 </Select>
                             )}
@@ -252,7 +349,7 @@ export function TransactionDetailDialog({
                             {isUnassigned ? (
                                 <div className="p-4 text-center text-slate-400 italic text-xs">No se ha definido el reparto todavía</div>
                             ) : (
-                                transaction.allocations?.map((alloc: any) => {
+                                localTx.allocations?.map((alloc: any) => {
                                     const m = members.find(mem => mem.id === alloc.member_id)
                                     return (
                                         <div key={alloc.member_id} className="p-2.5 flex justify-between items-center">
@@ -285,7 +382,7 @@ export function TransactionDetailDialog({
                             </Button>
 
                             {isPending && (
-                                <Button onClick={handleApprove} size="sm" disabled={loading} className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700">
+                                <Button onClick={() => handleQuickUpdate({ status: 'approved' })} size="sm" disabled={loading} className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700">
                                     <CheckCircle2 className="mr-2 h-3.5 w-3.5" /> Validar
                                 </Button>
                             )}

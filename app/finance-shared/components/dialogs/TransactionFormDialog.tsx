@@ -1,6 +1,7 @@
+// /app/dinance-shared/components/dialogs/TransactionFormDialog.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,7 +16,7 @@ import {
 } from 'lucide-react' 
 import LoadIcon from '@/utils/LoadIcon'
 import { cn, formatCurrency } from '@/lib/utils'
-import { SharedSplitTemplate } from '@/types/finance-shared'
+import { SharedAccount, SharedCategory, SharedMember, SharedSplitTemplate, SharedTransaction } from '@/types/finance-shared'
 import { useImpersonation } from '../ui/ImpersonationContext'
 import { upsertSharedTransaction } from '@/app/finance-shared/actions'
 
@@ -26,11 +27,25 @@ interface AllocationState {
     weight: number
 }
 
+interface TransactionFormDialogProps {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    groupId: string
+    members: SharedMember[] // O [] si tienes el tipo
+    categories: SharedCategory[] // O []
+    accounts: SharedAccount[] // O []
+    transactionToEdit?: SharedTransaction | null
+    defaultAccountId?: string
+    mainBankAccountId?: string
+    splitTemplates: SharedSplitTemplate[]
+    allTransactions: SharedTransaction[]
+}
+
 export function TransactionFormDialog({ 
     open, onOpenChange, groupId, members, categories, transactionToEdit, 
     accounts = [], defaultAccountId,mainBankAccountId,
-    splitTemplates = []
-}: any) {
+    splitTemplates = [],allTransactions=[]
+}: TransactionFormDialogProps) {
     
     // --- 1. HOOKS Y PERMISOS ---
     const { activeMember } = useImpersonation()
@@ -42,7 +57,7 @@ export function TransactionFormDialog({
     const isStandardUser = !isGroupAdmin && !isAccountOwner
 
     // CONSTANTES DE BLOQUEO BANCARIO
-    const isMainAccountTx = transactionToEdit && transactionToEdit.account_id === mainBankAccountId;
+    const isMainAccountTx = !!(transactionToEdit && transactionToEdit.account_id === mainBankAccountId);
     const isCurrentlyPending = transactionToEdit?.status === 'pending'
 
     // --- 2. ESTADOS ---
@@ -64,6 +79,7 @@ export function TransactionFormDialog({
     // BLOQUE TRASPASO
     const [isTransfer, setIsTransfer] = useState(false)
     const [transferAccountId, setTransferAccountId] = useState<string>('')
+    const [linkedTxId, setLinkedTxId] = useState<string | null>(null)
 
     // BLOQUE ORIGEN
     const [originType, setOriginType] = useState<'member' | 'account'>('account')
@@ -76,9 +92,28 @@ export function TransactionFormDialog({
     const [allocations, setAllocations] = useState<AllocationState[]>([])
 
     // --- 3. CARGA DE DATOS ---
+    const pendingLoans = useMemo(() => {
+        const selectedCat = categories.find(c => c.id === categoryId);
+        
+        // Si la categoría no es de préstamo, no buscamos nada
+        if (!selectedCat?.is_loan) return [];
+
+        // Buscamos en todas las transacciones del grupo
+        return (allTransactions || []).filter((tx: any) => {
+            return (
+                tx.category_id === categoryId &&    // Misma categoría de préstamo
+                !tx.linked_transaction_id &&         // Que no esté ya devuelto/vinculado
+                tx.id !== transactionToEdit?.id &&  // Que no sea la que estamos editando
+                // Buscamos el signo opuesto al que tenemos ahora en el input
+                // Si direction es 1 (ingreso), buscamos un préstamo negativo (-1)
+                (tx.amount < 0 ? -1 : 1) !== direction 
+            );
+        });
+    }, [categoryId, direction, allTransactions, transactionToEdit, categories]);
     useEffect(() => {
         if (open) {
             if (transactionToEdit) {
+
                 // EDITAR
                 const rawAmount = transactionToEdit.amount
                 let dir: -1 | 1 = -1
@@ -99,7 +134,7 @@ export function TransactionFormDialog({
                 setIsProvision(transactionToEdit.is_provision || false)
                 setIsTransfer(transactionToEdit.type === 'transfer')
                 setTransferAccountId(transactionToEdit.transfer_account_id || '')
-
+                setLinkedTxId(transactionToEdit.debt_link_id || null);
                 const src = transactionToEdit.payment_source || 'account'
                 setOriginType(src)
                 if (src === 'account') {
@@ -110,14 +145,19 @@ export function TransactionFormDialog({
                     else setUserIntent('reimbursement')
                 }
 
-                if (transactionToEdit.allocations?.length > 0) {
+                if (transactionToEdit?.allocations && transactionToEdit.allocations.length > 0) {
                     const mapped = members.map((m: any) => {
-                        const existing = transactionToEdit.allocations.find((a: any) => a.member_id === m.id)
+                        const existing = transactionToEdit.allocations?.find((a: any) => a.member_id === m.id)
                         return { memberId: m.id, isSelected: !!existing, amount: existing ? existing.amount : 0, weight: 1 }
                     })
                     setAllocations(mapped)
                 } else {
                     resetAllocations(Math.abs(rawAmount))
+                }
+                if (transactionToEdit.split_template_id) {
+                    setSplitMode(transactionToEdit.split_template_id)
+                } else {
+                    setSplitMode('manual')
                 }
 
             } else {
@@ -143,28 +183,32 @@ export function TransactionFormDialog({
         
         setOriginMemberId(currentUserMemberId)
 
-        // IMPORTANTE: Al crear, nunca seleccionamos la cuenta principal por defecto
-        if (isGroupAdmin) {
-            const secondaryAccount = accounts.find((a:any) => a.id !== defaultAccountId)
-            if (secondaryAccount) {
+        // Buscamos la primera cuenta que NO sea la del banco
+        const secondaryAccount = accounts.find((a: any) => a.id !== mainBankAccountId)
+
+        if (isGroupAdmin && secondaryAccount) {
+            setOriginType('account')
+            setOriginAccountId(secondaryAccount.id)
+        } else if (isAccountOwner && myResponsibleAccounts.length > 0) {
+            // Si es dueño de cuenta, pero una es la principal, buscamos otra
+            const mySecondary = myResponsibleAccounts.find((a: any) => a.id !== mainBankAccountId)
+            if (mySecondary) {
                 setOriginType('account')
-                setOriginAccountId(secondaryAccount.id)
+                setOriginAccountId(mySecondary.id)
             } else {
                 setOriginType('member')
             }
-        } else if (isAccountOwner) {
-            setOriginType('account')
-            setOriginAccountId(myResponsibleAccounts[0]?.id || '')
         } else {
             setOriginType('member')
         }
-
         resetAllocations(0)
     }
 
     // FILTRO DE CUENTAS DISPONIBLES (No permitimos la principal en nuevos movimientos)
     const availableOriginAccounts = accounts.filter((acc: any) => {
-        if (!transactionToEdit && acc.id === defaultAccountId) return false
+        // REGLA DE ORO: Nunca la principal para movimientos nuevos
+        if (!transactionToEdit && acc.id === mainBankAccountId) return false
+        
         if (isGroupAdmin) return true
         if (isAccountOwner) return acc.responsible_member_id === currentUserMemberId
         return false
@@ -212,20 +256,22 @@ export function TransactionFormDialog({
         setSplitMode(newMode)
         const currentAmount = parseFloat(amount) || 0
         
-        if (newMode === 'equal' || newMode === 'manual') {
-            const newList = members.map((m:any) => ({
+        // Si es manual o equitativo, reseteamos pesos a 1
+        if (newMode === 'manual' || newMode === 'equal') {
+            const newList = members.map((m: any) => ({
                 memberId: m.id,
                 isSelected: true,
                 weight: 1,
                 amount: 0
             }))
-            setAllocations(recalculateAllocations(currentAmount, newList, newMode))
+            setAllocations(recalculateAllocations(currentAmount, newList))
         } 
         else {
-            const template = (splitTemplates as SharedSplitTemplate[]).find(t => t.id === newMode)
+            // Es una PLANTILLA: Buscamos pesos en la plantilla
+            const template = splitTemplates.find((t: any) => t.id === newMode)
             if (template && template.template_members) {
-                const newList = members.map((m:any) => {
-                    const tm = template.template_members?.find((tm:any) => tm.member_id === m.id)
+                const newList = members.map((m: any) => {
+                    const tm = template.template_members?.find((tm: any) => tm.member_id === m.id)
                     const weight = tm ? tm.shares : 0
                     return {
                         memberId: m.id,
@@ -234,7 +280,7 @@ export function TransactionFormDialog({
                         amount: 0
                     }
                 })
-                setAllocations(recalculateAllocations(currentAmount, newList, newMode))
+                setAllocations(recalculateAllocations(currentAmount, newList))
             }
         }
     }
@@ -256,12 +302,21 @@ export function TransactionFormDialog({
     }
 
     const handleAvatarClick = (idx: number) => {
-        if (splitMode !== 'manual') setSplitMode('manual')
+        // Si estaba en modo plantilla, al tocar un avatar pasamos a manual
+        if (splitMode !== 'manual') {
+            setSplitMode('manual')
+        }
+        
         const newAllocs = [...allocations]
         const item = newAllocs[idx]
         item.isSelected = !item.isSelected
+        
+        // Si lo seleccionamos y no tiene peso, le damos 1 por defecto
         if (item.isSelected && item.weight === 0) item.weight = 1
-        setAllocations(recalculateAllocations(parseFloat(amount)||0, newAllocs, 'manual'))
+        // Si lo deseleccionamos, su peso es 0 para el servidor
+        if (!item.isSelected) item.weight = 0
+
+        setAllocations(recalculateAllocations(parseFloat(amount) || 0, newAllocs, 'manual'))
     }
 
     // --- 5. GUARDAR ---
@@ -294,18 +349,14 @@ export function TransactionFormDialog({
         } 
         else if (selectedCategory?.is_loan) {
             type = 'loan'
-            if (direction === -1) finalAmount = Math.abs(inputAmount)
-            else finalAmount = -Math.abs(inputAmount)
+            finalAmount = direction === 1 ? Math.abs(inputAmount) : -Math.abs(inputAmount)
         } 
         else {
             type = (direction === 1) ? 'income' : 'expense'
             finalAmount = Math.abs(inputAmount)
         }
 
-        const weightsPayload: Record<string, number> = {}
-        allocations.forEach(a => {
-            if (a.isSelected) weightsPayload[a.memberId] = a.weight
-        })
+        const isTemplate = splitTemplates.some((t: any) => t.id === splitMode)
 
         // LÓGICA DE STATUS SEGÚN VALIDACIÓN ADMIN
         let status = 'approved'
@@ -320,13 +371,22 @@ export function TransactionFormDialog({
             }
         }
 
+        
+        const isLoanCat = categories.find((c: any) => c.id === categoryId)?.is_loan;
+        const manualWeights = !isTemplate ? allocations.map(a => ({
+            member_id: a.memberId,
+            weight: a.isSelected ? a.weight : 0
+        })) : null
+        
         const payload = {
             id: transactionToEdit?.id,
+            linked_transaction_id: transactionToEdit?.linked_transaction_id,
             date,
             amount: finalAmount,
             description: desc,
             notes: finalNotes,
             type,
+            
             status,
             is_provision: isProvision,
             payment_source: isProvision ? 'provision' : originType,
@@ -334,11 +394,18 @@ export function TransactionFormDialog({
             payer_member_id: isProvision ? null : (originType === 'member' ? originMemberId : null),
             category_id: isTransfer ? null : categoryId,
             transfer_account_id: isTransfer ? transferAccountId : null,
-            split_type: 'weighted',
-            split_weights: weightsPayload,
-            allocations: (isTransfer) ? [] : allocations.filter(a => a.isSelected).map(a => ({ member_id: a.memberId, amount: a.amount }))
+            debt_link_id: isLoanCat ? linkedTxId : null,
+            // --- LA NUEVA LÓGICA CENTRALIZADA ---
+            split_template_id: isTemplate ? splitMode : null,
+            manual_weights: manualWeights,
+            // Mandamos allocations solo como fallback o para vista rápida, 
+            // el servidor las recalculará de todos modos
+            allocations: allocations.filter(a => a.isSelected).map(a => ({ 
+                member_id: a.memberId, 
+                amount: a.amount 
+            }))
         }
-
+        console.log("Enviando al servidor -> split_template_id:", isTemplate ? splitMode : null);
         const res = await upsertSharedTransaction(groupId, payload)
         setLoading(false)
         if (res.error) toast.error(res.error)
@@ -488,7 +555,30 @@ export function TransactionFormDialog({
                                 </Select>
                             </div>
                         )}
-
+                        {/* NUEVO: VÍNCULO DE PRÉSTAMO */}
+                        {categories.find(c => c.id === categoryId)?.is_loan && pendingLoans.length > 0 && (
+                            <div className="col-span-2 space-y-2 p-3 bg-indigo-50 border border-indigo-100 rounded-lg animate-in fade-in slide-in-from-top-1">
+                                <Label className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest flex items-center gap-2">
+                                    <HandCoins className="h-3.5 w-3.5" /> ¿Es una devolución de...?
+                                </Label>
+                                <Select 
+                                    value={linkedTxId || "none"} 
+                                    onValueChange={(val) => setLinkedTxId(val === "none" ? null : val)}
+                                >
+                                    <SelectTrigger className="h-9 bg-white text-sm border-indigo-200">
+                                        <SelectValue placeholder="Seleccionar préstamo original..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">Nuevo préstamo (Sin vincular)</SelectItem>
+                                        {pendingLoans.map((loan: any) => (
+                                            <SelectItem key={loan.id} value={loan.id}>
+                                                {new Date(loan.date).toLocaleDateString()} - {loan.description} ({formatCurrency(loan.amount)})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                         {!isProvision && (
                             <div className="space-y-3">
                                 <Label className="text-xs text-slate-400 uppercase font-bold tracking-wider block">

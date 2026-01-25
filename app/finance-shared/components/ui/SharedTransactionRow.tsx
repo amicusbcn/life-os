@@ -13,6 +13,7 @@ import {
     Users, 
     HandCoins
 } from "lucide-react"
+import { SharedSplitTemplate } from "@/types/finance-shared"
 
 interface Props {
     transaction: any
@@ -20,7 +21,8 @@ interface Props {
     category?: any
     account?: any
     currentMemberId?: any
-    viewPersonal?: boolean // Nuevo prop para invertir importes
+    viewPersonal?: boolean
+    splitTemplates : SharedSplitTemplate[]
 }
 
 export function SharedTransactionRow({ 
@@ -29,7 +31,8 @@ export function SharedTransactionRow({
     category, 
     account, 
     currentMemberId, 
-    viewPersonal = false
+    viewPersonal = false,
+    splitTemplates
 }: Props) {
     const notDetailed = transaction.not_detailed
     const dateObj = new Date(transaction.date)
@@ -236,7 +239,15 @@ export function SharedTransactionRow({
                                 <span className="text-[10px]">A repartir</span>
                             </div>
                         </div>
-                    ) : (
+                    ) : transaction.split_template_id ? (
+                        <div className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-1 rounded-md max-w-full">
+                            <Users className="h-3 w-3 shrink-0" />
+                            <span className="text-[9px] font-extrabold uppercase tracking-tighter truncate">
+                                {/* Buscamos el nombre en el array que pasamos por props */}
+                                {splitTemplates?.find((t:any) => t.id === transaction.split_template_id)?.name || 'Auto'}
+                            </span>
+                        </div>
+                    ) :(
                         // Reparto normal
                         <div className="flex -space-x-2">
                             {transaction.allocations?.slice(0, 3).map((alloc: any) => {

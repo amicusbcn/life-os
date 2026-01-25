@@ -20,6 +20,7 @@ interface Props {
     onEditTransaction: (tx: any) => void
     categories: SharedCategory[]
     viewMode?: ViewMode // <--- NUEVA PROP
+    splitTemplates:any[]
 }
 
 export function TransactionList({ 
@@ -55,16 +56,6 @@ export function TransactionList({
                     onClick={() => setSelectedTx(tx)}
                 />
             ))}
-
-            <TransactionDetailDialog 
-                open={!!selectedTx} 
-                transaction={selectedTx} 
-                onClose={() => setSelectedTx(null)}
-                members={members}
-                categories={categories}
-                isAdmin={isAdmin}
-                onEdit={() => onEditTransaction(selectedTx)}
-            />
         </div>
     )
 }

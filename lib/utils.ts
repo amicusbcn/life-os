@@ -10,5 +10,6 @@ export function formatCurrency(amount: number | string, currency = 'EUR') {
   return new Intl.NumberFormat('es-ES', {
     style: 'currency',
     currency: currency,
+    useGrouping: 'always',
   }).format(value);
 }

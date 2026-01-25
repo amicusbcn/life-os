@@ -812,137 +812,187 @@ export async function upsertSharedTransaction(groupId: string, transaction: any)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autorizado' }
 
-  // 1. Preparamos el objeto principal
   const isTransfer = transaction.type === 'transfer'
+  const absTotal = Math.abs(parseFloat(transaction.amount))
+  let finalAllocations = []
+  let templateIdToSave = transaction.split_template_id || null
+
+  // --- 1. PREPARACIÓN DE REPARTOS (LÓGICA CENTRALIZADA) ---
+  if (!isTransfer) {
+    let weightsSource = []
+    if (transaction.split_template_id) {
+      // CASO A: Viene de una Plantilla de la BBDD
+      const { data: template } = await supabase
+        .from('finance_shared_split_templates')
+        .select(`
+      id, 
+      name, 
+      template_members:finance_shared_split_template_members(*)
+    `)
+        .eq('id', transaction.split_template_id)
+        .single()
+
+      if (template?.template_members) {
+        weightsSource = template.template_members.map((tm: any) => ({
+          member_id: tm.member_id,
+          weight: tm.shares
+        }))
+        console.log("✅ Pesos obtenidos de plantilla:", weightsSource.length);
+        templateIdToSave = template.id
+      }else {
+        console.log("❌ La plantilla no tiene miembros o no se encontró");
+      }
+    } else if (transaction.manual_weights) {
+      // CASO B: Viene un reparto manual por pesos (ej: el "Equitativo" o selecciones rápidas)
+      weightsSource = transaction.manual_weights
+      templateIdToSave = null 
+    }
+
+    // Aplicamos la fórmula recalculateAllocations
+    const totalWeight = weightsSource.reduce((sum: number, item: any) => sum + (item.weight || 0), 0)
+
+    if (totalWeight > 0) {
+      finalAllocations = weightsSource.map((item: any) => ({
+        member_id: item.member_id,
+        amount: Number(((absTotal * item.weight) / totalWeight).toFixed(2))
+      })).filter((a:any) => a.amount > 0)
+
+    } else if (transaction.allocations && !templateIdToSave) {
+      // CASO C: Si no hay pesos pero hay importes directos (Hardcoded del FormDialog)
+      finalAllocations = transaction.allocations
+      templateIdToSave = null 
+    }
+  }
+
+  // --- 2. PREPARAR PAYLOAD PRINCIPAL ---
   const payload: any = {
     group_id: groupId,
     date: transaction.date,
     amount: parseFloat(transaction.amount),
     description: transaction.description,
     notes: transaction.notes,
-    category_id: isTransfer ? null : transaction.category_id, // Transferencias no suelen tener categoría
+    category_id: isTransfer ? null : transaction.category_id,
     payer_member_id: transaction.payer_member_id,
     account_id: transaction.account_id,
     payment_source: transaction.payment_source,
     type: transaction.type,
+    debt_link_id: transaction.debt_link_id || null,
     status: transaction.status || 'approved',
     transfer_account_id: isTransfer ? transaction.transfer_account_id : null,
     parent_transaction_id: transaction.parent_transaction_id,
-    // El linked_id no lo tocamos aquí directamente si ya existe, lo gestionamos abajo
+    split_template_id: templateIdToSave,
+    is_provision:transaction.is_provision
   }
 
-  // Si es nuevo, insertamos el principal primero para tener ID
-  let mainTxId = transaction.id
-  let linkedTxId = transaction.linked_transaction_id
-
-  // A. GUARDAR TRANSACCIÓN PRINCIPAL (ORIGEN)
+  // A. GUARDAR TRANSACCIÓN PRINCIPAL
   const { data: mainTx, error } = await supabase
     .from('finance_shared_transactions')
     .upsert(transaction.id ? { ...payload, id: transaction.id } : payload)
     .select()
     .single()
-
+    
   if (error) return { error: error.message }
-  mainTxId = mainTx.id
+  const mainTxId = mainTx.id
+  let linkedTxId = transaction.linked_transaction_id
 
-  // B. GESTIÓN DE TRANSFERENCIAS (LA MAGIA) 🪄
+    
+    if (payload.debt_link_id) {
+        await supabase
+            .from('finance_shared_transactions')
+            .update({ debt_link_id: mainTx.id }) // El préstamo ahora apunta a la devolución
+            .eq('id', payload.debt_link_id);
+    }
+
+  // B. GESTIÓN DE TRANSFERENCIAS 🪄
   if (isTransfer && transaction.transfer_account_id) {
-      // Calculamos el importe inverso (si origen es -500, destino es +500)
-      const inverseAmount = payload.amount * -1
+    const inverseAmount = payload.amount * -1
+    const mirrorPayload = {
+      group_id: groupId,
+      date: payload.date,
+      amount: inverseAmount,
+      description: payload.description,
+      notes: 'Transferencia automática',
+      type: 'transfer',
+      status: transaction.status || 'approved',
+      account_id: transaction.transfer_account_id,
+      transfer_account_id: payload.account_id,
+      payment_source: 'account',
+      linked_transaction_id: mainTxId,
+      created_by: user.id
+    }
 
-      const mirrorPayload = {
-          group_id: groupId,
-          date: payload.date,
-          amount: inverseAmount,
-          description: payload.description, // Misma descripción
-          notes: 'Transferencia automática',
-          type: 'transfer',
-          status: transaction.status || 'approved',
-          account_id: transaction.transfer_account_id, // La cuenta destino
-          transfer_account_id: payload.account_id, // La cuenta origen
-          payment_source: 'account', // Siempre es movimiento de cuenta
-          linked_transaction_id: mainTxId, // Apunta al padre
-          created_by: user.id
-      }
-
-      if (linkedTxId) {
-          // Si ya existía gemela, la actualizamos
-          await supabase
-            .from('finance_shared_transactions')
-            .update(mirrorPayload)
-            .eq('id', linkedTxId)
-      } else {
-          // Si no existía, la creamos
-          const { data: newMirror } = await supabase
-            .from('finance_shared_transactions')
-            .insert(mirrorPayload)
-            .select()
-            .single()
-          
-          linkedTxId = newMirror?.id
-
-          // Y actualizamos la principal para que apunte a la nueva gemela
-          await supabase
-            .from('finance_shared_transactions')
-            .update({ linked_transaction_id: linkedTxId })
-            .eq('id', mainTxId)
-      }
+    if (linkedTxId) {
+      await supabase.from('finance_shared_transactions').update(mirrorPayload).eq('id', linkedTxId)
+    } else {
+      const { data: newMirror } = await supabase.from('finance_shared_transactions').insert(mirrorPayload).select().single()
+      linkedTxId = newMirror?.id
+      await supabase.from('finance_shared_transactions').update({ linked_transaction_id: linkedTxId }).eq('id', mainTxId)
+    }
   } 
-  // C. LIMPIEZA: Si antes era transferencia y ahora no, borramos la gemela
+  // C. LIMPIEZA DE TRANSFERENCIAS
   else if (!isTransfer && linkedTxId) {
-      await supabase.from('finance_shared_transactions').delete().eq('id', linkedTxId)
-      // Y limpiamos el campo en la principal
-      await supabase.from('finance_shared_transactions').update({ linked_transaction_id: null }).eq('id', mainTxId)
+    await supabase.from('finance_shared_transactions').delete().eq('id', linkedTxId)
+    await supabase.from('finance_shared_transactions').update({ linked_transaction_id: null }).eq('id', mainTxId)
   }
 
-  // D. GESTIÓN DE ALLOCATIONS (Solo si NO es transferencia)
-  // Las transferencias no se reparten entre personas, es movimiento de fondos.
-  if (!isTransfer && transaction.allocations) {
-      // 1. Borrar anteriores
-      await supabase.from('finance_shared_allocations').delete().eq('transaction_id', mainTxId)
-      
-      // 2. Insertar nuevas
-      if (transaction.allocations.length > 0) {
-          const allocs = transaction.allocations.map((a: any) => ({
-              transaction_id: mainTxId,
-              member_id: a.member_id,
-              amount: a.amount
-          }))
-          const { error: allocError } = await supabase.from('finance_shared_allocations').insert(allocs)
-          if (allocError) console.error('Error allocations:', allocError)
-      }
+
+
+  // D. GESTIÓN DE ALLOCATIONS (Usando finalAllocations calculadas en Paso 1)
+  if (!isTransfer) {
+    await supabase.from('finance_shared_allocations').delete().eq('transaction_id', mainTxId)
+    
+    if (finalAllocations.length > 0) {
+      const allocsToInsert = finalAllocations.map((a: any) => ({
+        transaction_id: mainTxId,
+        member_id: a.member_id,
+        amount: a.amount
+      }))
+      const { error: allocError } = await supabase.from('finance_shared_allocations').insert(allocsToInsert)
+      if (allocError) console.error('Error allocations:', allocError)
+    }
   }
 
-  // --- E. NOTIFICACIÓN AL ADMIN (Punto 1) ---
-  // Solo notificamos si la operación ha ido bien (mainTx existe)
+  if (!isTransfer) {
+    await supabase.from('finance_shared_allocations').delete().eq('transaction_id', mainTxId)
+    
+    if (finalAllocations.length > 0) {
+      const allocsToInsert = finalAllocations.map((a: any) => ({
+        transaction_id: mainTxId,
+        member_id: a.member_id,
+        amount: a.amount
+      }))
+      const { error: allocError } = await supabase.from('finance_shared_allocations').insert(allocsToInsert)
+      if (allocError) console.error('Error allocations:', allocError)
+    }
+  }
+
+  // E. NOTIFICACIÓN AL ADMIN
   if (mainTx) {
-      // 1. Buscamos al dueño del grupo
-      const { data: group } = await supabase
-          .from('finance_shared_groups')
-          .select('owner_id, name')
-          .eq('id', groupId)
-          .single()
-
-      // 2. Si el usuario actual NO es el dueño, le avisamos
-      if (group && group.owner_id !== user.id) {
-          const isUpdate = !!transaction.id
-          
-          await sendNotification({
-              recipientIds: [group.owner_id],
-              title: isUpdate ? 'Gasto Editado' : 'Nuevo Gasto',
-              message: `${mainTx.description} (${mainTx.amount}€) - ${isUpdate ? 'Modificado' : 'Añadido'} por un miembro del grupo.`,
-              type: 'action_needed',
-              priority: 'normal',
-              sender_module: 'finance-shared',
-              // Enlace directo a la pestaña de aprobación o general
-              link_url: `/finance-shared?group=${groupId}&tab=pending_approval`
-          })
-      }
+    const { data: group } = await supabase.from('finance_shared_groups').select('owner_id').eq('id', groupId).single()
+    if (group && group.owner_id !== user.id) {
+      const isUpdate = !!transaction.id
+      await sendNotification({
+        recipientIds: [group.owner_id],
+        title: isUpdate ? 'Gasto Editado' : 'Nuevo Gasto',
+        message: `${mainTx.description} (${mainTx.amount}€) - ${isUpdate ? 'Modificado' : 'Añadido'} por un miembro del grupo.`,
+        type: 'action_needed',
+        priority: 'normal',
+        sender_module: 'finance-shared',
+        link_url: `/finance-shared?group=${groupId}&tab=pending_approval`
+      })
+    }
   }
-  // -------------------------------------------
+  const { data: updatedFullTx, error: fetchError } = await supabase
+    .from('finance_shared_transactions')
+    .select(`
+        *,
+        allocations:finance_shared_allocations(*)
+    `)
+    .eq('id', mainTxId)
+    .single()
 
   revalidatePath('/finance-shared')
-  return { success: true, data: mainTx }
+  return { success: true, data: updatedFullTx }
 }
 
 // Acción para buscar gastos huérfanos (Bottom-Up)

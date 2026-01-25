@@ -113,7 +113,7 @@ export async function getGroupDashboardData(groupId: string, year: number = new 
                 template_members:finance_shared_split_template_members(*)
             `)
             .eq('group_id', groupId)
-            .order('created_at', { ascending: false })
+            .order('name')
         // 5. CÁLCULO HÍBRIDO CON REGLAS DE NEGOCIO AVANZADAS
         
         // --- A. CONFIGURACIÓN DE PESOS (PREPARADO PARA EL FUTURO) ---

@@ -130,7 +130,6 @@ export default async function FinanceSharedPage(props: Props) {
           <FinanceSharedView 
             groups={groups} 
             activeGroupId={activeGroupId} 
-            defaultAccountId={activeGroupId} 
             dashboardData={dashboardData}
           />
         </main>

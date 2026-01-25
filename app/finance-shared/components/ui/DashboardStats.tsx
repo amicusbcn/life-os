@@ -1,8 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { formatCurrency } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 import { Wallet, Scale, AlertCircle, CheckCircle2, Calculator, PiggyBank, TrendingUp, TrendingDown, Building2 } from "lucide-react"
 
-export function DashboardStats({ data, currentMemberId, isAdmin, defaultAccountId, }: any) {
+export function DashboardStats({ data, currentMemberId, isAdmin, mainBankAccountId, }: any) {
     const { accounts, members, transactions,provisions } = data
 console.log("1. ID que buscamos (currentMemberId):", currentMemberId)
     console.log("2. Lista de miembros disponible:", members.map((m: any) => ({ 
@@ -12,40 +12,31 @@ console.log("1. ID que buscamos (currentMemberId):", currentMemberId)
         balance_num: Number(m.balance)
     })))
     // 1. SALDO BANCARIO
-    const mainAccount = accounts.find((a: any) => a.id === defaultAccountId) || accounts[0]
+    const mainAccount = accounts.find((a: any) => a.id === mainBankAccountId) || accounts[0]
     const mainBalance = mainAccount?.balance || 0
     const balanceDate = mainAccount?.balance_date 
         ? new Date(mainAccount.balance_date).toLocaleDateString() 
         : 'Sin fecha'
 
-    // 2. ACTIVOS TOTALES
-    const totalAssets = accounts.reduce((acc: number, curr: any) => acc + (curr.balance || 0), 0)
-
-    // 3. CÁLCULO DE PROVISIONES (Nueva Lógica Robusta)
+    // 2. CÁLCULO DE PROVISIONES (Nueva Lógica Robusta)
     const activeProvisions = transactions.reduce((acc: number, tx: any) => {
-        if (tx.is_provision) {
-            return acc + Math.abs(tx.amount)
-        }
-        return acc
+        return tx.is_provision ? acc + Math.abs(tx.amount) : acc
+     }, 0)
+
+    // 3. PRÉSTAMOS PENDIENTES (Saldo neto de la caja con los miembros)
+    // Sumamos el pending_loans_balance de todos los miembros que viene de la vista SQL
+    const totalPendingLoans = members.reduce((acc: number, m: any) => {
+        return acc + (Number(m.pending_loans_balance) || 0)
     }, 0)
 
-    // 4. DEUDAS
-    let totalMembersDebt = 0 
-    let totalGroupDebt = 0   
+    // 4. PATRIMONIO REAL (La fórmula que me has pedido)
+    // Saldo Principal - Provisiones + Saldo Préstamos
+    // (Nota: totalPendingLoans será negativo si los miembros deben a la caja, 
+    // lo cual resta al "efectivo" pero es un activo a cobrar)
+    const netBalance = mainBalance - activeProvisions - totalPendingLoans
+
+    //5. Mi saldo
     const myMemberProfile = members.find((m: any) => m.id === currentMemberId)
-    let myBalance = Number(myMemberProfile?.balance) || 0 // Si no te encuentra, 0
-    members.forEach((m: any) => {
-        const bal = Number(m.balance) || 0
-        if (bal < 0) totalMembersDebt += Math.abs(bal)
-        if (bal > 0) totalGroupDebt += bal
-    })
-
-    // 5. PATRIMONIO NETO
-    // Activos (Banco) - Provisiones (Reservas) + Deudas a cobrar - Deudas a pagar
-    const netBalance = totalAssets - activeProvisions + totalMembersDebt - totalGroupDebt
-
-    //6. Mi saldo
-    
     // --- GESTIÓN (Logica mantenida igual) ---
     // --- GESTIÓN ---
     const pendingAllocation = transactions.filter((tx: any) => !tx.is_virtual && tx.type !== 'transfer' && (!tx.allocations || tx.allocations.length === 0))
@@ -103,43 +94,35 @@ console.log("1. ID que buscamos (currentMemberId):", currentMemberId)
                     {/* DESGLOSE EXPLICATIVO */}
                     <div className="text-[10px] text-slate-500 mt-2 space-y-1 pt-2 border-t border-dashed border-slate-100">
                         
-                        {/* 1. DINERO REAL */}
+                        <div className="text-[10px] text-slate-500 mt-2 space-y-1 pt-2 border-t border-dashed border-slate-100">
+                        {/* Banco */}
                         <div className="flex justify-between items-center">
-                            <span className="flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> 
-                                En Banco
-                            </span>
-                            <span className="font-mono font-medium text-slate-700">{formatCurrency(totalAssets)}</span>
+                            <span>Saldo en {mainAccount?.name || 'Banco'}</span>
+                            <span className="font-mono font-medium">{formatCurrency(mainBalance)}</span>
                         </div>
 
-                        {/* 2. AJUSTE DE DEUDAS (NETO) */}
-                        {/* Calculamos el neto de deudas para simplificar la vista */}
+                        {/* Préstamos */}
                         <div className="flex justify-between items-center">
-                            <span className="flex items-center gap-1.5">
-                                <span className={`w-1.5 h-1.5 rounded-full ${(totalMembersDebt - totalGroupDebt) >= 0 ? 'bg-green-400' : 'bg-red-400'}`}></span>
-                                Ajuste Deudas
-                            </span>
-                            <span className={`font-mono font-medium ${(totalMembersDebt - totalGroupDebt) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                {(totalMembersDebt - totalGroupDebt) >= 0 ? '+' : ''}
-                                {formatCurrency(totalMembersDebt - totalGroupDebt)}
+                            <span>Préstamos temporales</span>
+                            <span className={cn("font-mono font-medium", totalPendingLoans >= 0 ? "text-amber-600" : "text-emerald-600")}>
+                                {totalPendingLoans <= 0 ? '+' : '-'}{formatCurrency(Math.abs(totalPendingLoans))}
                             </span>
                         </div>
 
-                        {/* 3. PROVISIONES (RESTA) */}
+                        {/* Provisiones */}
                         {activeProvisions > 0 && (
-                            <div className="flex justify-between items-center bg-amber-50 px-1.5 py-0.5 rounded -mx-1.5 mt-1">
-                                <span className="flex items-center gap-1.5 text-amber-700 font-medium">
-                                    <PiggyBank className="h-3 w-3"/> Reservado
-                                </span>
-                                <span className="font-mono font-bold text-amber-700">-{formatCurrency(activeProvisions)}</span>
+                            <div className="flex justify-between items-center text-rose-500">
+                                <span>Regalos Pendientes</span>
+                                <span className="font-mono font-bold">-{formatCurrency(activeProvisions)}</span>
                             </div>
                         )}
+                    </div>
                     </div>
                 </CardContent>
             </Card>
 
             {/* 3. MI POSICIÓN */}
-            <Card className={`border-l-4 shadow-sm bg-white ${myBalance >= 0 ? "border-l-emerald-500" : "border-l-rose-500"}`}>
+            <Card className={`border-l-4 shadow-sm bg-white ${myMemberProfile?.global_balance >= 0 ? "border-l-emerald-500" : "border-l-rose-500"}`}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mi Posición (Total)</CardTitle>
                     <Scale className="h-4 w-4 text-slate-300" />
