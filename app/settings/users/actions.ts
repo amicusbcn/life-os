@@ -78,7 +78,7 @@ export async function inviteUser(email: string): Promise<ActionResponse> {
     }
 
     // 3. GENERAR EL LINK MÁGICO DE SUPABASE (¡ESTO ES LO NUEVO!) 🪄
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://jact.es'
     
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
         type: 'invite',
@@ -98,13 +98,13 @@ export async function inviteUser(email: string): Promise<ActionResponse> {
     // 4. ENVIAR CORREO CON RESEND
     try {
         const { error: emailError } = await resend.emails.send({
-            from: 'Life OS <onboarding@resend.dev>', // Cambia esto cuando tengas dominio
+            from: 'App Familiar <admin@app.jact.es>', // Cambia esto cuando tengas dominio
             to: email,
-            subject: 'Has sido invitado a Life-OS',
+            subject: 'Has sido invitado a la App Familiar',
             html: `
                 <div style="font-family: sans-serif; padding: 20px; text-align: center;">
                     <h1>¡Bienvenido a la Familia! 🏠</h1>
-                    <p>El administrador te ha dado acceso a <strong>Life-OS</strong>.</p>
+                    <p>El administrador te ha dado acceso a la <strong>App Familiar</strong>.</p>
                     <p>Haz clic en el botón para aceptar la invitación y crear tu contraseña:</p>
                     <br>
                     <a href="${inviteLink}" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
