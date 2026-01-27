@@ -669,15 +669,15 @@ export function TransactionFormDialog({
                                         </SelectContent>
                                     </Select>
                                 </div>
-<div className="flex justify-end">
-    <button 
-        type="button" 
-        onClick={handleDeselectAll}
-        className="text-[10px] text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1"
-    >
-        <User className="h-3 w-3" /> Desmarcar todos
-    </button>
-</div>
+                                <div className="flex justify-end">
+                                    <button 
+                                        type="button" 
+                                        onClick={handleDeselectAll}
+                                        className="text-[10px] text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1"
+                                    >
+                                        <User className="h-3 w-3" /> Desmarcar todos
+                                    </button>
+                                </div>
                                 <div className="flex flex-wrap justify-center gap-4">
                                     {allocations.map((alloc, idx) => {
                                         const member = members.find((m: any) => m.id === alloc.memberId)

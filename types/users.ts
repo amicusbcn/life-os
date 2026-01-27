@@ -16,6 +16,8 @@ export interface AppModule {
     route?: string 
     key_url?: string
     is_active: boolean
+    order?:number |null
+    folder?:string |null
 }
 
 // --- DOMINIO: PERFILES (Fusionado) ---
