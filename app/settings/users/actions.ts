@@ -310,7 +310,7 @@ export async function impersonateUser(userId: string) {
         type: 'magiclink',
         email: user.email,
         options: {
-            redirectTo: `${baseUrl}/auth/callback`
+            redirectTo: `${baseUrl}/settings/users/impersonate`
         }
     });
 

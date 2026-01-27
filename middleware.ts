@@ -55,7 +55,8 @@ if (!user) {
     const isPublicRoute = 
         path.startsWith('/login') || 
         path.startsWith('/auth') || 
-        path.startsWith('/settings/profile/update-password'); // <--- ¡AQUÍ ESTÁ LA CLAVE! 🔑
+        path.startsWith('/settings/profile/update-password');
+        path.startsWith('/settings/users/impersonate');
 
     // Si no es una ruta pública, redirigir al login
     if (!isPublicRoute) {
