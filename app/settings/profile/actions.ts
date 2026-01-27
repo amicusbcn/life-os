@@ -2,7 +2,7 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
-
+import { ActionResponse } from '@/types/common'
 /**
  * Acción para actualizar el perfil del usuario.
  * Se ejecuta en el servidor.
@@ -85,4 +85,32 @@ export async function requestPasswordChange(email: string) {
   }
 
   return { success: true, message: "Se ha enviado un email con las instrucciones." };
+}
+export async function updatePassword(formData: FormData): Promise<ActionResponse> {
+  const supabase = await createClient()
+  
+  const password = formData.get('password') as string
+  const confirmPassword = formData.get('confirmPassword') as string
+
+  // 1. Validaciones básicas
+  if (!password || password.length < 6) {
+    return { success: false, error: 'La contraseña debe tener al menos 6 caracteres.' }
+  }
+  
+  if (password !== confirmPassword) {
+    return { success: false, error: 'Las contraseñas no coinciden.' }
+  }
+
+  // 2. Actualizar usuario (Al estar logueado por el link, esto funciona sobre sí mismo)
+  const { error } = await supabase.auth.updateUser({ 
+    password: password 
+  })
+
+  if (error) {
+    console.error('Error updating password:', error)
+    return { success: false, error: error.message }
+  }
+
+  revalidatePath('/')
+  return { success: true, message: 'Contraseña actualizada correctamente.' }
 }

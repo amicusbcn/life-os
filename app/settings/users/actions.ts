@@ -211,23 +211,68 @@ export async function removeModulePermission(userId: string, moduleKey: string):
 export async function resetUserPassword(userId: string): Promise<ActionResponse> {
     const supabaseAdmin = await createAdminClient();
 
-    // 1. Obtener email
+    // 1. Obtener email del usuario
     const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
 
     if (userError || !userData?.user?.email) {
         return { success: false, error: "No se pudo encontrar el correo del usuario." };
     }
 
-    // 2. Enviar correo (La función de Admin sí permite esto)
-    // Nota: A veces se llama sendPasswordResetEmail o generateLink dependiendo de la versión
-    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(userData.user.email);
+    const email = userData.user.email;
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-    if (error) {
-        console.error("Error envío reset:", error);
-        return { success: false, error: "Fallo al enviar el correo de reseteo." };
+    // 2. GENERAR EL LINK (Sin enviar correo)
+    // Usamos generateLink con type 'recovery'
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'recovery',
+        email: email,
+        options: {
+            redirectTo: `${baseUrl}/auth/callback?next=/settings/profile/update-password` 
+            // ^ Importante: define una ruta donde el usuario pueda poner su nueva password
+        }
+    });
+
+    if (linkError || !linkData.properties?.action_link) {
+        console.error("Error generando link:", linkError);
+        return { success: false, error: "No se pudo generar el enlace de recuperación." };
     }
 
-    return { success: true, message: "Correo de reseteo enviado." };
+    const recoveryUrl = linkData.properties.action_link;
+
+    // 3. ENVIAR CORREO CON RESEND (Nosotros tenemos el control)
+    try {
+        await resend.emails.send({
+            // Usa tu remitente verificado (o onboarding@resend.dev si sigues en pruebas)
+            from: 'Life-OS Security <security@app.midominio.com>', 
+            to: email,
+            subject: 'Recuperación de Contraseña - Life-OS',
+            html: `
+                <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                    <h1 style="color: #4F46E5;">Recuperar Acceso 🔐</h1>
+                    <p>Hola,</p>
+                    <p>Hemos recibido una solicitud para restablecer la contraseña de tu cuenta en <strong>Life-OS</strong>.</p>
+                    <p>Haz clic en el siguiente botón para crear una nueva contraseña:</p>
+                    
+                    <a href="${recoveryUrl}" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 20px 0;">
+                        Restablecer Contraseña
+                    </a>
+                    
+                    <p style="font-size: 14px; color: #666;">
+                        Este enlace caducará pronto. Si no has solicitado esto, puedes ignorar este correo.
+                    </p>
+                    <p style="font-size: 12px; color: #999; margin-top: 30px;">
+                        Link directo: ${recoveryUrl}
+                    </p>
+                </div>
+            `
+        });
+
+    } catch (e) {
+        console.error("Error Resend:", e);
+        return { success: false, error: "Fallo al enviar el correo a través de Resend." };
+    }
+
+    return { success: true, message: "Correo de recuperación enviado con éxito." };
 }
 
 /**
