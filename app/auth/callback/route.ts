@@ -2,24 +2,36 @@ import { createClient } from '@/utils/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
-  // El enlace de correo trae un ?code=...
-  const { searchParams, origin } = new URL(request.url)
-  const code = searchParams.get('code')
-  // next = a dónde ir después de loguearse (por defecto a /)
-  const next = searchParams.get('next') ?? '/'
+  const requestUrl = new URL(request.url)
+  const code = requestUrl.searchParams.get('code')
+  
+  // "next" es a donde queremos ir (/settings/profile/update-password)
+  const next = requestUrl.searchParams.get('next')
 
   if (code) {
     const supabase = await createClient()
-    
-    // Intercambiamos el código por una sesión real
+
+    // Canjeamos el código por sesión
     const { error } = await supabase.auth.exchangeCodeForSession(code)
-    
+
     if (!error) {
-      // Si todo va bien, redirigimos al usuario dentro de la app
-      return NextResponse.redirect(`${origin}${next}`)
+      // TRUCO PARA DOMINIOS (jact.es):
+      // Si estamos detrás de un proxy (Vercel, etc), usamos la cabecera real
+      const forwardedHost = request.headers.get('x-forwarded-host') 
+      const isLocal = process.env.NODE_ENV === 'development'
+      
+      // Si es local usa origin, si es pro usa el host real
+      const baseUrl = isLocal 
+        ? requestUrl.origin 
+        : `https://${forwardedHost || requestUrl.host}`
+
+      const nextPath = next || '/'
+      
+      // Redirigimos limpios
+      return NextResponse.redirect(`${baseUrl}${nextPath}`)
     }
   }
 
-  // Si algo falla, lo devolvemos al login con un error
-  return NextResponse.redirect(`${origin}/login?error=auth-code-error`)
+  // Si falla, volvemos al login
+  return NextResponse.redirect(`${requestUrl.origin}/login?error=auth-code-error`)
 }
