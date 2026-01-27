@@ -229,6 +229,7 @@ export default function CalendarView({ properties, events, currentProperty, curr
                         >
                           {evt.user? (evt.user.initials):(<Construction/>)}
                         </span>
+                        {evt.user.display_name}
                       </div>
                     );
                   })}
