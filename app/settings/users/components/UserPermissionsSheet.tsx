@@ -9,13 +9,13 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
-import { Settings2, Shield, Trash2, Key, CheckCircle2 } from 'lucide-react'
+import { Settings2, Shield, Trash2, Key, CheckCircle2, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 
 // TUS IMPORTS:
 import LoadIcon from '@/utils/LoadIcon' // <--- TU UTILIDAD
 import { AdminUserRow, AppRole, AppModule } from '@/types/users'
-import { setModulePermission, removeModulePermission, toggleGlobalAdmin, resetUserPassword } from '@/app/settings/users/actions'
+import { setModulePermission, removeModulePermission, toggleGlobalAdmin, resetUserPassword ,impersonateUser} from '@/app/settings/users/actions'
 
 interface Props {
   user: AdminUserRow;
@@ -53,6 +53,26 @@ export function UserPermissionsSheet({ user, availableModules }: Props) {
   const handleResetPassword = async () => {
     const res = await resetUserPassword(user.id);
     if(res.success) toast.success(res.message); else toast.error(res.error);
+  }
+
+  const handleImpersonate = async () => {
+    const toastId = toast.loading("Generando llave maestra...");
+    
+    const res = await impersonateUser(user.id);
+    
+    toast.dismiss(toastId);
+
+    if (res.success && res.url) {
+        // Copiamos al portapapeles
+        await navigator.clipboard.writeText(res.url);
+        
+        toast.success("Enlace de acceso copiado 📋", {
+            description: "⚠️ IMPORTANTE: Abre este link en una ventana de Incógnito para no cerrar tu sesión de Admin.",
+            duration: 5000, // Que dure un poco más para que lean la advertencia
+        });
+    } else {
+        toast.error("Error al generar acceso", { description: res.error });
+    }
   }
 
   return (
@@ -97,9 +117,25 @@ export function UserPermissionsSheet({ user, availableModules }: Props) {
                         <p>Permisos implícitos de Administrador en todos los módulos.</p>
                     </div>
                 )}
-                <div className="mt-4 pt-4 border-t border-slate-100/50">
-                    <Button variant="outline" size="sm" onClick={handleResetPassword} className="w-full text-xs h-8">
-                        <Key className="w-3 h-3 mr-2 text-slate-500" /> Reset Password
+                <div className="mt-4 pt-4 border-t border-slate-100/50 grid grid-cols-2 gap-2">
+                    {/* Botón de Reset Password (YA EXISTÍA) */}
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleResetPassword} 
+                        className="w-full text-xs h-8"
+                    >
+                        <Key className="w-3 h-3 mr-2 text-slate-500" /> Reset Pass
+                    </Button>
+
+                    {/* Botón de Impersonar (NUEVO) */}
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleImpersonate} 
+                        className="w-full text-xs h-8 bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+                    >
+                        <Eye className="w-3 h-3 mr-2" /> Ver como Usuario
                     </Button>
                 </div>
             </section>

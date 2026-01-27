@@ -294,3 +294,30 @@ export async function getActiveModules() {
 
     return data as AppModule[];
 }
+
+export async function impersonateUser(userId: string) {
+    const supabaseAdmin = await createAdminClient();
+
+    // 1. Obtenemos el email del usuario usando su ID
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
+
+    if (userError || !user?.email) {
+        return { success: false, error: "Usuario no encontrado" };
+    }
+
+    // 2. Generamos un Magic Link
+    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'magiclink',
+        email: user.email,
+        options: {
+            redirectTo: process.env.NEXT_PUBLIC_SITE_URL // Te llevará al home logueado como él
+        }
+    });
+
+    if (error) {
+        return { success: false, error: error.message };
+    }
+
+    // 3. Devolvemos la URL (NO la navegamos aquí, se la damos al admin)
+    return { success: true, url: data.properties?.action_link };
+}
