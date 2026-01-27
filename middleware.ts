@@ -50,12 +50,20 @@ export async function middleware(request: NextRequest) {
   // ============================================================
   
   // A. Si NO hay usuario y no es login/auth, fuera.
-  if (!user && !path.startsWith('/login') && !path.startsWith('/auth')) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
-  }
+if (!user) {
+    // Definimos las rutas que SÍ se pueden visitar sin login
+    const isPublicRoute = 
+        path.startsWith('/login') || 
+        path.startsWith('/auth') || 
+        path.startsWith('/settings/profile/update-password'); // <--- ¡AQUÍ ESTÁ LA CLAVE! 🔑
 
+    // Si no es una ruta pública, redirigir al login
+    if (!isPublicRoute) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/login'
+        return NextResponse.redirect(url)
+    }
+  }
   // B. Si SÍ hay usuario y quiere ir a login, pa' dentro.
   if (user && path.startsWith('/login')) {
     const url = request.nextUrl.clone()
