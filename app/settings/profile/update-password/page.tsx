@@ -1,98 +1,102 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { updatePassword } from '@/app/settings/profile/actions'
+import { createClient } from '@/utils/supabase/client' // Importa tu cliente de navegador
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, Lock, CheckCircle2 } from 'lucide-react'
+import { Loader2, Lock } from 'lucide-react'
 import { toast } from 'sonner'
-import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader' // Tu header estándar
 
 export default function UpdatePasswordPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [sessionChecked, setSessionChecked] = useState(false)
+  const supabase = createClient()
+
+  // 1. EFECTO DE AUTO-LOGIN
+  // Este efecto detecta el hash (#access_token=...) en la URL, lo procesa
+  // y loguea al usuario silenciosamente.
+  useEffect(() => {
+    const checkSession = async () => {
+      // Al inicializarse, supabase busca el hash en la URL automáticamente.
+      // Solo verificamos si tenemos sesión.
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        // Si no hay sesión, quizás es que el hash no se ha procesado aún 
+        // o el link es inválido. Escuchamos cambios.
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+          if (event === 'PASSWORD_RECOVERY' || session) {
+            setSessionChecked(true)
+          }
+        })
+        return () => subscription.unsubscribe()
+      } else {
+        setSessionChecked(true)
+      }
+    }
+
+    checkSession()
+  }, [supabase])
+
 
   async function handleSubmit(formData: FormData) {
+    if (!sessionChecked) {
+        toast.error("No se ha detectado una sesión válida. Vuelve a hacer clic en el correo.")
+        return;
+    }
+    
     setLoading(true)
-    
-    // Llamamos a la Server Action
     const result = await updatePassword(formData)
-    
     setLoading(false)
 
     if (result.success) {
-      toast.success('Contraseña restablecida', {
-        description: 'Tu contraseña se ha actualizado. Redirigiendo...'
-      })
-      
-      // Esperamos un segundo para que el usuario lea el mensaje y redirigimos
-      setTimeout(() => {
-        router.push('/') 
-      }, 2000)
+      toast.success('Contraseña restablecida correctamente')
+      router.push('/') // O a /dashboard
     } else {
       toast.error('Error', { description: result.error })
     }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-       {/* Header simple (quizás sin menú si es un proceso crítico) */}
-       <header className="bg-white border-b border-slate-200 p-4 flex justify-center">
-            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <Lock className="h-5 w-5 text-indigo-600" />
-                Life-OS Security
-            </h1>
-       </header>
-
-      <main className="flex-1 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
         <Card className="w-full max-w-md shadow-lg">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold text-center">Nueva Contraseña</CardTitle>
+            <CardTitle className="text-2xl font-bold text-center">Recuperación</CardTitle>
             <CardDescription className="text-center">
-              Introduce tu nueva contraseña para recuperar el acceso a tu cuenta.
+              {sessionChecked 
+                ? "Sesión verificada. Introduce tu nueva contraseña." 
+                : "Verificando enlace de seguridad..."}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form action={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="password">Nueva contraseña</Label>
-                <Input 
-                  id="password" 
-                  name="password" 
-                  type="password" 
-                  placeholder="••••••••" 
-                  required 
-                  minLength={6}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
-                <Input 
-                  id="confirmPassword" 
-                  name="confirmPassword" 
-                  type="password" 
-                  placeholder="••••••••" 
-                  required 
-                  minLength={6}
-                />
-              </div>
-              
-              <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={loading}>
-                {loading ? (
-                    <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Actualizando...
-                    </>
-                ) : (
-                    'Actualizar Contraseña'
-                )}
-              </Button>
-            </form>
+            {/* Solo mostramos el formulario si hemos validado la sesión/link */}
+            {!sessionChecked ? (
+                 <div className="flex justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                 </div>
+            ) : (
+                <form action={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="password">Nueva contraseña</Label>
+                    <Input id="password" name="password" type="password" required minLength={6} />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
+                    <Input id="confirmPassword" name="confirmPassword" type="password" required minLength={6} />
+                </div>
+                
+                <Button type="submit" className="w-full bg-indigo-600" disabled={loading}>
+                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Guardar Nueva Contraseña'}
+                </Button>
+                </form>
+            )}
           </CardContent>
         </Card>
-      </main>
     </div>
   )
 }

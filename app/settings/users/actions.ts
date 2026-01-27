@@ -227,7 +227,7 @@ export async function resetUserPassword(userId: string): Promise<ActionResponse>
         type: 'recovery',
         email: email,
         options: {
-            redirectTo: `${baseUrl}/auth/callback?next=/settings/profile/update-password` 
+            redirectTo: `${baseUrl}/settings/profile/update-password` 
             // ^ Importante: define una ruta donde el usuario pueda poner su nueva password
         }
     });
