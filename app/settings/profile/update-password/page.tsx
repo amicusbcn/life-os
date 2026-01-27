@@ -2,75 +2,113 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { updatePassword } from '@/app/settings/profile/actions'
 import { createClient } from '@/utils/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Loader2, AlertCircle, XCircle, ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function UpdatePasswordPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  
   const [sessionState, setSessionState] = useState<'checking' | 'verified' | 'error'>('checking')
+  const [errorMessage, setErrorMessage] = useState<string>('')
+  
   const supabase = createClient()
 
-  // --- LÓGICA DE DETECCIÓN DE SESIÓN ---
   useEffect(() => {
-    let intervalId: NodeJS.Timeout;
-
-    const verifySession = async () => {
-        // 1. Preguntar a Supabase si ya tiene sesión (el hash se procesa auto)
-        const { data: { session } } = await supabase.auth.getSession()
+    const handleAuth = async () => {
+        // 1. Detección de ERRORES en URL (Prioritario)
+        const hashStr = window.location.hash.substring(1); // Quitamos el '#'
+        const hashParams = new URLSearchParams(hashStr);
         
+        const error = hashParams.get('error');
+        const errorDesc = hashParams.get('error_description');
+        const errorCode = hashParams.get('error_code');
+
+        if (error) {
+            console.error("❌ Error en URL:", errorDesc);
+            if (errorCode === 'otp_expired') {
+                setErrorMessage("El enlace ha caducado. Pide uno nuevo.");
+            } else {
+                setErrorMessage(errorDesc?.replace(/\+/g, ' ') || "Enlace no válido.");
+            }
+            setSessionState('error');
+            return;
+        }
+
+        // 2. INTENTO ESTÁNDAR: ¿Supabase ya tiene la sesión?
+        const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-            console.log("✅ Sesión detectada:", session.user.email)
-            setSessionState('verified')
-            return true;
+            console.log("✅ Sesión detectada (Estándar)");
+            setSessionState('verified');
+            return;
         }
-        return false;
+
+        // 3. INTENTO DE FUERZA BRUTA (La Solución Nuclear) ☢️
+        // Si Supabase no se ha enterado, leemos nosotros el token del hash
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+
+        if (accessToken && refreshToken) {
+            console.log("⚠️ Forzando sesión manualmente desde el Hash...");
+            const { error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+            });
+
+            if (!error) {
+                console.log("✅ Sesión forzada con éxito");
+                setSessionState('verified');
+                return;
+            } else {
+                console.error("Fallo al forzar sesión:", error);
+            }
+        }
+
+        // 4. Último recurso: Escuchar eventos (por si acaso)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'PASSWORD_RECOVERY' || session) {
+                setSessionState('verified');
+            }
+        });
+
+        return () => subscription.unsubscribe();
     }
 
-    // Intento 1: Inmediato + Suscripción
-    verifySession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log("🔔 Evento Auth:", event)
-        if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN' || session) {
-            setSessionState('verified')
-        }
-    })
-
-    // Intento 2: Polling de seguridad (por si llegamos tarde al evento)
-    // Comprobamos cada 500ms durante 5 segundos
-    let attempts = 0;
-    intervalId = setInterval(async () => {
-        attempts++;
-        const found = await verifySession();
-        if (found || attempts > 10) clearInterval(intervalId);
-    }, 500);
-
-    return () => {
-        subscription.unsubscribe()
-        clearInterval(intervalId)
-    }
-  }, [supabase])
+    handleAuth();
+  }, [supabase]);
 
 
-  // --- MANEJADOR DEL FORMULARIO ---
+  // --- MANEJADOR DEL FORMULARIO (CLIENT SIDE) ---
   async function handleSubmit(formData: FormData) {
     setLoading(true)
-    const result = await updatePassword(formData)
+    
+    const password = formData.get('password') as string
+    const confirmPassword = formData.get('confirmPassword') as string
+
+    if (password !== confirmPassword) {
+        toast.error('Las contraseñas no coinciden')
+        setLoading(false)
+        return
+    }
+
+    // Usamos updateUser directo (el cliente ya tiene la sesión gracias al useEffect)
+    const { error } = await supabase.auth.updateUser({ password })
+
     setLoading(false)
 
-    if (result.success) {
-      toast.success('Contraseña restablecida correctamente')
-      // Redirigir al login o home tras éxito
-      setTimeout(() => router.push('/'), 1000)
+    if (error) {
+      toast.error('Error al actualizar', { description: error.message })
     } else {
-      toast.error('Error', { description: result.error })
+      toast.success('Contraseña actualizada correctamente')
+      setTimeout(() => {
+          router.push('/') 
+          router.refresh()
+      }, 1000)
     }
   }
 
@@ -78,65 +116,46 @@ export default function UpdatePasswordPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
         <Card className="w-full max-w-md shadow-lg bg-white">
           <CardHeader className="space-y-1">
+            <div className="flex justify-center mb-2">
+                {sessionState === 'checking' && <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />}
+                {sessionState === 'verified' && <div className="h-10 w-10 bg-green-100 rounded-full flex items-center justify-center text-green-600"><AlertCircle /></div>}
+                {sessionState === 'error' && <div className="h-10 w-10 bg-red-100 rounded-full flex items-center justify-center text-red-600"><XCircle /></div>}
+            </div>
+            
             <CardTitle className="text-2xl font-bold text-center text-slate-900">
-                Recuperación
+                {sessionState === 'error' ? 'Error de Enlace' : 'Recuperación'}
             </CardTitle>
             <CardDescription className="text-center">
-              {sessionState === 'checking' && "Verificando enlace de seguridad..."}
-              {sessionState === 'verified' && "Enlace verificado. Crea tu nueva contraseña."}
+              {sessionState === 'checking' && "Procesando credenciales..."}
+              {sessionState === 'verified' && "Sesión activa. Crea tu nueva contraseña."}
+              {sessionState === 'error' && errorMessage}
             </CardDescription>
           </CardHeader>
           
           <CardContent>
-            {/* ESTADO: CARGANDO / VERIFICANDO */}
             {sessionState === 'checking' && (
-                 <div className="flex flex-col items-center justify-center py-6 gap-4">
-                    <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-                    
-                    {/* Botón de escape por si se atasca en Incógnito */}
-                    <p className="text-xs text-slate-400 text-center px-4">
-                        Si esto tarda más de unos segundos...
-                    </p>
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => setSessionState('verified')} // Forzamos mostrar el form
-                        className="text-xs"
-                    >
-                        Mostrar formulario manualmente
-                    </Button>
+                 <div className="text-center pb-4">
+                    <p className="text-xs text-slate-400">Validando token de seguridad...</p>
                  </div>
             )}
 
-            {/* ESTADO: VERIFICADO (FORMULARIO) */}
+            {sessionState === 'error' && (
+                <div className="space-y-4">
+                    <Button onClick={() => router.push('/login')} variant="outline" className="w-full gap-2">
+                        <ArrowLeft className="h-4 w-4" /> Volver al Login
+                    </Button>
+                </div>
+            )}
+
             {sessionState === 'verified' && (
                 <form action={handleSubmit} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="p-3 bg-indigo-50 text-indigo-700 text-sm rounded-md flex gap-2 items-start">
-                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <p>Tu sesión es temporal. Al cambiar la contraseña quedarás logueado permanentemente.</p>
-                    </div>
-
                     <div className="space-y-2">
                         <Label htmlFor="password">Nueva contraseña</Label>
-                        <Input 
-                            id="password" 
-                            name="password" 
-                            type="password" 
-                            placeholder="Mínimo 6 caracteres" 
-                            required 
-                            minLength={6} 
-                        />
+                        <Input id="password" name="password" type="password" placeholder="******" required minLength={6} />
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
-                        <Input 
-                            id="confirmPassword" 
-                            name="confirmPassword" 
-                            type="password" 
-                            placeholder="Repite la contraseña" 
-                            required 
-                            minLength={6} 
-                        />
+                        <Input id="confirmPassword" name="confirmPassword" type="password" placeholder="******" required minLength={6} />
                     </div>
                     
                     <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={loading}>
