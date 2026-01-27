@@ -243,7 +243,7 @@ export async function resetUserPassword(userId: string): Promise<ActionResponse>
     try {
         await resend.emails.send({
             // Usa tu remitente verificado (o onboarding@resend.dev si sigues en pruebas)
-            from: 'Life-OS Security <security@app.jact.com>', 
+            from: 'Life-OS Security <security@app.jact.es>', 
             to: email,
             subject: 'Recuperación de Contraseña - Life-OS',
             html: `
