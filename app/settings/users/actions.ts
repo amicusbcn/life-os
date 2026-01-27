@@ -304,13 +304,13 @@ export async function impersonateUser(userId: string) {
     if (userError || !user?.email) {
         return { success: false, error: "Usuario no encontrado" };
     }
-
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     // 2. Generamos un Magic Link
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
         type: 'magiclink',
         email: user.email,
         options: {
-            redirectTo: process.env.NEXT_PUBLIC_SITE_URL // Te llevará al home logueado como él
+            redirectTo: `${baseUrl}/auth/callback`
         }
     });
 
