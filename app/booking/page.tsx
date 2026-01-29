@@ -1,13 +1,14 @@
+// app/booking/page.tsx
 import { Suspense } from 'react';
 import { createClient } from '@/utils/supabase/server';
-import { validateModuleAccess } from '@/utils/security'; // <--- IMPORTAMOS LA UTILIDAD
-import { getBookingProperties, getMonthEvents, getActiveHandovers, getPropertyMembers } from './data';
+import { getUserData } from '@/utils/security'; // <--- CAMBIADO A getUserData
+import { getBookingProperties, getMonthEvents, getActiveHandovers, getPropertyMembers, getAllBookingProfiles, getHolidays } from './data';
 import CalendarView from './components/calendar-view';
 import { ImpersonationProvider } from './components/impersonationContext';
 import { ImpersonationBar } from './components/impersonationBar';
 import { HandoverBoard } from './components/HandoverBoard';
 import { parse, isValid } from 'date-fns';
-import { UnifiedAppHeader } from '../core/components/UnifiedAppHeader';
+import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar'; // <--- NUEVO LAYOUT
 import { BookingMenu } from './components/BookingMenu';
 import { BookingMember, BookingProfile } from '@/types/booking';
 import { BookingDialogManager } from './components/BookingDialogManager';
@@ -17,126 +18,99 @@ export default async function BookingPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const supabase = await createClient();
+  // 1. Seguridad unificada
+  const { profile, accessibleModules, userRole, isAdminGlobal, modulePermission } = await getUserData('booking');
+
   const params = await searchParams;
-
-  // 1. SEGURIDAD CENTRALIZADA (Nivel 1 y 2)
-  // Esto valida Login + Superadmin + Permiso Módulo 'booking'
-  const { user, isAdminGlobal, modulePermission } = await validateModuleAccess('booking');
-
-  // Mapeamos a las variables que usa nuestra UI
   const isSuperAdmin = isAdminGlobal;
-  const isModuleAdmin = modulePermission === 'admin'; // Si validateModuleAccess devuelve 'admin' (ya sea por global o local)
-
-  // Modo Dios (Solo SuperAdmin)
+  const isModuleAdmin = modulePermission === 'admin';
   const showImpersonationBar = isSuperAdmin && params.debug === 'true';
 
-  // ---------------------------------------------------------------------------
-  // 2. CARGAR DATOS
-  // ---------------------------------------------------------------------------
-  
-  // A. Lista Maestra de Perfiles (Solo si tienes rango de Admin de Módulo/Super)
-  let allProfiles: BookingProfile[] = [];
-  if (isModuleAdmin) {
-     const { data: profilesData } = await supabase
-       .from('booking_profiles')
-       .select(`
-          *,
-          booking_property_members (
-             property:booking_properties (id, name, color)
-          )
-       `)
-       .eq('is_active', true)
-       .order('display_name');
-     allProfiles = (profilesData as BookingProfile[]) || [];
-  }
-
-  // B. Propiedades
-  const properties = await getBookingProperties();
-  
-  // C. Selección de Propiedad (Slug)
-  const propSlug = typeof params.prop === 'string' ? params.prop : properties[0]?.slug;
-  let selectedProperty = properties.find(p => p.slug === propSlug);
-  if (!selectedProperty && properties.length > 0) selectedProperty = properties[0];
-
-  // D. Fecha
   const dateParam = typeof params.date === 'string' ? params.date : null;
   let currentDate = new Date();
   if (dateParam) {
     const parsed = parse(dateParam, 'yyyy-MM', new Date());
     if (isValid(parsed)) currentDate = parsed;
   }
-
-  // E. Datos de la Propiedad Seleccionada
-  const events = selectedProperty 
-    ? await getMonthEvents(selectedProperty.id, currentDate) 
-    : [];
-
-  const handovers = selectedProperty
-    ? await getActiveHandovers(selectedProperty.id)
-    : [];
   
-  // F. Miembros y Permiso Local (Nivel 3)
-  let propertyMembers: BookingMember[] = [];
-  let isPropertyOwner = false;
+  // 2. CARGA DE DATOS (Delegada a data.ts)
+  const [properties, allProfiles, holidays] = await Promise.all([
+    getBookingProperties(),
+    isModuleAdmin ? getAllBookingProfiles() : Promise.resolve([]),
+    getHolidays()
+  ]);
 
-  if (selectedProperty) {
-    const rawMembers = await getPropertyMembers(selectedProperty.id);
-    propertyMembers = rawMembers as BookingMember[];
+  
+  // 3. Selección de Propiedad
+  const propSlug = typeof params.prop === 'string' ? params.prop : properties[0]?.slug;
+  let selectedProperty = properties.find(p => p.slug === propSlug) || properties[0];
 
-    // Comprobamos si soy Owner de ESTA propiedad específica
-    if (user) {
-        const myMemberRecord = propertyMembers.find(m => 
-            m.profile?.user_id === user.id && m.role === 'owner'
-        );
-        isPropertyOwner = !!myMemberRecord;
-    }
-  }
+  // 4. Datos contextuales de la propiedad seleccionada
+  const [events, handovers, propertyMembers] = selectedProperty 
+    ? await Promise.all([
+        getMonthEvents(selectedProperty.id, currentDate),
+        getActiveHandovers(selectedProperty.id),
+        getPropertyMembers(selectedProperty.id)
+      ])
+    : [[], [], []];
 
-  // G. Festivos
-  const { data: holidaysData } = await supabase.from('booking_holidays').select('*');
-  const holidays = holidaysData || [];
+  // Identificar si soy Owner de la propiedad seleccionada
+  const isPropertyOwner = !!(propertyMembers as BookingMember[]).find(
+    m => m.profile?.user_id === profile.id && m.role === 'owner'
+  );
   
   return (
-    <div className="min-h-screen bg-slate-50 font-sans pb-24">
-        <ImpersonationProvider realUserId={user.id} profiles={allProfiles}>
-            <UnifiedAppHeader
-                title="Reservas Familiares"
-                backHref="/"
-                userEmail={user.email || ''}
-                userRole={isSuperAdmin ? 'admin' : 'user'}
-                maxWClass="max-w-7xl"
-                moduleMenu={
-                  <Suspense fallback={<div className="w-8 h-8" />}>
-                    <BookingMenu 
-                            isSuperAdmin={isSuperAdmin}
-                            isModuleAdmin={isModuleAdmin}
-                            isPropertyOwner={isPropertyOwner}
-                            isDebugActive={showImpersonationBar} 
-                            currentProperty={selectedProperty!} 
-                        />
-                  </Suspense>
-                }
-            />
+    <ImpersonationProvider realUserId={profile.id} profiles={allProfiles}>
+        <UnifiedAppSidebar
+            title="Reservas Familiares"
+            profile={profile}
+            modules={accessibleModules}
+            // Cuerpo del Sidebar: Generador de turnos
+            moduleMenu={
+                <BookingMenu 
+                    mode="operative"
+                    isSuperAdmin={isSuperAdmin}
+                    isModuleAdmin={isModuleAdmin}
+                    isPropertyOwner={isPropertyOwner}
+                    isDebugActive={showImpersonationBar} 
+                    currentProperty={selectedProperty} 
+                />
+            }
+            // Pie del Sidebar: Ajustes de propiedad y modo admin
+            moduleSettings={
+                <BookingMenu 
+                    mode="settings"
+                    isSuperAdmin={isSuperAdmin}
+                    isModuleAdmin={isModuleAdmin}
+                    isPropertyOwner={isPropertyOwner}
+                    isDebugActive={showImpersonationBar} 
+                    currentProperty={selectedProperty} 
+                />
+            }
+        >
+            {/* Gestión de Diálogos */}
             <Suspense fallback={null}>
                 <BookingDialogManager 
                     isModuleAdmin={isModuleAdmin}
                     currentProperty={selectedProperty!}
                     members={propertyMembers}
                     allProfiles={allProfiles}
-                    properties={properties} // <--- Pasamos properties para el redirect fallback
-                    currentUserId={user.id}
+                    properties={properties}
+                    currentUserId={profile.id}
                     holidays={holidays}
                 />
             </Suspense>
-            {showImpersonationBar && <ImpersonationBar />}
-            {properties.length===0 ? (
-              <div className="p-10 text-center">
-                <h2>No hay propiedades creadas</h2>
-                {/* Aquí podrías poner el botón de crear si eres admin */}
+
+            {/* Barra de Impersonación dentro del contenido */}
+            {showImpersonationBar && <div className="mb-6"><ImpersonationBar /></div>}
+
+            {properties.length === 0 ? (
+              <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-sm">
+                <h2 className="text-xl font-bold text-slate-800">No hay propiedades creadas</h2>
+                <p className="text-slate-500 mt-2">Contacta con el administrador para dar de alta una propiedad.</p>
               </div>
-            ):(
-              <main className="max-w-7xl mx-auto p-4 md:p-6 mt-6">
+            ) : (
+              <div className="space-y-8">
                 <CalendarView 
                     properties={properties} 
                     events={events}           
@@ -150,9 +124,9 @@ export default async function BookingPage({
                         initialHandovers={handovers as any}
                     />
                 )}
-            </main>
-          )}
-        </ImpersonationProvider>
-    </div>
+              </div>
+            )}
+        </UnifiedAppSidebar>
+    </ImpersonationProvider>
   );
 }

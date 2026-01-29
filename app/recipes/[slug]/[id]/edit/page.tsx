@@ -1,24 +1,23 @@
-import { createClient } from '@/utils/supabase/server';
-import { notFound, redirect } from 'next/navigation';
-import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
-// ✅ IMPORTACIÓN CORREGIDA
+// app/recipes/[slug]/[id]/edit/page.tsx
+import { notFound } from 'next/navigation';
+import { getUserData } from '@/utils/security';
+import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar';
 import { getAllCategories, getRecipeById } from '@/app/recipes/data'; 
-import { MenuRecipeFullData } from '@/types/recipes';
 import { RecipesMenu } from '@/app/recipes/components/RecipesMenu';
 import RecipeCreateForm from '@/app/recipes/components/RecipeCreateForm';
+import { SidebarMenu } from '@/components/ui/sidebar';
 
 interface EditPageProps {
-    params: { slug: string; id: string }
+    params: Promise<{ slug: string; id: string }>;
 }
 
 export default async function EditRecipePage({ params }: EditPageProps) {
     const { slug, id } = await params;
     
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) redirect('/login');
+    // 1. Seguridad centralizada (Módulo 'recipes')
+    const { profile, accessibleModules } = await getUserData('recipes');
 
-    // ✅ Uso de las funciones correctas
+    // 2. Obtención de datos del módulo
     const [recipe, categories] = await Promise.all([
         getRecipeById(id),
         getAllCategories()
@@ -26,23 +25,30 @@ export default async function EditRecipePage({ params }: EditPageProps) {
 
     if (!recipe) notFound();
 
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-
     return (
-        <div className="min-h-screen bg-slate-50 font-sans pb-10">
-            <UnifiedAppHeader
-                title={`Editar: ${recipe.name}`}
-                backHref={`/recipes/${slug}/${id}`}
-                userEmail={user.email || ''} 
-                userRole={profile?.role || 'user'}
-                moduleMenu={<RecipesMenu categories={categories} />}
-            />
-            <main className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
-                <RecipeCreateForm 
-                    categories={categories} 
-                    initialData={recipe} 
-                />
+        <UnifiedAppSidebar
+            title={`Editar: ${recipe.name}`}
+            profile={profile}
+            modules={accessibleModules}
+            // ✅ Prop corregida: backLink
+            backLink={`/recipes/${slug}/${id}`}
+            // Slot Cuerpo: Navegación y acciones operativas
+            moduleMenu={
+                <RecipesMenu mode="operative" categories={categories} />
+            }
+            // Slot Pie: Gestión de categorías
+            moduleSettings={
+                <RecipesMenu mode="settings" categories={categories} />
+            }
+        >
+            <main className="max-w-4xl mx-auto">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
+                    <RecipeCreateForm 
+                        categories={categories} 
+                        initialData={recipe} 
+                    />
+                </div>
             </main>
-        </div>
+        </UnifiedAppSidebar>
     );
 }

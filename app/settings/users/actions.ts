@@ -5,7 +5,7 @@ import { createClient } from '@/utils/supabase/server';
 import { createAdminClient } from '@/utils/supabase/admin'; // Usamos tu cliente admin
 import { revalidatePath } from 'next/cache';
 import { ActionResponse } from '@/types/common'; // O types/user si moviste ActionResponse ahí
-import { AppRole, UserRole,AppModule } from '@/types/users'; // Asegúrate de tener estos tipos definidos
+import { AppRole, UserRole,AppModule, AdminUserRow, UserProfile } from '@/types/users'; // Asegúrate de tener estos tipos definidos
 import { sendNotification } from '@/utils/notification-helper';
 import { Resend } from 'resend';
 
@@ -23,6 +23,7 @@ export async function getAdminUsersList() {
     const { data: profiles, error: profilesError } = await supabaseAdmin
         .from('profiles')
         .select('*')
+        .order('status', { ascending: true }) 
         .order('created_at', { ascending: false });
 
     if (profilesError) throw new Error(profilesError.message);
@@ -34,13 +35,14 @@ export async function getAdminUsersList() {
 
     if (permsError) throw new Error(permsError.message);
 
-    // 3. Mapear (Usuario + Permisos)
-    const usersWithPerms = profiles.map(user => {
+    // 3. Mapear con tipado estricto
+    const usersWithPerms: AdminUserRow[] = (profiles as UserProfile[]).map(user => {
         const userPerms = permissions.filter(p => p.user_id === user.id);
         
-        // Convertimos array a objeto: { 'travel': 'admin', 'inventory': 'viewer' }
         const permMap: Record<string, AppRole> = {};
-        userPerms.forEach(p => { permMap[p.module_key] = p.role as AppRole });
+        userPerms.forEach(p => { 
+            permMap[p.module_key] = p.role as AppRole 
+        });
 
         return {
             ...user,
@@ -310,7 +312,7 @@ export async function impersonateUser(userId: string) {
         type: 'magiclink',
         email: user.email,
         options: {
-            redirectTo: `${baseUrl}/settings/users/impersonate`
+            redirectTo: `${baseUrl}/admin-console/users/impersonate`
         }
     });
 
@@ -320,4 +322,70 @@ export async function impersonateUser(userId: string) {
 
     // 3. Devolvemos la URL (NO la navegamos aquí, se la damos al admin)
     return { success: true, url: data.properties?.action_link };
+}
+
+// REENVIAR INVITACIÓN
+export async function resendInvitation(email: string, userId: string) {
+  const supabaseAdmin = await createAdminClient();
+  try {
+    const { error } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'invite',
+        email: email,
+        options: {
+            redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+        }
+    });
+
+    if (error) throw error;
+
+    // Actualizamos la fecha de envío en nuestra tabla para control de UI
+    await supabaseAdmin
+      .from('profiles')
+      .update({ invitation_sent_at: new Date().toISOString() })
+      .eq('id', userId);
+
+    revalidatePath('/admin/users');
+    return { success: true, message: 'Invitación reenviada correctamente' };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+// DESHABILITAR / ACTIVAR USUARIO
+export async function toggleUserStatus(userId: string, active: boolean) {
+  const supabaseAdmin = await createAdminClient();
+  
+  try {
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({ is_active: active, status: active ? 'active' : 'inactive' })
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    revalidatePath('/admin/users');
+    return { success: true, message: `Usuario ${active ? 'activado' : 'deshabilitado'}` };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function cancelInvitation(userId: string) {
+  const supabaseAdmin = await createAdminClient(); // Service Role requerido
+  
+  try {
+    // 1. Borramos de auth.users (esto debería borrar el profile por cascada si tienes FK seteadas)
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    
+    if (error) throw error;
+
+    // 2. Por seguridad, forzamos borrado en profiles si no hay cascada
+    const supabase = await createClient();
+    await supabase.from('profiles').delete().eq('id', userId);
+
+    revalidatePath('/settings/users');
+    return { success: true, message: 'Invitación cancelada y usuario eliminado' };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
 }

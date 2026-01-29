@@ -5,6 +5,7 @@ import { ActionResponse } from './common'; // Ajusta la ruta a tu archivo common
 export type AppRole = 'admin' | 'editor' | 'viewer';      // Roles de Módulo
 export type UserRole = 'admin' | 'user' | 'guest';        // Rol Global
 export type EmailPreference = 'all' | 'high_only' | 'none';
+export type UserStatus = 'pending' | 'active' | 'inactive';
 
 // --- DOMINIO: MÓDULOS (Fusionado) ---
 export interface AppModule {
@@ -31,7 +32,10 @@ export interface UserProfile {
   email_preference: EmailPreference;
   is_active: boolean;
   created_at: string;
+  app_role:AppRole;
+  status:UserStatus;
 }
+
 
 // --- DOMINIO: PERMISOS ---
 export interface ModulePermission {

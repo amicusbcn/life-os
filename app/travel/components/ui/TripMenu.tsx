@@ -1,34 +1,36 @@
-// app/travel/components/TripMenu.tsx
 'use client'
 
 import React, { useTransition } from 'react'
-import { DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu'
 import { updateTripStatus, deleteTrip } from '@/app/travel/actions'
 import { TravelTrip, TripDbStatus, TravelCategory, TravelMileageTemplate } from '@/types/travel'
 import { getTripState } from '@/utils/trip-logic'
-import { Lock, RotateCcw, Trash2, ExternalLink, Loader2, Archive, ArchiveRestore, Gauge, Tag, History, AlertCircle } from 'lucide-react'
+import { 
+  Lock, RotateCcw, Trash2, ExternalLink, Loader2, Archive, 
+  ArchiveRestore, Tag, AlertCircle, ChevronLeft, Plus 
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-
-// Dialogs
-import { MileageSettingsDialog } from "../dialogs/MileageSettingsDialog"
+import { SidebarMenuItem, SidebarMenuButton, SidebarMenuBadge, SidebarMenu, SidebarSeparator } from '@/components/ui/sidebar'
 import { CategorySettingsDialog } from '../dialogs/CategorySettingsDialog'
+import { NewExpenseDialog } from '../dialogs/NewExpenseDialog'
 
 interface TripMenuProps {
   trip: TravelTrip;
   categories: TravelCategory[];
+  mileageTemplates?: TravelMileageTemplate[]; // ✨ Añadido para el diálogo
   hasPendingReceipts: boolean;
   pendingTicketsCount: number;
+  mode: 'operative' | 'settings';
 }
 
-export function TripMenu({ trip, categories, hasPendingReceipts, pendingTicketsCount}: TripMenuProps) {
+export function TripMenu({ trip, categories, mileageTemplates, hasPendingReceipts, pendingTicketsCount, mode }: TripMenuProps) {
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
   
   const { actions, visualStatus } = getTripState(trip)
   const isPersonal = trip.context === 'personal'
   const hasReport = !!trip.report_id
+  const isLocked = trip.status === 'closed' || trip.status === 'reported' || trip.status === 'archived'
   const canCloseManual = trip.status === 'open' && visualStatus === 'completed' && !hasPendingReceipts;
   
   const handleAction = (newStatus: TripDbStatus, message: string) => {
@@ -52,78 +54,112 @@ export function TripMenu({ trip, categories, hasPendingReceipts, pendingTicketsC
     })
   }
 
+  // --- RENDERIZADO OPERATIVO (Cuerpo del Sidebar) ---
+  if (mode === 'operative') {
+    return (
+      <SidebarMenu>
+        {/* 1. ACCIÓN PRINCIPAL: AÑADIR GASTO (Solo si no está bloqueado) */}
+        {!isLocked && (
+          <SidebarMenuItem>
+            <NewExpenseDialog 
+              tripId={trip.id} 
+              categories={categories} 
+              templates={mileageTemplates || []} 
+              context={trip.context}
+            >
+              <SidebarMenuButton 
+                size="lg" 
+                className="bg-indigo-600 text-white hover:bg-indigo-700 hover:text-white shadow-lg mt-4"
+              >
+                <Plus className="h-5 w-5" />
+                <span className="font-bold text-base">Añadir Gasto</span>
+              </SidebarMenuButton>
+            </NewExpenseDialog>
+          </SidebarMenuItem>
+        )}
+
+        {/* 3. ACCIONES DE ESTADO (Cerrar, Reabrir, etc.) */}
+        {!isPersonal ? (
+          <>
+            {canCloseManual && (
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={() => handleAction('closed', "Viaje cerrado")} disabled={isPending}>
+                  {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4 text-orange-500" />}
+                  <span>Cerrar Viaje</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+            {/* CASO: Viaje completado pero faltan tickets (Botón deshabilitado con aviso) */}
+            {trip.status === 'open' && visualStatus === 'completed' && hasPendingReceipts && (
+                <SidebarMenuItem>
+                    <SidebarMenuButton disabled className="opacity-60 flex-col items-start h-auto py-2">
+                        <div className="flex items-center w-full text-slate-400">
+                            <Lock className="mr-2 h-4 w-4" />
+                            <span className="font-medium text-sm">Cerrar Viaje</span>
+                        </div>
+                        <div className="flex items-center gap-1 mt-1 ml-6 text-[9px] text-orange-600 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100 uppercase tracking-tighter">
+                            <AlertCircle className="h-3 w-3" />
+                            Faltan {pendingTicketsCount} tickets
+                        </div>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            )}
+
+            {/* CASO: El viaje puede ser reabierto */}
+            {actions.canReopen && (
+                <SidebarMenuItem>
+                    <SidebarMenuButton 
+                        onClick={() => handleAction('open', "Viaje reabierto")} 
+                        disabled={isPending}
+                        className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                    >
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        <span className="font-medium">Reabrir Viaje</span>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            )}
+            {hasReport && (
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={() => router.push(`/travel/reports/${trip.report_id}`)} className="bg-indigo-50 text-indigo-600 font-bold hover:bg-indigo-100">
+                  <ExternalLink className="h-4 w-4" />
+                  <span>Ver Liquidación</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+          </>
+        ) : (
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => handleAction(trip.status === 'archived' ? 'open' : 'archived', trip.status === 'archived' ? 'Desarchivado' : 'Archivado')} disabled={isPending}>
+              {trip.status === 'archived' ? <ArchiveRestore className="h-4 w-4 text-emerald-500" /> : <Archive className="h-4 w-4 text-slate-400" />}
+              <span>{trip.status === 'archived' ? 'Desarchivar' : 'Archivar'} Viaje</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
+
+        {/* ELIMINAR */}
+        {(isPersonal || !actions.isLocked) && (
+          <SidebarMenuItem className="mb-4 border-t border-slate-100 pt-2">
+            <SidebarMenuButton onClick={handleDelete} disabled={isPending} className="text-red-500 hover:text-red-600">
+              <Trash2 className="h-4 w-4" />
+              <span>Eliminar Viaje</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
+      </SidebarMenu>
+    )
+  }
+
+  // --- RENDERIZADO DE CONFIGURACIÓN (Pie del Sidebar) ---
   return (
-    <>
-      <DropdownMenuLabel className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 py-2">
-        Gestión del Viaje
-      </DropdownMenuLabel>
-
-      {/* --- SECCIÓN A: ACCIONES DE ESTADO (Contextuales) --- */}
-      {!isPersonal ? (
-        <>
-          {canCloseManual && (
-            <DropdownMenuItem onClick={() => handleAction('closed', "Viaje cerrado")} disabled={isPending} className="py-2.5 cursor-pointer font-medium">
-              {isPending ? <Loader2 className="mr-3 h-4 w-4 animate-spin" /> : <Lock className="mr-3 h-4 w-4 text-orange-500" />}
-              Cerrar Viaje
-            </DropdownMenuItem>
-          )}
-          {trip.status === 'open' && visualStatus === 'completed' && hasPendingReceipts && (
-            <DropdownMenuItem disabled className="py-2.5 opacity-60 flex flex-col items-start gap-1">
-              <div className="flex items-center text-slate-400">
-                <Lock className="mr-3 h-4 w-4" />
-                <span className="font-medium">Cerrar Viaje</span>
-              </div>
-              <div className="flex items-center gap-1 ml-7 text-[10px] text-orange-600 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">
-                <AlertCircle className="h-3 w-3" />
-                FALTAN {pendingTicketsCount} TICKETS
-              </div>
-            </DropdownMenuItem>
-          )}
-          {actions.canReopen && (
-            <DropdownMenuItem onClick={() => handleAction('open', "Viaje reabierto")} disabled={isPending} className="py-2.5 cursor-pointer text-emerald-600 font-medium">
-              <RotateCcw className="mr-3 h-4 w-4" /> Reabrir Viaje
-            </DropdownMenuItem>
-          )}
-          {hasReport && (
-            <Link href={`/travel/reports/${trip.report_id}`} className="w-full">
-              <DropdownMenuItem className="py-2.5 cursor-pointer text-indigo-600 font-bold bg-indigo-50/50 focus:bg-indigo-100">
-                <ExternalLink className="mr-3 h-4 w-4" /> Ver Liquidación
-              </DropdownMenuItem>
-            </Link>
-          )}
-        </>
-      ) : (
-        <>
-          <DropdownMenuItem onClick={() => handleAction(trip.status === 'archived' ? 'open' : 'archived', trip.status === 'archived' ? 'Desarchivado' : 'Archivado')} disabled={isPending} className="py-2.5 cursor-pointer font-medium text-slate-700">
-            {trip.status === 'archived' ? <ArchiveRestore className="mr-3 h-4 w-4 text-emerald-500" /> : <Archive className="mr-3 h-4 w-4 text-slate-400" />}
-            {trip.status === 'archived' ? 'Desarchivar' : 'Archivar'} Viaje
-          </DropdownMenuItem>
-          
-        </>
-      )}
-
-      
-
-            {/* --- SECCIÓN C: PELIGRO --- */}
-      {(isPersonal || !actions.isLocked) && (
-        <>
-          <DropdownMenuItem onClick={handleDelete} disabled={isPending} className="py-2.5 cursor-pointer text-red-600 focus:text-red-700 focus:bg-red-50">
-            <Trash2 className="mr-3 h-4 w-4" /> Eliminar Viaje
-          </DropdownMenuItem>
-        </>
-      )}
-        
-          <DropdownMenuSeparator />
-      {/* --- SECCIÓN B: GESTIÓN DEL MÓDULO (Lo que pedías) --- */}
-      <DropdownMenuLabel className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 py-2">
-        Configuración
-      </DropdownMenuLabel>
-
-      <CategorySettingsDialog initialCategories={categories} context={trip.context}>
-        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="py-2.5 cursor-pointer text-slate-700">
-          <Tag className="mr-3 h-4 w-4 text-slate-400" /> Categorías de {isPersonal ? 'Viaje' : 'Gasto'}
-        </DropdownMenuItem>
-      </CategorySettingsDialog>
-    </>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <CategorySettingsDialog initialCategories={categories} context={trip.context}>
+          <SidebarMenuButton tooltip={`Categorías`}>
+            <Tag className="h-4 w-4 text-slate-500" />
+            <span>Categorías de {isPersonal ? 'Viaje' : 'Gasto'}</span>
+          </SidebarMenuButton>
+        </CategorySettingsDialog>
+      </SidebarMenuItem>
+    </SidebarMenu>
   )
 }

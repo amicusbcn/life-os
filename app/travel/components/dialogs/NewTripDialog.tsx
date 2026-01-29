@@ -28,9 +28,10 @@ import { TravelEmployer, TravelContext } from '@/types/travel'
 interface NewTripDialogProps {
   employers: TravelEmployer[]
   context: TravelContext
+  children?: React.ReactNode
 }
 
-export function NewTripDialog({ employers, context }: NewTripDialogProps) {
+export function NewTripDialog({ employers, context, children }: NewTripDialogProps) {
   const [open, setOpen] = useState(false)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -72,16 +73,17 @@ export function NewTripDialog({ employers, context }: NewTripDialogProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button 
-          className={`w-full h-11 text-base font-bold shadow-md gap-2 transition-colors ${
-            isPersonal 
-              ? "bg-green-600 hover:bg-green-700" 
-              : "bg-indigo-600 hover:bg-indigo-700"
-          }`}
-        >
-          {isPersonal ? <TreePalm className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
-          {isPersonal ? "Nueva Escapada" : "Nuevo Viaje"}
-        </Button>
+        {/* SI HAY CHILDREN (Sidebar), USAMOS EL CHILDREN. SI NO, EL BOTÓN ORIGINAL */}
+        {children || (
+          <Button 
+            className={`w-full h-11 text-base font-bold shadow-md gap-2 transition-colors ${
+              isPersonal ? "bg-green-600 hover:bg-green-700" : "bg-indigo-600 hover:bg-indigo-700"
+            }`}
+          >
+            {isPersonal ? <TreePalm className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+            {isPersonal ? "Nueva Escapada" : "Nuevo Viaje"}
+          </Button>
+        )}
       </DialogTrigger>
       
       <DialogContent className="sm:max-w-[425px]">

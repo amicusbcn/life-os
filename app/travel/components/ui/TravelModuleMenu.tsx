@@ -3,54 +3,74 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
-import { Gauge, Tag, History } from 'lucide-react'
+import { Gauge, Tag, History, TreePalm, Plus } from 'lucide-react'
 import { TravelContext, TravelMileageTemplate, TravelCategory } from '@/types/travel'
 import { MileageSettingsDialog } from "../dialogs/MileageSettingsDialog"
 import { CategorySettingsDialog } from '../dialogs/CategorySettingsDialog'
-// import { TravelCategorySettingsDialog } from "./dialogs/TravelCategorySettingsDialog" // Próximamente
+import { SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar'
+import { NewTripDialog } from '../dialogs/NewTripDialog'
 
 interface TravelModuleMenuProps {
   context: TravelContext;
   templates: TravelMileageTemplate[];
   categories: TravelCategory[];
+  mode: 'operative' | 'settings'; // ✨ Añadido para el Sidebar
 }
 
-export function TravelModuleMenu({ context, templates, categories }: TravelModuleMenuProps) {
+export function TravelModuleMenu({ context, templates, categories, mode, employers }: TravelModuleMenuProps & { employers: any[] }) {
   const router = useRouter()
   const isPersonal = context === 'personal'
 
+  // --- RENDERIZADO OPERATIVO (Cuerpo del Sidebar) ---
+  if (mode === 'operative') {
+    return (
+      <>
+      <SidebarMenuItem>
+          <NewTripDialog employers={employers} context={context}>
+            <SidebarMenuButton 
+              size="lg" 
+              className={`text-white hover:text-white mt-4 ${
+                isPersonal ? "bg-green-600 hover:bg-green-700 shadow-green-100" : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100"
+              } shadow-lg`}
+            >
+              {isPersonal ? <TreePalm className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+              <span className="font-bold">{isPersonal ? "Nueva Escapada" : "Nuevo Viaje"}</span>
+            </SidebarMenuButton>
+          </NewTripDialog>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton 
+            onClick={() => router.push(`/travel/${context}/archive`)} 
+            tooltip="Histórico de Viajes"
+          >
+            <History className="h-4 w-4 text-slate-500" />
+            <span>Histórico de Viajes</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </>
+    )
+  }
+
+  // --- RENDERIZADO DE CONFIGURACIÓN (Pie del Sidebar) ---
   return (
     <>
-      {/* 1. Recorridos Fijos */}
-      <MileageSettingsDialog initialTemplates={templates}>
-        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer">
-          <Gauge className="mr-2 h-4 w-4 text-slate-400" />
-          <span>Recorridos Fijos</span>
-        </DropdownMenuItem>
-      </MileageSettingsDialog>
+      <SidebarMenuItem>
+        <MileageSettingsDialog initialTemplates={templates}>
+          <SidebarMenuButton tooltip="Recorridos Fijos">
+            <Gauge className="h-4 w-4 text-slate-500" />
+            <span>Recorridos Fijos</span>
+          </SidebarMenuButton>
+        </MileageSettingsDialog>
+      </SidebarMenuItem>
 
-      {/* 2. Categorías (Aquí envolveremos con el Dialog cuando lo creemos) */}
-      <CategorySettingsDialog 
-          initialCategories={categories} // Deberás pasar esta prop desde la page.tsx
-          context={context}
-      >
-          <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer">
-              <Tag className="mr-2 h-4 w-4 text-slate-400" />
-              <span>Categorías de {isPersonal ? 'Viaje' : 'Gasto'}</span>
-          </DropdownMenuItem>
-      </CategorySettingsDialog>
-
-      {/* 3. Histórico (Nuevo acceso) */}
-      <DropdownMenuItem 
-        onClick={() => router.push(`/travel/${context}/archive`)} 
-        className="cursor-pointer"
-      >
-        <History className="mr-2 h-4 w-4 text-slate-400" />
-        <span>Histórico de Viajes</span>
-      </DropdownMenuItem>
-
-      <DropdownMenuSeparator />
+      <SidebarMenuItem>
+        <CategorySettingsDialog initialCategories={categories} context={context}>
+          <SidebarMenuButton tooltip={`Categorías de ${isPersonal ? 'Viaje' : 'Gasto'}`}>
+            <Tag className="h-4 w-4 text-slate-500" />
+            <span>Categorías de {isPersonal ? 'Viaje' : 'Gasto'}</span>
+          </SidebarMenuButton>
+        </CategorySettingsDialog>
+      </SidebarMenuItem>
     </>
   )
 }

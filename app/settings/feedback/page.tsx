@@ -1,56 +1,44 @@
 // app/settings/feedback/page.tsx (SERVER COMPONENT)
-
-// Eliminamos: 'use client'; 
-
-import { createClient } from '@/utils/supabase/server'; // OK en Server Component
 import { redirect } from 'next/navigation';
 import { getFeedbackProposals } from '@/app/core/actions'; 
-import { UserMenuProps } from '@/types/common';
-import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
+import { getUserData } from '@/utils/security'; // Usando el nuevo nombre getUserData
+import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar';
 import { SettingsMenu } from '../components/SettingsMenu';
 import { FeedbackTableView } from '../components/FeedbackTableView';
+
 export default async function FeedbackAdminPage() {
-		const supabase = await createClient();
-		const { data: { user } } = await supabase.auth.getUser();
+    // 1. Obtenemos perfil, módulos y rol mediante la utilidad unificada
+    const { profile, accessibleModules, userRole } = await getUserData();
 
-		if (!user) redirect('/login');
-		
-		// Protección de Rol (Lógica Server-Side)
-		const { data: profile } = await supabase
-				.from('profiles')
-				.select('role')
-				.eq('id', user.id)
-				.single();
-				
-		const userRole = profile?.role || 'user';
-		if (userRole !== 'admin') {
-				redirect('/'); // Redirigir si no es admin
-		}
+    // 2. Protección de Rol: Solo administradores
+    if (userRole !== 'admin') {
+        redirect('/'); 
+    }
 
-		// Fetching de Datos (SERVER-SIDE)
-		const proposals = await getFeedbackProposals();
-		
-		const headerProps: UserMenuProps = {
-				userEmail: user.email || '',
-				userRole: userRole,
-		};
+    // 3. Fetching de Datos específicos del buzón
+    const proposals = await getFeedbackProposals();
 
-		return (
-				<div className="min-h-screen bg-slate-100 font-sans">
-						<UnifiedAppHeader
-								title="Gestión de Sugerencias"
-								backHref="/"
-								userEmail={headerProps.userEmail}
-								userRole={headerProps.userRole}
-								maxWClass='max-w-7xl'
-								moduleMenu={<SettingsMenu />}
-						/>
-						
-						{/* 2. RENDERIZAR EL CLIENT COMPONENT CON DATOS */}
-						<FeedbackTableView 
-							proposals={proposals}       // Mapeamos 'proposals' a 'feedbacks'
-							isAdmin={userRole === 'admin'} // Pasamos el booleano obligatorio
-						/>
-				</div>
-		);
+    return (
+        <UnifiedAppSidebar
+            title="Gestión de Sugerencias"
+            profile={profile}
+            modules={accessibleModules}
+            // Inyectamos el menú de configuración (mismo que Perfil y Usuarios)
+            moduleMenu={userRole === 'admin' ? <SettingsMenu /> : null}
+        >
+            {/* Contenedor ancho para la tabla de feedback */}
+            <div className="max-w-7xl mx-auto space-y-6">
+                <div className="space-y-1">
+                    <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Buzón de Sugerencias</h2>
+                    <p className="text-sm text-slate-500">Revisa y gestiona las ideas enviadas por los usuarios de Life-OS.</p>
+                </div>
+
+                {/* Tabla de Feedback (Client Component) */}
+                <FeedbackTableView 
+                    proposals={proposals} 
+                    isAdmin={true} 
+                />
+            </div>
+        </UnifiedAppSidebar>
+    );
 }

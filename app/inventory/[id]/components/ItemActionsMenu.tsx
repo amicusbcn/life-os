@@ -1,54 +1,63 @@
 // app/inventory/[id]/components/ItemActionsMenu.tsx
-// (Reutilizado como moduleMenu)
+'use client'
 
-import { Fragment } from 'react';
-import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { Edit, Trash2 } from 'lucide-react';
-import { ItemEditDialog } from './ItemEditDialog'; 
-import { deleteInventoryItem } from '../../actions';
-import { redirect } from 'next/navigation';
-import { ItemDeleteForm } from './ItemDeleteForm';
+import React from 'react';
+import { Wrench, History, Edit, Trash2, ChevronLeft } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
+import { NewMaintenanceDialog } from '../NewMaintenanceDialog';
+import { NewLoanDialog } from '../NewLoanDialog';
 
-interface ItemActionsMenuProps {
-    item: any;
-    categories: any[];
-    locations: any[];
-}
+export function ItemActionsMenu({ item, categories, locations, profiles, mode }: any) {
+  const router = useRouter();
 
-export async function ItemActionsMenu({ item, categories, locations }: ItemActionsMenuProps) {
-    
-    // Server Action para el borrado
-    const handleDeleteAction = async () => {
-        'use server'
-        const photoPath = item.photo_path || null;
-        await deleteInventoryItem(item.id, photoPath); 
-        redirect('/inventory');
-    };
-
+  if (mode === 'operative') {
     return (
-        <Fragment>
-            {/* 1. ÍTEM DE EDICIÓN: Componente Cliente en MODO WRAPPER */}
-            <ItemEditDialog 
-                item={item} 
-                categories={categories} 
-                locations={locations} 
-                isOpen={undefined} 
-                setOpen={undefined} 
-            >
-                {/* El DropdownMenuItem es el children que se clonará */}
-                <DropdownMenuItem className="cursor-pointer">
-                    <Edit className="mr-2 h-4 w-4" />
-                    <span>Editar Item</span>
-                </DropdownMenuItem>
-            </ItemEditDialog>
+      <SidebarMenu>
+        {/* VOLVER */}
+        <SidebarMenuItem>
+          <SidebarMenuButton onClick={() => router.push('/inventory')} className="text-slate-500 mb-2">
+            <ChevronLeft className="h-4 w-4" />
+            <span className="font-bold">Volver al Inventario</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
 
-            {/* 2. ÍTEM DE ELIMINAR (Server Action directa) */}
-            <ItemDeleteForm 
-                handleDeleteAction={handleDeleteAction} // Pasamos la Server Action como prop
-                itemName={item.name}
-            />
-            {/* 3. SEPARADOR */}
-            <DropdownMenuSeparator />
-        </Fragment>
+        {/* ACCIONES PRINCIPALES */}
+        <SidebarMenuItem>
+          <NewMaintenanceDialog itemId={item.id} profiles={profiles}>
+            <SidebarMenuButton size="lg" className="bg-indigo-600 text-white hover:bg-indigo-700 hover:text-white shadow-md mb-2">
+              <Wrench className="h-4 w-4" />
+              <span className="font-bold">Registrar Mantenimiento</span>
+            </SidebarMenuButton>
+          </NewMaintenanceDialog>
+        </SidebarMenuItem>
+
+        <SidebarMenuItem>
+          <NewLoanDialog itemId={item.id}>
+            <SidebarMenuButton size="lg" className="bg-orange-500 text-white hover:bg-orange-600 hover:text-white shadow-md">
+              <History className="h-4 w-4" />
+              <span className="font-bold">Nuevo Préstamo</span>
+            </SidebarMenuButton>
+          </NewLoanDialog>
+        </SidebarMenuItem>
+      </SidebarMenu>
     );
+  }
+
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton className="text-slate-600">
+          <Edit className="h-4 w-4" />
+          <span>Editar Ítem</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      <SidebarMenuItem>
+        <SidebarMenuButton className="text-red-500 hover:text-red-600 hover:bg-red-50">
+          <Trash2 className="h-4 w-4" />
+          <span>Eliminar Ítem</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
 }

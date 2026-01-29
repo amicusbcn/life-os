@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/utils/supabase/server';
-import { BookingEvent, BookingProperty, BookingPropertyMember } from '@/types/booking';
+import { BookingEvent, BookingProfile, BookingProperty, BookingPropertyMember } from '@/types/booking';
 import { startOfMonth, endOfMonth } from 'date-fns';
 
 export async function getBookingProperties() {
@@ -149,4 +149,38 @@ export async function getExistingBlocks(propertyId: string, startDate: Date) {
   ];
 
   return blocks;
+}
+
+export async function getAllBookingProfiles() {
+  const supabase = await createClient();
+  
+  const { data, error } = await supabase
+    .from('booking_profiles')
+    .select(`
+      *,
+      booking_property_members (
+        property:booking_properties (id, name, color)
+      )
+    `)
+    .eq('is_active', true);
+
+  if (error || !data) {
+    console.error("Error fetching booking profiles:", error);
+    return [];
+  }
+
+  // Ordenamos por display_name para consistencia en la UI
+  return (data as BookingProfile[]).sort((a, b) => 
+    (a.display_name || '').localeCompare(b.display_name || '', undefined, { sensitivity: 'base' })
+  );
+}
+export async function getHolidays(){
+  const supabase = await createClient();
+  const { data, error } = await supabase.from('booking_holidays').select('*').order('date')
+  if (error || !data) {
+    console.error("Error fetching holidays:", error);
+    return [];
+  }
+  return data;
+
 }

@@ -1,28 +1,54 @@
-// app/inventory/components/InventoryMenu.tsx (SERVER COMPONENT)
+// app/inventory/components/InventoryMenu.tsx
+'use client'
 
-import { Fragment } from 'react';
-import { Settings } from 'lucide-react';
-import { DropdownMenuItem,DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import React from 'react';
+import { Settings, PackagePlus } from 'lucide-react';
 import { InventorySettingsDialog } from './InventorySettingsDialog'; 
 import { InventoryMenuProps } from '@/types/inventory'; 
+import { 
+    SidebarMenuItem, 
+    SidebarMenuButton,
+    SidebarMenu
+} from '@/components/ui/sidebar';
 
-export async function InventoryMenu({ categories, locations }: InventoryMenuProps) {
+// Añadimos la prop mode para el slotting
+interface EnhancedInventoryMenuProps extends InventoryMenuProps {
+    mode: 'operative' | 'settings';
+}
+
+export function InventoryMenu({ categories, locations, mode }: EnhancedInventoryMenuProps) {
+    
+    // --- RENDERIZADO OPERATIVO (Cuerpo del Sidebar) ---
+    if (mode === 'operative') {
+        return (
+            <SidebarMenu>
+                {/* Aquí podrías añadir en el futuro una acción rápida como "Escanear QR" 
+                    o "Añadir Ítem Rápido" si decides sacarlo de la vista principal.
+                */}
+                <SidebarMenuItem>
+                    <SidebarMenuButton tooltip="Añadir nuevo ítem" className="text-slate-600">
+                        <PackagePlus className="h-4 w-4" />
+                        <span>Añadir Ítem</span>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        );
+    }
+
+    // --- RENDERIZADO DE CONFIGURACIÓN (Pie del Sidebar) ---
     return (
-        <Fragment>
-            {/* 1. ÍTEM: Opción de configuración (ENVUELVE EL DIÁLOGO) */}
-            <InventorySettingsDialog 
-                categories={categories} 
-                locations={locations} 
-            >
-                {/* 🚨 Este es el JSX que se clonará y se inyectará como TRIGGER */}
-                <DropdownMenuItem className="cursor-pointer">
-                    <Settings className="mr-2 h-4 w-4" /> {/* Asumo que Settings viene de lucide-react */}
-                    <span>Configurar Inventario</span>
-                </DropdownMenuItem>
-            </InventorySettingsDialog>
-            
-            {/* 2. SEPARADOR: Para aislar de los ítems CORE (Logout, etc.) */}
-            <DropdownMenuSeparator />
-        </Fragment>
+        <SidebarMenu>
+            <SidebarMenuItem>
+                <InventorySettingsDialog 
+                    categories={categories} 
+                    locations={locations} 
+                >
+                    <SidebarMenuButton tooltip="Configurar Inventario">
+                        <Settings className="h-4 w-4 text-slate-500" />
+                        <span>Configurar Inventario</span>
+                    </SidebarMenuButton>
+                </InventorySettingsDialog>
+            </SidebarMenuItem>
+        </SidebarMenu>
     );
 }

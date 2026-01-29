@@ -1,23 +1,17 @@
 // app/travel/[context]/[id]/page.tsx
 
-import { 
-  getTripDetails, 
-  getTripExpenses, 
-  getTravelCategories, 
-  getMileageTemplates 
-} from '@/app/travel/data'
+import { getTripDetails, getTripExpenses, getTravelCategories, getMileageTemplates} from '@/app/travel/data'
 import { NewExpenseDialog } from '@/app/travel/components/dialogs/NewExpenseDialog'
 import { EditExpenseDialog } from '@/app/travel/components/dialogs/EditExpenseDialog'
 import { QuickReceiptUpload } from '@/app/travel/components/ui/QuickReceiptUpload'
-import { TripStatusSelector } from '@/app/travel/components/ui/TripStatusSelector'
-import { toggleReceiptWaived, togglePersonalAccounting } from '@/app/travel/actions'
-import Link from 'next/link'
-import { ArrowLeft, MapPin, Calendar, Paperclip, AlertCircle, Ban, Wallet, CheckCircle2,Lock } from 'lucide-react'
+import { toggleReceiptWaived } from '@/app/travel/actions'
+import { MapPin, Calendar, Paperclip, AlertCircle, Ban, Wallet, CheckCircle2,Lock } from 'lucide-react'
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { redirect, notFound } from 'next/navigation'
-import { TravelExpense, TripDetailData, TravelContext } from '@/types/travel'
-import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader'
+import { TravelExpense, TravelContext } from '@/types/travel'
+import { getUserData } from '@/utils/security'
+import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar'
 import { TripMenu } from '../..//components/ui/TripMenu'
 import { getTripState } from '@/utils/trip-logic'
 import { createClient } from '@/utils/supabase/server'
@@ -32,10 +26,12 @@ export default async function TripDetailPage({ params }: PageProps) {
   if (context !== 'work' && context !== 'personal') notFound();
   const travelContext = context as TravelContext;
   
-  // 1. Obtención de datos mediante las nuevas funciones de data.ts
+  // 1. Seguridad Centralizada
+  const { profile, accessibleModules } = await getUserData('travel');
+
+  // 2. Obtención de datos
   const trip = await getTripDetails(id, travelContext);
   if (!trip) redirect(`/travel/${travelContext}`);
-  const tripId = id; // Esto soluciona los errores "Cannot find name 'tripId'"
 
   const [categories, expenses, mileageTemplates] = await Promise.all([
     getTravelCategories(travelContext),
@@ -43,97 +39,84 @@ export default async function TripDetailPage({ params }: PageProps) {
     getMileageTemplates()
   ]);
 
-  // 2. Lógica de Negocio y Totales
-  // --- AÑADE ESTO (Lógica de Negocio y Totales) ---
+  // 3. Lógica de Totales y Estados
   const totalAmount = expenses.reduce((sum, item) => sum + (item.amount || 0), 0)
-  const travelState = getTripState(trip) // Usamos la lógica de trip-logic
-  
-  const isPersonal = travelContext === 'personal'
-  const isClosed = trip.status === 'closed'
-  const isLocked = trip.status === 'closed' || trip.status === 'reported' || trip.status === 'archived'
-
-  const pendingTicketsCount = expenses.filter(e => 
-    !e.receipt_url && !e.receipt_waived && !e.is_mileage
-  ).length;
-
+  const pendingTicketsCount = expenses.filter(e => !e.receipt_url && !e.receipt_waived && !e.is_mileage).length;
   const hasPendingReceipts = pendingTicketsCount > 0;
-  // ------------------------------------------------
   const { label, color } = getTripState(trip);
-
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  // AGRUPACIÓN POR FECHA (Safe para compilación)
+  const isLocked = trip.status === 'closed' || trip.status === 'reported' || trip.status === 'archived'
+  const isPersonal = context==="personal"
+  // Agrupación por fecha
   const groupedExpenses = expenses.reduce<Record<string, TravelExpense[]>>((acc, expense) => {
     const dateKey = expense.date 
     if (!acc[dateKey]) acc[dateKey] = []
     acc[dateKey].push(expense)
     return acc
   }, {})
-
   const sortedDates = Object.keys(groupedExpenses).sort((a, b) => b.localeCompare(a))
-  console.log("DEBUG TICKETS:", expenses.map(e => ({
-  desc: e.concept,
-  url: !!e.receipt_url,
-  waived: e.receipt_waived,
-  is_mileage: e.is_mileage,
-  is_pending: !e.receipt_url && !e.receipt_waived && !e.is_mileage
-})));
-  return (
-    <div className="min-h-screen bg-slate-100 pb-24 font-sans">
-      
-      {/* HEADER  */}
-      <UnifiedAppHeader
-          title={trip.name}
-          backHref={`/travel/${travelContext}`}
-          userEmail={user?.email || ''}
-          userRole={"user"}
-          maxWClass='max-w-3xl'
-          moduleMenu={
-              <TripMenu 
-                  trip={trip} 
-                  categories={categories} // Ya los tienes por el Promise.all
-                  hasPendingReceipts={hasPendingReceipts}
-                  pendingTicketsCount={pendingTicketsCount}
-              />
-          } 
-      />
-      
-        <div className="max-w-3xl mx-auto p-3 space-y-4">
-          {/* RESUMEN DE CABECERA */}
-          {/* Añadimos "relative" al contenedor padre para que el badge se posicione respecto a él */}
-          <div className="relative bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            
-            {/* BADGE POSICIONADO A LA DERECHA */}
-            <div className="absolute top-3 right-4">
-              <span className={`px-2 py-0.5 rounded-full text-[12px] font-black uppercase tracking-widest border shadow-sm ${color}`}>
-                {label}
-              </span>
-            </div>
 
-            {/* El resto de tu contenido se mantiene igual */}
-            <div className="px-4 py-3 space-y-2 pt-5"> {/* He añadido un poco de pt-5 para dar espacio si el badge es muy grande */}
-              <div className="flex flex-col gap-1.5 text-xs text-slate-600">
-                {!isPersonal && (
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-3.5 w-3.5 text-indigo-500" />
-                      <span className="font-medium text-slate-900">{trip.travel_employers?.name ?? 'Sin Empresa'}</span>
-                    </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-3.5 w-3.5 text-orange-500" />
-                  <span>
-                    {trip.start_date ? new Date(trip.start_date).toLocaleDateString('es-ES') : '---'} - {trip.end_date ? new Date(trip.end_date).toLocaleDateString('es-ES') : '---'}
-                  </span>
-                </div>
+  return (
+    <UnifiedAppSidebar
+      title={trip.name}
+      profile={profile}
+      modules={accessibleModules}
+      backLink={["/travel/"+travelContext,"Volver a la lista"]}      
+      moduleMenu={
+        <TripMenu 
+          mode="operative"
+          trip={trip}
+          categories={categories}
+          mileageTemplates={mileageTemplates}
+          hasPendingReceipts={hasPendingReceipts}
+          pendingTicketsCount={pendingTicketsCount}
+        />
+      }
+      // El pie de ajustes también se resuelve con el mismo componente
+      moduleSettings={
+        <TripMenu 
+          mode="settings"
+          trip={trip} 
+          categories={categories}
+          hasPendingReceipts={hasPendingReceipts}
+          pendingTicketsCount={pendingTicketsCount}
+        />
+      }
+    >
+      <div className="max-w-3xl mx-auto p-3 space-y-4">
+        {/* RESUMEN DE CABECERA */}
+        {/* Añadimos "relative" al contenedor padre para que el badge se posicione respecto a él */}
+        <div className="relative bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          
+          {/* BADGE POSICIONADO A LA DERECHA */}
+          <div className="absolute top-3 right-4">
+            <span className={`px-2 py-0.5 rounded-full text-[12px] font-black uppercase tracking-widest border shadow-sm ${color}`}>
+              {label}
+            </span>
+          </div>
+
+          {/* El resto de tu contenido se mantiene igual */}
+          <div className="px-4 py-3 space-y-2 pt-5"> {/* He añadido un poco de pt-5 para dar espacio si el badge es muy grande */}
+            <div className="flex flex-col gap-1.5 text-xs text-slate-600">
+              {!isPersonal && (
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-3.5 w-3.5 text-indigo-500" />
+                    <span className="font-medium text-slate-900">{trip.travel_employers?.name ?? 'Sin Empresa'}</span>
+                  </div>
+              )}
+              <div className="flex items-center gap-2">
+                <Calendar className="h-3.5 w-3.5 text-orange-500" />
+                <span>
+                  {trip.start_date ? new Date(trip.start_date).toLocaleDateString('es-ES') : '---'} - {trip.end_date ? new Date(trip.end_date).toLocaleDateString('es-ES') : '---'}
+                </span>
               </div>
             </div>
-            
-            <div className="bg-slate-50 border-t border-slate-100 px-4 py-2 flex justify-between items-center">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gasto Total</span>
-              <span className="text-xl font-black text-slate-800">{totalAmount.toFixed(2)} €</span>
-            </div>
           </div>
+          
+          <div className="bg-slate-50 border-t border-slate-100 px-4 py-2 flex justify-between items-center">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gasto Total</span>
+            <span className="text-xl font-black text-slate-800">{totalAmount.toFixed(2)} €</span>
+          </div>
+        </div>
 
         {/* LISTADO DE GASTOS */}
         <div className="space-y-6">
@@ -219,13 +202,13 @@ export default async function TripDetailPage({ params }: PageProps) {
                                         ) : (
                                             /* CASO C: Viaje ABIERTO y sin ticket (Permitimos acciones) */
                                             <>
-                                                <QuickReceiptUpload expenseId={expense.id} tripId={tripId} />
+                                                <QuickReceiptUpload expenseId={expense.id} tripId={id} />
                                                 
                                                 <form>
                                                     <Button 
                                                         formAction={async () => {
                                                             'use server'
-                                                            await toggleReceiptWaived(expense.id, tripId, expense.receipt_waived)
+                                                            await toggleReceiptWaived(expense.id, id, expense.receipt_waived)
                                                         }}
                                                         variant="ghost" 
                                                         size="sm" 
@@ -268,20 +251,6 @@ export default async function TripDetailPage({ params }: PageProps) {
           ))}
         </div>
       </div>
-
-      {/* FOOTER ACCIÓN */}
-      {!isClosed && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-200 z-20">
-            <div className="max-w-3xl mx-auto">
-              <NewExpenseDialog 
-                tripId={tripId} 
-                categories={categories || []} 
-                templates={mileageTemplates} 
-                context={travelContext} 
-              />
-            </div>
-        </div>
-      )}
-    </div>
+    </UnifiedAppSidebar>
   )
 }

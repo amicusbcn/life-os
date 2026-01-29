@@ -1,3 +1,4 @@
+// app/inventory/[id]/components/NewMaintenanceDialog.tsx
 'use client'
 
 import { useState } from "react"
@@ -14,9 +15,16 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Wrench, Loader2, Calendar, User, Euro } from "lucide-react"
+import { Wrench, Loader2, User, Euro } from "lucide-react"
+import { toast } from "sonner"
 
-export function NewMaintenanceDialog({ itemId, profiles }: { itemId: string, profiles: any[] }) {
+interface Props {
+  itemId: string;
+  profiles: any[];
+  children?: React.ReactNode; // ✨ Slot para el Sidebar
+}
+
+export function NewMaintenanceDialog({ itemId, profiles, children }: Props) {
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -25,18 +33,18 @@ export function NewMaintenanceDialog({ itemId, profiles }: { itemId: string, pro
     setIsLoading(true)
     const formData = new FormData(event.currentTarget)
     
-    // Aseguramos que el ID se envía
     if (!formData.get('item_id')) formData.append('item_id', itemId)
 
     try {
       const result = await createMaintenanceTask(formData)
       if (result?.error) {
-         alert("Error: " + result.error)
+        toast.error("Error: " + result.error)
       } else {
-         setOpen(false)
+        toast.success("Mantenimiento registrado")
+        setOpen(false)
       }
     } catch (error) {
-      alert("Error al guardar")
+      toast.error("Error al guardar")
     } finally {
       setIsLoading(false)
     }
@@ -47,31 +55,28 @@ export function NewMaintenanceDialog({ itemId, profiles }: { itemId: string, pro
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {/* Botón oscuro y ancho para la barra inferior */}
-        <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-sm gap-2">
-          <Wrench className="h-4 w-4" /> 
-          <span>Mantenimiento</span>
-        </Button>
+        {/* ✨ Si hay children (Sidebar), lo usamos. Si no, el botón original */}
+        {children || (
+          <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-sm gap-2">
+            <Wrench className="h-4 w-4" /> 
+            <span>Mantenimiento</span>
+          </Button>
+        )}
       </DialogTrigger>
       
       <DialogContent className="max-w-md rounded-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Registrar Tarea</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Wrench className="h-5 w-5 text-indigo-600" />
+            Registrar Tarea de Mantenimiento
+          </DialogTitle>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
-           
-           {/* 1. TÍTULO Y FECHA */}
            <div className="grid grid-cols-3 gap-4">
              <div className="col-span-2 space-y-2">
                 <Label htmlFor="desc">Título / Acción *</Label>
-                <Input 
-                  id="desc" 
-                  name="description" 
-                  placeholder="Ej: Revisión anual..." 
-                  required 
-                  autoFocus 
-                />
+                <Input id="desc" name="description" placeholder="Ej: Revisión anual..." required autoFocus />
              </div>
              <div className="col-span-1 space-y-2">
                 <Label htmlFor="date">Fecha</Label>
@@ -79,43 +84,20 @@ export function NewMaintenanceDialog({ itemId, profiles }: { itemId: string, pro
              </div>
            </div>
 
-           {/* 2. DETALLE / NOTAS (NUEVO CAMPO) */}
            <div className="space-y-2">
               <Label htmlFor="notes">Detalles (Opcional)</Label>
-              <Textarea 
-                id="notes" 
-                name="notes" 
-                placeholder="Explica qué se hizo, materiales usados..." 
-                className="resize-none min-h-[80px]"
-              />
+              <Textarea id="notes" name="notes" placeholder="Explica qué se hizo..." className="resize-none min-h-[80px]" />
            </div>
 
-           {/* 3. COSTE Y RESPONSABLE (NUEVO CAMPO COSTE) */}
            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                 <Label htmlFor="cost" className="flex items-center gap-1">
-                    <Euro className="h-3.5 w-3.5" /> Coste (€)
-                 </Label>
-                 <Input 
-                    type="number" 
-                    id="cost" 
-                    name="cost" 
-                    placeholder="0.00" 
-                    step="0.01" 
-                    min="0"
-                 />
+                 <Label htmlFor="cost" className="flex items-center gap-1"><Euro className="h-3.5 w-3.5" /> Coste (€)</Label>
+                 <Input type="number" id="cost" name="cost" placeholder="0.00" step="0.01" min="0" />
               </div>
 
               <div className="space-y-2">
-                 <Label htmlFor="user" className="flex items-center gap-1">
-                    <User className="h-3.5 w-3.5" /> Responsable
-                 </Label>
-                 <select 
-                   id="user" 
-                   name="responsible_user_id" 
-                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                   defaultValue="no-user"
-                 >
+                 <Label htmlFor="user" className="flex items-center gap-1"><User className="h-3.5 w-3.5" /> Responsable</Label>
+                 <select id="user" name="responsible_user_id" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" defaultValue="no-user">
                    <option value="no-user">-- Nadie --</option>
                    {profiles.map((p) => (
                      <option key={p.id} value={p.id}>{p.full_name || 'Sin nombre'}</option>
@@ -124,31 +106,22 @@ export function NewMaintenanceDialog({ itemId, profiles }: { itemId: string, pro
               </div>
            </div>
 
-           {/* 4. PERIODICIDAD */}
            <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
-              <Label htmlFor="period" className="text-xs text-slate-500 uppercase font-bold">Recordatorio (Opcional)</Label>
+              <Label htmlFor="period" className="text-xs text-slate-500 uppercase font-bold tracking-wider">Recordatorio</Label>
               <div className="flex items-center gap-2">
                  <span className="text-sm text-slate-600">Repetir cada</span>
-                 <Input 
-                    type="number" 
-                    id="period" 
-                    name="periodicity_days" 
-                    placeholder="365" 
-                    className="w-20 bg-white" 
-                 />
+                 <Input type="number" id="period" name="periodicity_days" placeholder="365" className="w-20 bg-white" />
                  <span className="text-sm text-slate-600">días</span>
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">Deja vacío si es una reparación puntual.</p>
            </div>
 
            <DialogFooter className="pt-2 gap-2">
              <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-             <Button type="submit" disabled={isLoading} className="bg-slate-900 text-white">
+             <Button type="submit" disabled={isLoading} className="bg-indigo-600 text-white hover:bg-indigo-700">
                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                Guardar Tarea
              </Button>
            </DialogFooter>
-
         </form>
       </DialogContent>
     </Dialog>

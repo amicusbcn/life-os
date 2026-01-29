@@ -1,3 +1,4 @@
+// app/inventory/[id]/components/NewLoanDialog.tsx
 'use client'
 
 import { useState } from "react"
@@ -14,9 +15,15 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Handshake, Loader2, Calendar, User } from "lucide-react" // Cambiamos History por Handshake
+import { Handshake, Loader2, Calendar, User } from "lucide-react"
+import { toast } from "sonner"
 
-export function NewLoanDialog({ itemId }: { itemId: string }) {
+interface Props {
+  itemId: string;
+  children?: React.ReactNode; // ✨ Slot para el Sidebar
+}
+
+export function NewLoanDialog({ itemId, children }: Props) {
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -25,7 +32,6 @@ export function NewLoanDialog({ itemId }: { itemId: string }) {
     setIsLoading(true)
     const formData = new FormData(event.currentTarget)
     
-    // Aseguramos que el ID va en el formData (aunque usamos input hidden, esto es doble seguridad)
     if (!formData.get('item_id')) {
         formData.append('item_id', itemId)
     }
@@ -33,12 +39,13 @@ export function NewLoanDialog({ itemId }: { itemId: string }) {
     try {
       const result = await createInventoryLoan(formData)
       if (result?.error) {
-         alert("Error: " + result.error)
+          toast.error("Error: " + result.error)
       } else {
-         setOpen(false)
+          toast.success("Préstamo registrado correctamente")
+          setOpen(false)
       }
     } catch (error) {
-      alert("Error al guardar")
+      toast.error("Error al guardar")
     } finally {
       setIsLoading(false)
     }
@@ -49,24 +56,28 @@ export function NewLoanDialog({ itemId }: { itemId: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {/* CAMBIO CLAVE: Botón ancho y Naranja para la barra inferior */}
-        <Button className="w-full bg-orange-600 hover:bg-orange-700 text-white shadow-sm gap-2">
-           <Handshake className="h-4 w-4" />
-           <span>Prestar</span>
-        </Button>
+        {/* ✨ Lógica de disparador flexible */}
+        {children || (
+          <Button className="w-full bg-orange-600 hover:bg-orange-700 text-white shadow-sm gap-2 font-bold">
+             <Handshake className="h-4 w-4" />
+             <span>Prestar</span>
+          </Button>
+        )}
       </DialogTrigger>
       
       <DialogContent className="max-w-sm rounded-xl">
         <DialogHeader>
-          <DialogTitle>Registrar Préstamo</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Handshake className="h-5 w-5 text-orange-600" />
+            Registrar Préstamo
+          </DialogTitle>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
-           {/* Mantenemos tu input hidden, es una técnica sólida */}
            <input type="hidden" name="item_id" value={itemId} />
 
            <div className="space-y-2">
-              <Label htmlFor="borrower" className="flex items-center gap-2 text-slate-600">
+              <Label htmlFor="borrower" className="flex items-center gap-2 text-slate-600 font-medium">
                  <User className="h-3.5 w-3.5" /> ¿A quién se lo prestas?
               </Label>
               <Input 
@@ -79,7 +90,7 @@ export function NewLoanDialog({ itemId }: { itemId: string }) {
            </div>
 
            <div className="space-y-2">
-              <Label htmlFor="date" className="flex items-center gap-2 text-slate-600">
+              <Label htmlFor="date" className="flex items-center gap-2 text-slate-600 font-medium">
                  <Calendar className="h-3.5 w-3.5" /> Fecha de préstamo
               </Label>
               <Input 
@@ -92,12 +103,12 @@ export function NewLoanDialog({ itemId }: { itemId: string }) {
            </div>
 
            <div className="space-y-2">
-              <Label htmlFor="notes" className="text-slate-600">Notas (Opcional)</Label>
+              <Label htmlFor="notes" className="text-slate-600 font-medium">Notas (Opcional)</Label>
               <Textarea 
                 id="notes" 
                 name="notes" 
-                placeholder="Condiciones, fecha de devolución estimada..." 
-                className="resize-none"
+                placeholder="Condiciones o fecha estimada de devolución..." 
+                className="resize-none h-24"
               />
            </div>
 
@@ -105,7 +116,7 @@ export function NewLoanDialog({ itemId }: { itemId: string }) {
              <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
                 Cancelar
              </Button>
-             <Button type="submit" disabled={isLoading} className="bg-orange-600 hover:bg-orange-700 text-white">
+             <Button type="submit" disabled={isLoading} className="bg-orange-600 hover:bg-orange-700 text-white font-bold">
                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                Confirmar Préstamo
              </Button>

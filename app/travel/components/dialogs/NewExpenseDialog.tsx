@@ -24,7 +24,8 @@ interface NewExpenseDialogProps {
   categories: TravelCategory[];
   templates: TravelMileageTemplate[];
   context: TravelContext;
-  accounts?: any[]; // La incluimos aquí directamente
+  accounts?: any[]; 
+  children?:React.ReactNode
 }
 
 // Nota: He añadido 'accounts' a las props para la integración con Finanzas
@@ -33,8 +34,9 @@ export function NewExpenseDialog({
     categories, 
     templates, 
     context,
-    accounts = [] // Pasaremos esto desde la page.tsx
-}: NewExpenseDialogProps & { accounts?: any[] }) {
+    accounts = [],
+    children
+}: NewExpenseDialogProps ) {
     const [open, setOpen] = useState(false)
     const [isMileage, setIsMileage] = useState(false)
     const [currentRate, setCurrentRate] = useState(0)
@@ -116,9 +118,11 @@ export function NewExpenseDialog({
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button className={`w-full gap-2 shadow-lg ${isPersonal ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                    <Plus className="h-5 w-5" /> Añadir Gasto {isPersonal ? 'Personal' : ''}
+                {children || (
+                <Button className="w-full h-11 font-bold gap-2 shadow-lg bg-indigo-600">
+                    <Plus className="h-5 w-5" /> Añadir Gasto
                 </Button>
+                )}
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px] overflow-y-auto max-h-[90vh]">
                 <DialogHeader>

@@ -1,26 +1,22 @@
 /**
  * 🍳 VISTA DETALLADA DE RECETA
- * Muestra la información completa de una receta: tiempos, ingredientes, pasos.
- * Permite navegar a la edición o eliminar la receta.
- * * - Server Component: Sí
- * - Data Fetching: Paralelo (Receta + Ingredientes + Categorías)
  */
 
-import { createClient } from '@/utils/supabase/server';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Trash2, Edit, Utensils, Clock, User, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader';
-import { getAllCategories, getRecipeIngredients } from '../../data'; 
+import { getAllCategories, getRecipeIngredients, getRecipeById } from '../../data'; 
 import { MenuRecipeFullData } from '@/types/recipes'; 
 import { deleteRecipe } from '../../actions'; 
 import { RecipesMenu } from '../../components/RecipesMenu';
+import { getUserData } from '@/utils/security';
+import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar';
 
 interface RecipeViewPageProps { 
-    params: { slug: string; id: string } 
+    params: Promise<{ slug: string; id: string }> 
 }
 
 export default async function RecipeViewPage({ params }: RecipeViewPageProps) {
@@ -28,71 +24,62 @@ export default async function RecipeViewPage({ params }: RecipeViewPageProps) {
     
     if (!id || id === 'undefined') notFound();
     
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) redirect('/login'); 
+    // 1. Seguridad centralizada
+    const { profile, accessibleModules } = await getUserData('recipes');
 
-    // Obtener perfil para rol (Header)
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-    const userRole = profile?.role || 'user';
-
-    // Carga paralela de datos
-    const [
-        { data: recipeData, error: recipeError },
-        ingredients,
-        categories,
-    ] = await Promise.all([
-        supabase.from('menu_recipes').select('*').eq('id', id).single(),
+    // 2. Carga paralela de datos (Usando data.ts para consistencia)
+    const [recipeData, ingredients, categories] = await Promise.all([
+        getRecipeById(id),
         getRecipeIngredients(id),
         getAllCategories(), 
     ]);
     
-    if (recipeError || !recipeData) {
-        if (recipeError) console.error("Error cargando receta:", recipeError.message);
-        notFound();
-    }
+    if (!recipeData) notFound();
 
-    // Sanitización de datos
-    const rawLabels = Array.isArray(recipeData.labels) ? recipeData.labels as string[] : [];
-    const sanitizedLabels = rawLabels.map(l => l.trim()).filter(Boolean);
-
+    // 3. Sanitización y preparación de objeto completo
     const recipe: MenuRecipeFullData = { 
         ...recipeData, 
         ingredients: ingredients || [],
-        labels: sanitizedLabels,
+        labels: Array.isArray(recipeData.labels) 
+            ? (recipeData.labels as string[]).map(l => l.trim()).filter(Boolean) 
+            : [],
     };
     
     const category = categories?.find(c => c.id === recipe.category_id);
     const totalTime = (recipe.prep_time_min || 0) + (recipe.cook_time_min || 0);
 
-    const backToCategoryHref = `/recipes/${slug}`;
-    const editHref = `/recipes/${slug}/${id}/edit`;
-
     return (
-        <div className="min-h-screen bg-slate-50 font-sans pb-10">
-            <UnifiedAppHeader
-                title="Mi Libro de Recetas"
-                backHref={backToCategoryHref}
-                userEmail={user.email || ''} 
-                userRole={userRole}
-                moduleMenu={<RecipesMenu categories={categories} />}
-            />
-
-            <main className="max-w-4xl mx-auto p-4 space-y-6">
+        <UnifiedAppSidebar
+            title={recipe.name}
+            profile={profile}
+            modules={accessibleModules}
+            // Prop corregida para navegación unificada
+            backLink={`/recipes/${slug}`}
+            moduleMenu={<RecipesMenu mode="operative" categories={categories} />}
+            moduleSettings={<RecipesMenu mode="settings" categories={categories} />}
+        >
+            <main className="max-w-4xl mx-auto space-y-6">
                 
-                {/* Cabecera y Acciones */}
-                <header className="flex justify-between items-start pt-2">
-                    <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 break-words max-w-[80%]">
-                        {recipe.name}
-                    </h1>
+                {/* Cabecera y Acciones Rápidas */}
+                <header className="flex justify-between items-start">
+                    <div className="space-y-1">
+                        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+                            {recipe.name}
+                        </h1>
+                        {category && (
+                             <Badge variant="outline" className="text-indigo-600 border-indigo-100 bg-indigo-50/50">
+                                {category.name}
+                             </Badge>
+                        )}
+                    </div>
+                    
                     <div className="flex gap-2 shrink-0">
-                        <Link href={editHref}>
-                            <Button variant="outline" size="icon" title="Editar receta">
+                        <Button variant="outline" size="icon" asChild title="Editar receta">
+                            <Link href={`/recipes/${slug}/${id}/edit`}>
                                 <Edit className="w-5 h-5 text-indigo-600" />
-                            </Button>
-                        </Link>
+                            </Link>
+                        </Button>
                         
-                        {/* La acción deleteRecipe ahora acepta FormData, compatible con 'action' */}
                         <form action={deleteRecipe}>
                             <input type="hidden" name="id" value={recipe.id} />
                             <input type="hidden" name="categorySlug" value={slug} />
@@ -103,52 +90,48 @@ export default async function RecipeViewPage({ params }: RecipeViewPageProps) {
                     </div>
                 </header>
 
-                {/* Metadatos */}
-                <Card className="shadow-sm border-slate-200">
-                    <CardContent className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm text-slate-700">
-                        <div className="flex flex-col gap-1">
-                            <span className="font-semibold text-xs text-slate-500 uppercase">Tiempo Total</span>
-                            <span className="flex items-center gap-1.5 text-base font-medium">
+                {/* Grid de Metadatos */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <Card className="shadow-sm border-slate-200">
+                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                            <span className="font-semibold text-[10px] text-slate-500 uppercase tracking-wider mb-1">Tiempo</span>
+                            <div className="flex items-center gap-1.5 text-base font-bold text-slate-900">
                                 <Clock className="w-4 h-4 text-indigo-500" />
                                 {totalTime > 0 ? `${totalTime} min` : 'N/A'}
-                            </span>
-                        </div>
-                        
-                        <div className="flex flex-col gap-1">
-                            <span className="font-semibold text-xs text-slate-500 uppercase">Raciones</span>
-                            <span className="flex items-center gap-1.5 text-base font-medium">
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="shadow-sm border-slate-200">
+                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                            <span className="font-semibold text-[10px] text-slate-500 uppercase tracking-wider mb-1">Raciones</span>
+                            <div className="flex items-center gap-1.5 text-base font-bold text-slate-900">
                                 <User className="w-4 h-4 text-indigo-500" />
                                 {recipe.servings || 1}
-                            </span>
-                        </div>
-                        
-                        {category && (
-                            <div className="flex flex-col gap-1">
-                                <span className="font-semibold text-xs text-slate-500 uppercase">Categoría</span>
-                                <span className="flex items-center gap-1.5 text-base font-medium">
-                                    <Utensils className="w-4 h-4 text-indigo-500" />
-                                    {category.name}
-                                </span>
                             </div>
-                        )}
-                        
-                        {recipe.source_url && (
-                            <div className="flex flex-col gap-1">
-                                <span className="font-semibold text-xs text-slate-500 uppercase">Fuente</span>
-                                <a href={recipe.source_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-base font-medium hover:text-blue-600 transition-colors">
-                                    <ExternalLink className="w-4 h-4 text-blue-500" />
-                                    Ver URL
-                                </a>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
 
-                {/* Etiquetas: CORRECCIÓN DE TIPADO - Añadido ?.length y ?.map */}
-                {(recipe.labels?.length ?? 0) > 0 && (
-                    <div className="flex flex-wrap gap-2 pt-2">
-                        {recipe.labels?.map((label, index) => (
-                            <Badge key={index} variant="secondary" className="text-xs font-medium">
+                    <Card className="shadow-sm border-slate-200 col-span-2">
+                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                            <span className="font-semibold text-[10px] text-slate-500 uppercase tracking-wider mb-1">Fuente Original</span>
+                            {recipe.source_url ? (
+                                <a href={recipe.source_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm font-bold text-blue-600 hover:underline">
+                                    <ExternalLink className="w-4 h-4" />
+                                    Ver referencia externa
+                                </a>
+                            ) : (
+                                <span className="text-sm font-bold text-slate-400 italic font-serif">Receta propia</span>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Etiquetas */}
+                {recipe.labels && recipe.labels.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                        {recipe.labels.map((label, index) => (
+                            <Badge key={index} variant="secondary" className="px-3 py-0.5 text-xs">
                                 {label}
                             </Badge>
                         ))}
@@ -158,18 +141,20 @@ export default async function RecipeViewPage({ params }: RecipeViewPageProps) {
                 {/* Contenido Detallado */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <Card className="lg:col-span-1 shadow-sm border-slate-200">
-                        <CardHeader>
-                            <CardTitle className="text-xl">Ingredientes</CardTitle>
+                        <CardHeader className="pb-3 border-b border-slate-50">
+                            <CardTitle className="text-lg">Ingredientes</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <ul className="space-y-3 text-base">
+                        <CardContent className="pt-4">
+                            <ul className="space-y-4">
                                 {recipe.ingredients.map((ing, index) => (
-                                    <li key={index} className="border-b border-slate-100 pb-1.5 last:border-0">
-                                        <span className="font-semibold text-slate-900 mr-1.5">
+                                    <li key={index} className="flex items-start text-sm leading-snug">
+                                        <div className="min-w-[70px] font-bold text-indigo-600">
                                             {ing.quantity} {ing.unit}
-                                        </span>
-                                        {ing.name}
-                                        {ing.notes && <span className="text-sm text-slate-500 italic ml-2">({ing.notes})</span>}
+                                        </div>
+                                        <div className="text-slate-700">
+                                            {ing.name}
+                                            {ing.notes && <span className="block text-[11px] text-slate-400 italic">{ing.notes}</span>}
+                                        </div>
                                     </li>
                                 ))}
                             </ul>
@@ -177,15 +162,15 @@ export default async function RecipeViewPage({ params }: RecipeViewPageProps) {
                     </Card>
 
                     <Card className="lg:col-span-2 shadow-sm border-slate-200">
-                        <CardHeader>
-                            <CardTitle className="text-xl">Preparación</CardTitle>
+                        <CardHeader className="pb-3 border-b border-slate-50">
+                            <CardTitle className="text-lg">Preparación</CardTitle>
                         </CardHeader>
-                        <CardContent className="whitespace-pre-wrap text-slate-700 leading-relaxed">
-                            {recipe.description || 'No hay descripción de los pasos.'}
+                        <CardContent className="pt-4 whitespace-pre-wrap text-slate-700 leading-relaxed text-base">
+                            {recipe.description || 'No hay descripción de los pasos registrada.'}
                         </CardContent>
                     </Card>
                 </div>
             </main>
-        </div>
+        </UnifiedAppSidebar>
     );
 }

@@ -83,7 +83,7 @@ export function UserPermissionsSheet({ user, availableModules }: Props) {
         </Button>
       </SheetTrigger>
       
-      <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto p-6 bg-slate-50/50">
+      <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto p-6 bg-slate-50/75">
         <SheetHeader className="mb-8">
           <div className="flex items-center gap-3">
             <div className="h-12 w-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xl">

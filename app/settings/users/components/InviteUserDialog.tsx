@@ -13,11 +13,11 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { UserPlus, Loader2 } from 'lucide-react'
+import { UserPlus, Loader2, Mail } from 'lucide-react'
 import { inviteUser } from '@/app/settings/users/actions' // Ajusta la ruta si es necesario
 import { toast } from 'sonner'
 
-export function InviteUserDialog() {
+export function InviteUserDialog({ variant }: { variant?: 'sidebar' }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -39,9 +39,18 @@ export function InviteUserDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
-          <UserPlus className="h-4 w-4" /> Invitar Usuario
-        </Button>
+                    <DialogTrigger asChild>
+                {/* Botón para el menu lateral (sidebar) y para otros sitios */}
+                {variant === 'sidebar' ? (
+                    <button className="transition-all flex w-full items-center py-1.5 px-2 text-[12px] text-slate-500 hover:text-indigo-700">
+                    <span className="mr-2"><Mail className="h-4 w-4" /></span> Invitar Usuario
+                    </button>
+                ) : (
+                    <Button variant="outline" className="gap-2">
+                        <Mail className="h-4 w-4" /> Invitar Usuario
+                    </Button>
+                )}    
+            </DialogTrigger>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>

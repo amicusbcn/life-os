@@ -307,7 +307,7 @@ export function TripListView({ trips, reports, employers, context }: TripListVie
     if (activeTab === 'reports' && !isPersonal) {
       return <NewReportDialog key="footer-report" employers={employers} context={context} />;
     }
-    return <NewTripDialog key="footer-trip" employers={employers} context={context} />;
+    return '';
   }
 
   return (
@@ -356,13 +356,7 @@ export function TripListView({ trips, reports, employers, context }: TripListVie
           </TabsContent>
         )}
       </Tabs>
-      
-      <div className="fixed bottom-0 left-0 right-0 p-4 border-t bg-background shadow-lg z-20">
-        <div className="max-w-xl mx-auto">
-             <RenderFooterAction />
-        </div>
-      </div>
-      <div className="h-20"></div>
+
 
       <AlertDialog open={!!reportToDelete} onOpenChange={() => setReportToDelete(null)}>
         <AlertDialogContent>

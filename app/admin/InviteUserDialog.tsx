@@ -20,7 +20,7 @@ function SubmitButton() {
     )
 }
 
-export function InviteUserDialog() {
+export function InviteUserDialog({ variant }: { variant?: 'sidebar' }) {
     const [open, setOpen] = useState(false)
     const [status, setStatus] = useState<{ message: string | null; error: boolean }>({ message: null, error: false })
 
@@ -40,9 +40,16 @@ export function InviteUserDialog() {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                    <Mail className="h-4 w-4" /> Invitar Usuario
-                </Button>
+                {/* Botón para el menu lateral (sidebar) y para otros sitios */}
+                {variant === 'sidebar' ? (
+                    <button className="flex w-full items-center py-1.5 px-2 text-[11px] text-slate-500 hover:text-indigo-600">
+                    <span className="mr-2">•</span> Invitar Usuario
+                    </button>
+                ) : (
+                    <Button variant="outline" className="gap-2">
+                        <Mail className="h-4 w-4" /> Invitar Usuario
+                    </Button>
+                )}    
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
