@@ -10,6 +10,7 @@ import { sendNotification } from '@/utils/notification-helper';
 import { Resend } from 'resend';
 import { sendEmail } from '@/utils/mail';
 import { ResetPasswordEmail } from '@/components/emails/ResetPassord';
+import { InvitationEmail } from '@/components/emails/UserInvitation';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 /**
@@ -56,82 +57,100 @@ export async function getAdminUsersList() {
 }
 
 /**
- * 2. INVITAR USUARIO (Nueva lógica de Lista Blanca)
+ * 2a. FUNCION AUXILIAR PARA GENERAR UN LINK DE INVITACIÓN
  */
-export async function inviteUser(email: string): Promise<ActionResponse> {
-    const supabaseAdmin = await createAdminClient();
-    
-    // 1. Verificar si ya existe en perfiles (ya registrado)
-    const { data: existingUser } = await supabaseAdmin
-        .from('profiles')
-        .select('id')
-        .eq('email', email)
-        .single();
-    
-    if (existingUser) {
-        return { success: false, error: 'El usuario ya está registrado en el sistema.' };
-    }
+async function generateAndSendInvite(email: string, supabaseAdmin: any) {
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-    // 2. Insertar en invitaciones (Lista Blanca - Mantenemos tu lógica)
-    const { error } = await supabaseAdmin
-        .from('app_invitations')
-        .insert({ email });
-
-    if (error && error.code !== '23505') { 
-         return { success: false, error: error.message };
-    }
-
-    // 3. GENERAR EL LINK MÁGICO DE SUPABASE (¡ESTO ES LO NUEVO!) 🪄
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://jact.es'
-    
+    // 1. Generar Link
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
         type: 'invite',
         email: email,
         options: {
-            // Cuando hagan clic, irán al callback y luego a poner su contraseña
-            redirectTo: `${siteUrl}/auth/callback?next=/update-password`
+            redirectTo: `${baseUrl}/auth/callback?next=/update-password`
         }
     })
 
-    if (linkError) {
-        return { success: false, error: 'Error generando el link de acceso: ' + linkError.message }
+    if (linkError || !linkData.properties?.action_link) {
+        throw new Error('Error generando el link: ' + (linkError?.message || 'Unknown'));
     }
 
-    const inviteLink = linkData.properties.action_link // <--- AQUÍ ESTÁ LA MAGIA
+    // 2. Enviar Email
+    const emailResult = await sendEmail({
+        to: email,
+        subject: 'Invitación a Life-OS',
+        html: InvitationEmail(linkData.properties.action_link)
+    });
 
-    // 4. ENVIAR CORREO CON RESEND
+    if (!emailResult.success) {
+        throw new Error("Fallo al enviar el email: " + emailResult.error);
+    }
+
+    return true;
+}
+
+
+// ==========================================
+// 🚀 2B: INVITAR NUEVO USUARIO
+// ==========================================
+export async function inviteUser(email: string): Promise<ActionResponse> {
+    const supabaseAdmin = await createAdminClient();
+    
     try {
-        const { error: emailError } = await resend.emails.send({
-            from: 'App Familiar <admin@app.jact.es>', // Cambia esto cuando tengas dominio
-            to: email,
-            subject: 'Has sido invitado a la App Familiar',
-            html: `
-                <div style="font-family: sans-serif; padding: 20px; text-align: center;">
-                    <h1>¡Bienvenido a la Familia! 🏠</h1>
-                    <p>El administrador te ha dado acceso a la <strong>App Familiar</strong>.</p>
-                    <p>Haz clic en el botón para aceptar la invitación y crear tu contraseña:</p>
-                    <br>
-                    <a href="${inviteLink}" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
-                        Aceptar Invitación
-                    </a>
-                    <br><br>
-                    <p style="font-size: 12px; color: #666;">Si el botón no funciona, copia este enlace: ${inviteLink}</p>
-                </div>
-            `
-        });
-
-        if (emailError) {
-            console.error("Resend Error:", emailError);
-            return { success: false, error: "Invitación creada pero falló el envío del email." };
+        // A. Validaciones previas
+        const { data: existingUser } = await supabaseAdmin
+            .from('profiles')
+            .select('id')
+            .eq('email', email)
+            .single();
+        
+        if (existingUser) {
+            return { success: false, error: 'El usuario ya está registrado.' };
         }
 
-    } catch (e) {
-        console.error("Error enviando email:", e);
-        return { success: false, error: "Error de conexión con el servicio de email." };
-    }
+        // B. Insertar en invitaciones (Lista Blanca)
+        const { error: dbError } = await supabaseAdmin
+            .from('app_invitations')
+            .insert({ email });
 
-    revalidatePath('/settings/users');
-    return { success: true, message: 'Usuario invitado correctamente.' };
+        if (dbError && dbError.code !== '23505') { 
+             return { success: false, error: dbError.message };
+        }
+
+        // C. Usar el motor compartido
+        await generateAndSendInvite(email, supabaseAdmin);
+
+        revalidatePath('/settings/users');
+        return { success: true, message: 'Invitación enviada correctamente.' };
+
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+
+// ==========================================
+// 🔄 2C: REENVIAR INVITACIÓN
+// ==========================================
+export async function resendInvitation(email: string, userId: string): Promise<ActionResponse> {
+    const supabaseAdmin = await createAdminClient();
+
+    try {
+        // A. Usar el motor compartido
+        await generateAndSendInvite(email, supabaseAdmin);
+
+        // B. Actualizar auditoría (esto solo aplica al reenviar)
+        await supabaseAdmin
+            .from('profiles')
+            .update({ invitation_sent_at: new Date().toISOString() })
+            .eq('id', userId);
+
+        revalidatePath('/settings/users');
+        return { success: true, message: 'Invitación reenviada correctamente.' };
+
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
 }
 
 /**
@@ -229,7 +248,7 @@ export async function resetUserPassword(userId: string): Promise<ActionResponse>
         type: 'recovery',
         email: email,
         options: {
-            redirectTo: `${baseUrl}/update-password` // Ajustado a tu ruta pública
+            redirectTo: `${baseUrl}/auth/callback?next=/update-password`
         }
     });
 
@@ -301,32 +320,7 @@ export async function impersonateUser(userId: string) {
     return { success: true, url: data.properties?.action_link };
 }
 
-// REENVIAR INVITACIÓN
-export async function resendInvitation(email: string, userId: string) {
-  const supabaseAdmin = await createAdminClient();
-  try {
-    const { error } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'invite',
-        email: email,
-        options: {
-            redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
-        }
-    });
 
-    if (error) throw error;
-
-    // Actualizamos la fecha de envío en nuestra tabla para control de UI
-    await supabaseAdmin
-      .from('profiles')
-      .update({ invitation_sent_at: new Date().toISOString() })
-      .eq('id', userId);
-
-    revalidatePath('/admin/users');
-    return { success: true, message: 'Invitación reenviada correctamente' };
-  } catch (error: any) {
-    return { success: false, error: error.message };
-  }
-}
 
 // DESHABILITAR / ACTIVAR USUARIO
 export async function toggleUserStatus(userId: string, active: boolean) {
