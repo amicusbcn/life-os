@@ -59,12 +59,24 @@ export async function getAdminUsersList() {
 /**
  * 2a. FUNCION AUXILIAR PARA GENERAR UN LINK DE INVITACIÓN
  */
-async function generateAndSendInvite(email: string, supabaseAdmin: any) {
+type EmailTemplateGenerator = (url: string) => string;
+
+// ==========================================
+// 🔧 HELPER PRIVADO GENÉRICO (El motor único)
+// ==========================================
+async function generateAndSendLink(
+    email: string, 
+    supabaseAdmin: any, 
+    subject: string, 
+    templateRenderer: EmailTemplateGenerator
+) {
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-    // 1. Generar Link
+    console.log(`🔄 Generando link para: ${email} | Asunto: ${subject}`);
+
+    // Usamos 'recovery' para todo (es el más robusto para setear passwords)
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'invite',
+        type: 'recovery', 
         email: email,
         options: {
             redirectTo: `${baseUrl}/auth/callback?next=/update-password`
@@ -75,50 +87,64 @@ async function generateAndSendInvite(email: string, supabaseAdmin: any) {
         throw new Error('Error generando el link: ' + (linkError?.message || 'Unknown'));
     }
 
-    // 2. Enviar Email
+    const actionLink = linkData.properties.action_link;
+
+    // Enviamos el email usando el template y asunto pasados por parámetro
     const emailResult = await sendEmail({
         to: email,
-        subject: 'Invitación a Life-OS',
-        html: InvitationEmail(linkData.properties.action_link)
+        subject: subject,
+        html: templateRenderer(actionLink) // <--- Aquí renderizamos el HTML específico
     });
 
     if (!emailResult.success) {
-        throw new Error("Fallo al enviar el email: " + emailResult.error);
+        throw new Error("Fallo al enviar el email: " + JSON.stringify(emailResult.error));
     }
 
+    console.log("📧 Email enviado correctamente.");
     return true;
 }
 
 
 // ==========================================
-// 🚀 2B: INVITAR NUEVO USUARIO
+// 🚀 ACCIÓN 1: INVITAR NUEVO USUARIO
 // ==========================================
 export async function inviteUser(email: string): Promise<ActionResponse> {
     const supabaseAdmin = await createAdminClient();
     
     try {
-        // A. Validaciones previas
-        const { data: existingUser } = await supabaseAdmin
+        // 1. Validaciones
+        const { data: existingProfile } = await supabaseAdmin
             .from('profiles')
             .select('id')
             .eq('email', email)
             .single();
         
-        if (existingUser) {
-            return { success: false, error: 'El usuario ya está registrado.' };
+        if (existingProfile) {
+            return { success: false, error: 'El usuario ya tiene un perfil registrado.' };
         }
 
-        // B. Insertar en invitaciones (Lista Blanca)
-        const { error: dbError } = await supabaseAdmin
-            .from('app_invitations')
-            .insert({ email });
+        // 2. Asegurar Auth (Create User)
+        const { error: createError } = await supabaseAdmin.auth.admin.createUser({
+            email: email,
+            email_confirm: true,
+            user_metadata: { invited_by_admin: true }
+        });
 
-        if (dbError && dbError.code !== '23505') { 
-             return { success: false, error: dbError.message };
+        if (createError && !createError.message.includes('already has been registered')) {
+             return { success: false, error: "Error Auth: " + createError.message };
         }
 
-        // C. Usar el motor compartido
-        await generateAndSendInvite(email, supabaseAdmin);
+        // 3. Insertar Invitación
+        const { error: dbError } = await supabaseAdmin.from('app_invitations').insert({ email });
+        if (dbError && dbError.code !== '23505') return { success: false, error: dbError.message };
+
+        // 4. USAR EL MOTOR (Modo: Invitación)
+        await generateAndSendLink(
+            email, 
+            supabaseAdmin, 
+            'Invitación a Life-OS', // Asunto
+            InvitationEmail         // Template
+        );
 
         revalidatePath('/settings/users');
         return { success: true, message: 'Invitación enviada correctamente.' };
@@ -130,23 +156,57 @@ export async function inviteUser(email: string): Promise<ActionResponse> {
 
 
 // ==========================================
-// 🔄 2C: REENVIAR INVITACIÓN
+// 🔄 ACCIÓN 2: REENVIAR INVITACIÓN
 // ==========================================
 export async function resendInvitation(email: string, userId: string): Promise<ActionResponse> {
     const supabaseAdmin = await createAdminClient();
 
     try {
-        // A. Usar el motor compartido
-        await generateAndSendInvite(email, supabaseAdmin);
+        if (!email) return { success: false, error: "Email no proporcionado." };
 
-        // B. Actualizar auditoría (esto solo aplica al reenviar)
-        await supabaseAdmin
-            .from('profiles')
-            .update({ invitation_sent_at: new Date().toISOString() })
-            .eq('id', userId);
+        // USAR EL MOTOR (Modo: Invitación)
+        await generateAndSendLink(
+            email, 
+            supabaseAdmin, 
+            'Recordatorio: Invitación a Life-OS', 
+            InvitationEmail
+        );
+
+        // Actualizar auditoría
+        await supabaseAdmin.from('profiles').update({ invitation_sent_at: new Date().toISOString() }).eq('id', userId);
 
         revalidatePath('/settings/users');
         return { success: true, message: 'Invitación reenviada correctamente.' };
+
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+
+// ==========================================
+// 🔐 ACCIÓN 3: RESETEAR PASSWORD (MANUAL)
+// ==========================================
+export async function resetUserPassword(userId: string): Promise<ActionResponse> {
+    const supabaseAdmin = await createAdminClient();
+
+    try {
+        // 1. Obtener email del usuario
+        const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
+
+        if (userError || !userData?.user?.email) {
+            return { success: false, error: "Usuario no encontrado o sin email." };
+        }
+
+        // 2. USAR EL MOTOR (Modo: Recuperación)
+        await generateAndSendLink(
+            userData.user.email,
+            supabaseAdmin,
+            'Recuperación de Contraseña - Life-OS', // Asunto diferente
+            ResetPasswordEmail                      // Template diferente
+        );
+
+        return { success: true, message: 'Correo de recuperación enviado.' };
 
     } catch (error: any) {
         return { success: false, error: error.message };
@@ -227,51 +287,6 @@ export async function removeModulePermission(userId: string, moduleKey: string):
     revalidatePath('/settings/users');
     return { success: true, message: 'Acceso al módulo revocado.' };
 }
-
-/**
- * 5. RESET PASSWORD (Mantenido de tu código original)
- */
-export async function resetUserPassword(userId: string): Promise<ActionResponse> {
-    const supabaseAdmin = await createAdminClient();
-
-    // 1. Obtener usuario
-    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
-    if (userError || !userData?.user?.email) {
-        return { success: false, error: "Usuario no encontrado." };
-    }
-
-    const email = userData.user.email;
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-
-    // 2. Generar Link
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'recovery',
-        email: email,
-        options: {
-            redirectTo: `${baseUrl}/auth/callback?next=/update-password`
-        }
-    });
-
-    if (linkError || !linkData.properties?.action_link) {
-        return { success: false, error: "Error generando enlace." };
-    }
-
-    const recoveryUrl = linkData.properties.action_link;
-
-    // 3. ENVIAR CORREO (Ahora es una sola línea limpia ✨)
-    const emailResult = await sendEmail({
-        to: email,
-        subject: 'Recuperación de Contraseña - Life-OS',
-        html: ResetPasswordEmail(recoveryUrl)
-    });
-
-    if (!emailResult.success) {
-        return { success: false, error: "Fallo al enviar el correo." };
-    }
-
-    return { success: true, message: "Correo enviado con éxito." };
-}
-
 
 /**
  * 6. OBTENER MÓDULOS ACTIVOS (Para el selector dinámico)
