@@ -1,10 +1,11 @@
 // app/travel/[context]/archive/page.tsx
 import { notFound } from 'next/navigation'
-import { createClient } from '@/utils/supabase/server'
-import { UnifiedAppHeader } from '@/app/core/components/UnifiedAppHeader'
+import { getUserData, validateModuleAccess } from '@/utils/security'
+import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar'
 import { getArchivedTravelData } from '../../data'
 import { ArchiveListView } from '../../components/ui/ArchiveListView'
 import { TravelContext } from '@/types/travel'
+import { TravelModuleMenu } from '../../components/ui/TravelModuleMenu'
 
 interface PageProps {
   params: Promise<{ context: string }>;
@@ -15,26 +16,38 @@ export default async function TravelArchivePage({ params }: PageProps) {
   if (context !== 'work' && context !== 'personal') notFound();
 
   const travelContext = context as TravelContext;
-  const trips = await getArchivedTravelData(travelContext);
   
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // 1. Validación de seguridad y carga de datos de usuario/módulos
+  await validateModuleAccess('travel');
+  const { profile, accessibleModules } = await getUserData('travel');
+  
+  // 2. Carga de datos del archivo
+  const trips = await getArchivedTravelData(travelContext);
 
-  const title = `Histórico: ${travelContext === 'work' ? 'Trabajo' : 'Personal'}`;
+  const title = `Histórico ${travelContext === 'work' ? 'Laboral' : 'Personal'}`;
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans pb-10">
-      <UnifiedAppHeader 
-        title={title}
-        backHref={`/travel/${context}`} 
-        userEmail={user?.email || ''}
-        userRole="admin" 
-        maxWClass="max-w-xl"
-      />
+    <UnifiedAppSidebar
+      title={title}
+      profile={profile}
+      modules={accessibleModules}
+      backLink={`/travel/${context}`}
+      moduleMenu={null}
+    >
+      <main className="p-4 md:p-8 space-y-8 max-w-4xl mx-auto">
+        <header className="space-y-2">
+          <h1 className="text-2xl md:text-4xl font-black tracking-tight text-slate-900">
+            Archivo de Viajes
+          </h1>
+          <p className="text-sm text-slate-500 font-medium">
+            Consulta y gestiona las expediciones finalizadas en el contexto {travelContext}.
+          </p>
+        </header>
 
-      <main className="max-w-xl mx-auto p-4">
-        <ArchiveListView initialTrips={trips} context={travelContext} />
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <ArchiveListView initialTrips={trips} context={travelContext} />
+        </div>
       </main>
-    </div>
+    </UnifiedAppSidebar>
   )
 }
