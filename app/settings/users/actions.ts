@@ -8,6 +8,8 @@ import { ActionResponse } from '@/types/common'; // O types/user si moviste Acti
 import { AppRole, UserRole,AppModule, AdminUserRow, UserProfile } from '@/types/users'; // Asegúrate de tener estos tipos definidos
 import { sendNotification } from '@/utils/notification-helper';
 import { Resend } from 'resend';
+import { sendEmail } from '@/utils/mail';
+import { ResetPasswordEmail } from '@/components/emails/ResetPassord';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 /**
@@ -213,69 +215,44 @@ export async function removeModulePermission(userId: string, moduleKey: string):
 export async function resetUserPassword(userId: string): Promise<ActionResponse> {
     const supabaseAdmin = await createAdminClient();
 
-    // 1. Obtener email del usuario
+    // 1. Obtener usuario
     const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
-
     if (userError || !userData?.user?.email) {
-        return { success: false, error: "No se pudo encontrar el correo del usuario." };
+        return { success: false, error: "Usuario no encontrado." };
     }
 
     const email = userData.user.email;
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-    // 2. GENERAR EL LINK (Sin enviar correo)
-    // Usamos generateLink con type 'recovery'
+    // 2. Generar Link
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
         type: 'recovery',
         email: email,
         options: {
-            redirectTo: `${baseUrl}/settings/profile/update-password` 
-            // ^ Importante: define una ruta donde el usuario pueda poner su nueva password
+            redirectTo: `${baseUrl}/update-password` // Ajustado a tu ruta pública
         }
     });
 
     if (linkError || !linkData.properties?.action_link) {
-        console.error("Error generando link:", linkError);
-        return { success: false, error: "No se pudo generar el enlace de recuperación." };
+        return { success: false, error: "Error generando enlace." };
     }
 
     const recoveryUrl = linkData.properties.action_link;
 
-    // 3. ENVIAR CORREO CON RESEND (Nosotros tenemos el control)
-    try {
-        await resend.emails.send({
-            // Usa tu remitente verificado (o onboarding@resend.dev si sigues en pruebas)
-            from: 'Life-OS Security <security@app.jact.es>', 
-            to: email,
-            subject: 'Recuperación de Contraseña - Life-OS',
-            html: `
-                <div style="font-family: sans-serif; padding: 20px; color: #333;">
-                    <h1 style="color: #4F46E5;">Recuperar Acceso 🔐</h1>
-                    <p>Hola,</p>
-                    <p>Hemos recibido una solicitud para restablecer la contraseña de tu cuenta en <strong>Life-OS</strong>.</p>
-                    <p>Haz clic en el siguiente botón para crear una nueva contraseña:</p>
-                    
-                    <a href="${recoveryUrl}" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 20px 0;">
-                        Restablecer Contraseña
-                    </a>
-                    
-                    <p style="font-size: 14px; color: #666;">
-                        Este enlace caducará pronto. Si no has solicitado esto, puedes ignorar este correo.
-                    </p>
-                    <p style="font-size: 12px; color: #999; margin-top: 30px;">
-                        Link directo: ${recoveryUrl}
-                    </p>
-                </div>
-            `
-        });
+    // 3. ENVIAR CORREO (Ahora es una sola línea limpia ✨)
+    const emailResult = await sendEmail({
+        to: email,
+        subject: 'Recuperación de Contraseña - Life-OS',
+        html: ResetPasswordEmail(recoveryUrl)
+    });
 
-    } catch (e) {
-        console.error("Error Resend:", e);
-        return { success: false, error: "Fallo al enviar el correo a través de Resend." };
+    if (!emailResult.success) {
+        return { success: false, error: "Fallo al enviar el correo." };
     }
 
-    return { success: true, message: "Correo de recuperación enviado con éxito." };
+    return { success: true, message: "Correo enviado con éxito." };
 }
+
 
 /**
  * 6. OBTENER MÓDULOS ACTIVOS (Para el selector dinámico)

@@ -2,7 +2,7 @@
 'use client'
 
 import React from 'react'
-import { Users, ShieldCheck, Megaphone, Lightbulb, ChevronRight } from "lucide-react"
+import { Users, ShieldCheck, Megaphone, Lightbulb, ChevronRight, ArrowDownNarrowWide } from "lucide-react"
 import Link from 'next/link'
 import { 
   SidebarMenu, 
@@ -16,7 +16,7 @@ import { AddModuleSheet } from '../modules/components/AddModuleSheet'
 import { InviteUserDialog } from '../users/components/InviteUserDialog'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 interface Props {
-  currentPanel?: 'users' | 'modules' | 'broadcast' | 'feedback'
+  currentPanel?: 'users' | 'modules' | 'notifications' | 'feedback'
 }
 
 export function SettingsMenu({ currentPanel}: Props) {
@@ -45,9 +45,8 @@ export function SettingsMenu({ currentPanel}: Props) {
             </SidebarMenuButton>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <SidebarMenuSub>
+            <SidebarMenuSub className="border-l-2 border-l-indigo-700 bg-indigo-50">
               <SidebarMenuSubItem>
-                {/* Variant minimal para que no rompa el diseño del sidebar */}
                 <InviteUserDialog variant="sidebar" />
               </SidebarMenuSubItem>
             </SidebarMenuSub>
@@ -56,7 +55,7 @@ export function SettingsMenu({ currentPanel}: Props) {
       </Collapsible>
 
       {/* 2. MÓDULOS */}
-      <Collapsible open={currentPanel === 'modules'} className="group/collapsible">
+      <Collapsible open={currentPanel === 'modules'} className="group/collapsible relative">
         <SidebarMenuItem>
           <CollapsibleTrigger asChild>
             <SidebarMenuButton 
@@ -78,13 +77,13 @@ export function SettingsMenu({ currentPanel}: Props) {
             </SidebarMenuButton>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <SidebarMenuSub>
+            <SidebarMenuSub className="border-l-2 border-l-indigo-700 bg-indigo-50">
               <SidebarMenuSubItem>
                 <AddModuleSheet variant="sidebar" />
               </SidebarMenuSubItem>
               <SidebarMenuSubItem>
                 <SidebarMenuButton size="sm" className="text-[11px] text-slate-500">
-                   <span>• Reorganizar</span>
+                  <ArrowDownNarrowWide className="w-4 h-4 mr-2" />Reorganizar
                 </SidebarMenuButton>
               </SidebarMenuSubItem>
             </SidebarMenuSub>
@@ -95,11 +94,20 @@ export function SettingsMenu({ currentPanel}: Props) {
       {/* 3. DIFUSIÓN */}
       <SidebarMenuItem>
         <SidebarMenuButton 
-          isActive={currentPanel === 'broadcast'}
-          className="text-amber-700 hover:bg-amber-50"
-        >
-          <Megaphone className="w-4 h-4" />
-          <Link href="/settings/broadcast">Nueva Difusión</Link>
+          isActive={currentPanel === 'notifications'}
+          tooltip="Módulos"
+          className={cn(
+              "transition-all duration-200",
+              // 1. ESTADO ACTIVO: Contraste total y bloqueo de hover
+              "data-[active=true]:!bg-indigo-700 data-[active=true]:!text-indigo-50 data-[active=true]:font-bold",
+              "data-[active=true]:hover:!bg-indigo-700 data-[active=true]:hover:!text-indigo-50", 
+              
+              // 2. ESTADO NORMAL: Texto slate y hover suave (solo si no está activo)
+              "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            )}
+          >
+            <Megaphone className="w-4 h-4" />
+            <Link href="/settings/notifications">Nueva Difusión</Link>
         </SidebarMenuButton>
       </SidebarMenuItem>
 
@@ -109,9 +117,18 @@ export function SettingsMenu({ currentPanel}: Props) {
           asChild 
           tooltip="Sugerencias"
           isActive={currentPanel === 'feedback'}
-        >
+          className={cn(
+              "transition-all duration-200",
+              // 1. ESTADO ACTIVO: Contraste total y bloqueo de hover
+              "data-[active=true]:!bg-indigo-700 data-[active=true]:!text-indigo-50 data-[active=true]:font-bold",
+              "data-[active=true]:hover:!bg-indigo-700 data-[active=true]:hover:!text-indigo-50", 
+              
+              // 2. ESTADO NORMAL: Texto slate y hover suave (solo si no está activo)
+              "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            )}
+          >
           <Link href="/settings/feedback">
-            <Lightbulb className={cn("w-4 h-4", currentPanel === 'feedback' ? "text-indigo-600" : "text-slate-500")} />
+            <Lightbulb className="w-4 h-4" />
             <span>Sugerencias</span>
           </Link>
         </SidebarMenuButton>

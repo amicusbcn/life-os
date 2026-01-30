@@ -24,7 +24,8 @@ export default async function FeedbackAdminPage() {
             profile={profile}
             modules={accessibleModules}
             // Inyectamos el menú de configuración (mismo que Perfil y Usuarios)
-            moduleMenu={userRole === 'admin' ? <SettingsMenu /> : null}
+            moduleMenu={userRole === 'admin' ? <SettingsMenu currentPanel="feedback"/> : null}
+            
         >
             {/* Contenedor ancho para la tabla de feedback */}
             <div className="max-w-7xl mx-auto space-y-6">

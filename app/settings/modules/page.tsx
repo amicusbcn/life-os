@@ -34,7 +34,6 @@ export default async function ModulesPage() {
             title="Módulos del Sistema"
             profile={profile}
             modules={accessibleModules}
-            backLink="/settings"
             moduleMenu={<SettingsMenu currentPanel="modules"/>}
         >
             <main className="p-4 md:p-8 space-y-12 w-full">

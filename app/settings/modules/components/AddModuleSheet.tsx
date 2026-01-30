@@ -38,7 +38,7 @@ export function AddModuleSheet({ variant }: { variant?: 'sidebar' }) {
         {/* Botón para el menu lateral (sidebar) y para otros sitios */}
         {variant === 'sidebar' ? (
             <button className="flex w-full items-center py-1.5 px-2 text-[11px] text-slate-500 hover:text-indigo-600">
-            <span className="mr-2">•</span> Nuevo Módulo
+            <Plus className="w-4 h-4 mr-2" />  Nuevo Módulo
             </button>
         ) : (
             <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md">

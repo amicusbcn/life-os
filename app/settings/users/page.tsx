@@ -35,7 +35,6 @@ export default async function AdminUsersPage() {
             title="Gestión de Usuarios"
             profile={profile}
             modules={accessibleModules}
-            backLink="/settings"
             moduleMenu={<SettingsMenu currentPanel='users' />}
         >
             <main className="p-4 md:p-8 space-y-6">
