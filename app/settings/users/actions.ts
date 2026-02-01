@@ -79,7 +79,7 @@ async function generateAndSendLink(
         type: 'recovery', 
         email: email,
         options: {
-            redirectTo: `${baseUrl}/settings/profile/update-password`// /auth/callback?next=/update-password`
+            redirectTo: `${baseUrl}/update-password`// /auth/callback?next=/update-password`
         }
     })
 
