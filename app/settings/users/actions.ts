@@ -9,7 +9,7 @@ import { AppRole, UserRole,AppModule, AdminUserRow, UserProfile } from '@/types/
 import { sendNotification } from '@/utils/notification-helper';
 import { Resend } from 'resend';
 import { sendEmail } from '@/utils/mail';
-import { ResetPasswordEmail } from '@/components/emails/ResetPassord';
+import { ResetPasswordEmail } from '@/components/emails/ResetPassword';
 import { InvitationEmail } from '@/components/emails/UserInvitation';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
