@@ -87,7 +87,7 @@ export function TransactionList({
         const WORK_TRIP_CAT_ID = "ad17366f-06de-4f06-b88e-67aace8f4b21"; // 💼
         const PERSONAL_TRIP_CAT_ID = "db5e8971-26b9-4d42-adf4-77fa30cd0dba"; // ✈️
         if (newCategoryId === TRANSFER_CAT_ID) {
-            setSelectedTx({ ...transaction, category_id: newCategoryId });
+            setSelectedTxForTransfer({ ...transaction, category_id: newCategoryId });
             setShowTransferAssistant(true);
         } else if (newCategoryId === WORK_TRIP_CAT_ID || newCategoryId === PERSONAL_TRIP_CAT_ID) {
             setSelectedTx(transaction);

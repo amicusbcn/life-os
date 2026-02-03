@@ -71,8 +71,37 @@ export async function getRules(): Promise<FinanceRule[]> {
     return error ? [] : data;
 }
 
+// Acción para saber qué años tienen datos
+export async function getAvailableYearsAction() {
+    const supabase = await createClient();
+    // Esta es una query rápida para sacar años únicos de la columna 'date'
+    const { data } = await supabase
+        .rpc('get_unique_transaction_years'); // Una función simple en Postgres
+    
+    return data; // [2024, 2023, 2022...]
+}
+
+// Acción para cargar un año específico
+export async function getTransactionsByYearAction(year: number) {
+    const supabase = await createClient();
+    const start = `${year}-01-01`;
+    const end = `${year}-12-31`;
+
+    const { data } = await supabase
+        .from('finance_transactions')
+        .select(`...`)
+        .gte('date', start)
+        .lte('date', end)
+        .order('date', { ascending: false });
+        
+    return data;
+}
+
 // === FUNCIÓN DE TRANSACCIONES (MODULARIZADA) ===
-async function getTransactions(): Promise<FinanceTransaction[]> {
+async function getTransactions(monthsLimit: number = 6): Promise<FinanceTransaction[]> {
+    const dateLimit = new Date();
+    dateLimit.setMonth(dateLimit.getMonth() - monthsLimit);
+    const dateString = dateLimit.toISOString().split('T')[0];
     const supabase = await createClient();
     const { data, error } = await supabase
         .from('finance_transactions')
@@ -82,6 +111,7 @@ async function getTransactions(): Promise<FinanceTransaction[]> {
             category:finance_categories(*, parent:parent_id(*)),
             splits:finance_transaction_splits(*, category:finance_categories(*))
         `)
+        .gte('date', dateString)
         .order('date', { ascending: false });
 
     if (error) return [];

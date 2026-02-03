@@ -3,15 +3,18 @@
 
 import React from 'react';
 import { FinanceAccount, FinanceCategory, FinanceRule } from '@/types/finance';
-import { FileUp, FolderTree, CreditCard, Settings2 } from 'lucide-react';
+import { FileUp, FolderTree, CreditCard, Settings2, Scale, NotebookTabs, LinkIcon } from 'lucide-react';
 import { AccountSettingsDialog } from './AccountSettingsDialog';
 import { CategorySettingsDialog } from './CategorySettingsDialog';
 import { ImporterDialog } from './ImporterDialog';
 import { ImporterTemplatesDialog } from './ImporterTemplatesDialog';
 import { 
     SidebarMenuItem, 
-    SidebarMenuButton 
+    SidebarMenuButton, 
+    SidebarSeparator
 } from '@/components/ui/sidebar';
+import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
 interface FinanceMenuProps {
     accounts: FinanceAccount[];
@@ -19,7 +22,8 @@ interface FinanceMenuProps {
     rules: FinanceRule[];
     templates: any[];
     history: any[];
-    mode: 'operative' | 'settings'; // ✨ Prop para control de slots
+    mode: 'operative' | 'settings';
+    currentPanel?: 'dashboard' | 'history' 
 }
 
 export function FinanceMenu({ 
@@ -28,7 +32,8 @@ export function FinanceMenu({
     rules, 
     templates, 
     history,
-    mode
+    mode,
+    currentPanel
 }: FinanceMenuProps) {
 
     // --- RENDERIZADO OPERATIVO (Cuerpo del Sidebar) ---
@@ -36,8 +41,47 @@ export function FinanceMenu({
         return (
             <>
                 <SidebarMenuItem>
+                    <SidebarMenuButton 
+                    isActive={currentPanel === 'dashboard'}
+                    tooltip="Posición global"
+                    className={cn(
+                        "transition-all duration-200",
+                        // 1. ESTADO ACTIVO: Contraste total y bloqueo de hover
+                        "data-[active=true]:!bg-indigo-700 data-[active=true]:!text-indigo-50 data-[active=true]:font-bold",
+                        "data-[active=true]:hover:!bg-indigo-700 data-[active=true]:hover:!text-indigo-50", 
+                        
+                        // 2. ESTADO NORMAL: Texto slate y hover suave (solo si no está activo)
+                        "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                        )}
+                    >
+                        <Scale className="w-4 h-4" />
+                        <Link href="/finance">Posición Global</Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <SidebarMenuButton 
+                    isActive={currentPanel === 'history'}
+                    tooltip="Detalle anual"
+                    className={cn(
+                        "transition-all duration-200",
+                        // 1. ESTADO ACTIVO: Contraste total y bloqueo de hover
+                        "data-[active=true]:!bg-indigo-700 data-[active=true]:!text-indigo-50 data-[active=true]:font-bold",
+                        "data-[active=true]:hover:!bg-indigo-700 data-[active=true]:hover:!text-indigo-50", 
+                        
+                        // 2. ESTADO NORMAL: Texto slate y hover suave (solo si no está activo)
+                        "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                        )}
+                    >
+                        <Scale className="w-4 h-4" />
+                        <Link href="/finance/history">Detalle Anual</Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarSeparator />
+
+
+                <SidebarMenuItem>
                     <ImporterDialog accounts={accounts} templates={templates}>
-                        <SidebarMenuButton tooltip="Importar CSV">
+                        <SidebarMenuButton tooltip="Principal">
                             <FileUp className="h-4 w-4" />
                             <span>Importar CSV</span>
                         </SidebarMenuButton>

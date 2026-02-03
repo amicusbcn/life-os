@@ -38,6 +38,7 @@ export default async function FinancePage() {
                     rules={rules}
                     templates={templates}
                     history={history}
+                    currentPanel='dashboard'
                 />
             }
             // Slot Pie: Gestión de la estructura (Cuentas y Categorías)

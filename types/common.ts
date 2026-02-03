@@ -21,3 +21,33 @@ export interface UserMenuProps {
     additionalItems?: React.ReactNode[]; 
     currentPath?: string;
 }
+
+// types/system.ts
+
+export type ModuleStatus = 'development' | 'beta' | 'stable' | 'deprecated';
+
+export interface AppModule {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  is_active: boolean;
+  current_version: string;
+  status: ModuleStatus;
+  updated_at: string;
+}
+
+export type ChangeType = 'feat' | 'fix' | 'refactor' | 'chore' | 'style' | 'docs';
+
+export interface AppModuleChangelog {
+  id: string;
+  module_id: string;
+  version: string;
+  change_type: ChangeType;
+  title: string;
+  description: string | null;
+  is_breaking_change: boolean;
+  created_at: string;
+  user_id: string;
+}
