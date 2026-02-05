@@ -3,7 +3,7 @@
 
 import React, { useState, useMemo, useEffect } from "react"
 import { useRouter } from 'next/navigation'
-import { deleteAccount, createAccount, updateAccount } from "@/app/finance/actions" 
+import { deleteAccount, createAccount, updateAccount } from "@/app/finance/actions/accounts" 
 import { FinanceAccount, FinanceAccountType, ACCOUNT_TYPES_META } from "@/types/finance" 
 import { ActionResponse } from "@/types/common"
 import { Switch } from "@/components/ui/switch" 
@@ -25,114 +25,115 @@ import {
 import { 
     Trash2, Plus, Check, X, Pencil, EyeOff, Eye, Landmark, Loader2 
 } from "lucide-react"
+import { AccountFormFields } from "./AccountFormFields"
 
+const slugify = (text: string) => {
+    return text
+        .toString()
+        .toLowerCase()
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/[^\w-]+/g, '')
+        .replace(/--+/g, '-');
+};
+
+
+    const formatIBAN = (value: string) => {
+        return value
+            .replace(/\s/g, '') // Quitamos espacios existentes
+            .replace(/(.{4})/g, '$1 ') // Añadimos espacio cada 4
+            .trim()
+            .toUpperCase();
+    };
 // --- FILA DE CUENTA ---
-function AccountRow({ account,templates }: { account: FinanceAccount,templates: any[] }) {
+function AccountRow({ account, templates }: { account: FinanceAccount, templates: any[] }) {
     const [isEditing, setIsEditing] = useState(false)
     const [loading, setLoading] = useState(false)
     const router = useRouter()
 
-    // Estados de edición
-    const [tempName, setTempName] = useState(account.name)
-    const [tempColor, setTempColor] = useState(account.color_theme || '#64748b')
-    const [tempLetter, setTempLetter] = useState(account.avatar_letter || account.name.charAt(0).toUpperCase())
-    const [tempNumber, setTempNumber] = useState(account.account_number || '')
-    const [tempActive, setTempActive] = useState(account.is_active)
-    const [tempType, setTempType] = useState<FinanceAccountType>(account.account_type)
-    const [tempAutoMirror, setTempAutoMirror] = useState(account.auto_mirror_transfers || false)
-    const [tempImporterId, setTempImporterId] = useState(account.importer_id || 'none')
-    const [tempInitialBalance, setTempInitialBalance] = useState(account.initial_balance || 0)
+    // Estados temporales unificados
+    const [state, setState] = useState({
+        name: account.name,
+        slug: account.slug || '',
+        color: account.color_theme || '#64748b',
+        letter: account.avatar_letter || account.name.charAt(0).toUpperCase(),
+        number: account.account_number || '',
+        active: account.is_active,
+        type: account.account_type,
+        autoMirror: account.auto_mirror_transfers || false,
+        importerId: account.importer_id || 'none',
+        balance: account.initial_balance || 0
+    });
 
-    // Se dispara solo cuando cambias el tipo de cuenta en el selector
+    const [isSlugCustom, setIsSlugCustom] = useState(false);
+
     useEffect(() => {
-        // Tipos donde queremos que esté activo por defecto
-        const autoActiveTypes: FinanceAccountType[] = ['loan', 'investment'];
-        
-        if (autoActiveTypes.includes(tempType)) {
-            setTempAutoMirror(true);
-        } else {
-            setTempAutoMirror(false);
+        if (!isSlugCustom && isEditing) {
+            setState(prev => ({ ...prev, slug: slugify(prev.name) }));
         }
-    }, [tempType]);
-    const isChanged = tempName !== account.name || 
-                      tempColor !== account.color_theme || 
-                      tempLetter !== account.avatar_letter || 
-                      tempNumber !== (account.account_number || '') ||
-                      tempActive !== account.is_active ||
-                      tempType !== account.account_type ||
-                      tempAutoMirror !== (account.auto_mirror_transfers || false)|| 
-                      tempImporterId !== (account.importer_id || 'none')||
-                      Number(tempInitialBalance) !== Number(account.initial_balance);
+    }, [state.name, isSlugCustom, isEditing]);
 
     const handleSave = async () => {
-        setLoading(true)
-        const formData = new FormData()
-        formData.append('id', account.id)
-        formData.append('name', tempName)
-        formData.append('color_theme', tempColor)
-        formData.append('avatar_letter', tempLetter)
-        formData.append('account_number', tempNumber)
-        formData.append('is_active', String(tempActive))
-        formData.append('account_type', tempType)
-        formData.append('auto_mirror_transfers', String(tempAutoMirror))
-        formData.append('importer_id', tempImporterId === 'none' ? '' : tempImporterId)
-        formData.append('initial_balance', String(tempInitialBalance))
-        const res = await updateAccount({} as ActionResponse, formData)
+        setLoading(true);
+        const fd = new FormData();
+        fd.append('id', account.id);
+        fd.append('name', state.name);
+        fd.append('slug', state.slug);
+        fd.append('account_number', state.number);
+        fd.append('initial_balance', state.balance.toString());
+        fd.append('account_type', state.type);
+        fd.append('color_theme', state.color);
+        fd.append('avatar_letter', state.letter);
+        fd.append('is_active', String(state.active));
+        fd.append('auto_mirror_transfers', String(state.autoMirror));
+        fd.append('importer_id', state.importerId);
+
+        const res = await updateAccount({} as ActionResponse, fd);
         if (res.success) {
-            toast.success('Cuenta actualizada')
-            setIsEditing(false)
-            router.refresh()
-        } else {
-            toast.error('Error al guardar')
+            toast.success('Cuenta actualizada');
+            setIsEditing(false);
+            router.refresh();
         }
-        setLoading(false)
-    }
+        setLoading(false);
+    };
 
     return (
         <div className={cn(
-            "group mb-2 p-2 rounded-xl border bg-white shadow-sm transition-all",
+            "group mb-3 p-4 rounded-2xl border bg-white shadow-sm transition-all",
             isEditing ? "ring-2 ring-indigo-500/20 border-indigo-200" : "border-slate-100"
         )}>
-            <div className="flex items-center gap-2">
-                {/* Color Picker Rápido */}
-                <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg border shadow-xs">
-                    <input 
-                        type="color" 
-                        value={tempColor} 
-                        onChange={(e) => setTempColor(e.target.value)}
-                        className="absolute inset-0 scale-150 cursor-pointer"
-                    />
-                </div>
+            {/* FILA SUPERIOR: SIEMPRE VISIBLE */}
+            <div className="flex items-center gap-3">
+                {!isEditing && (
+                    <>
+                        <AccountAvatar 
+                            account={{ name: account.name, color_theme: account.color_theme, avatar_letter: account.avatar_letter }} 
+                            className="h-9 w-9 text-[11px] shrink-0" 
+                        />
+                        <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-black text-slate-700 uppercase italic tracking-tighter leading-none mb-1">{account.name}</h4>
+                            <p className="text-[10px] text-slate-400 font-mono italic">{formatIBAN(account.account_number||'')}</p>
+                        </div>
+                    </>
+                )}
+                
+                {/* SI ESTAMOS EDITANDO, ESTA PARTE SE OCULTA PARA DEJAR PASO AL FORMFIELDS QUE YA LLEVA EL NOMBRE */}
+                {isEditing && <p className="flex-1 text-[10px] font-black text-indigo-500 uppercase italic tracking-widest">Editando cuenta...</p>}
 
-                <AccountAvatar 
-                    account={{ name: tempName, color_theme: tempColor, avatar_letter: tempLetter }} 
-                    className="h-8 w-8 text-[11px]" 
-                />
-
-                <div className="flex-1 min-w-0">
-                    <Input 
-                        value={tempName} 
-                        onChange={(e) => setTempName(e.target.value)}
-                        className="h-5 text-sm border-none focus-visible:ring-0 bg-transparent font-bold p-0 px-1"
-                    />
-                    <p className="text-[9px] text-slate-400 px-1 font-mono truncate">
-                        {tempNumber || 'Sin número de cuenta'}
-                    </p>
-                </div>
-
-                <div className="flex gap-1">
-                    <Button 
-                        size="icon" variant="ghost" 
-                        onClick={() => setTempActive(!tempActive)}
-                        className={cn("h-8 w-8", !tempActive ? "text-amber-500 bg-amber-50" : "text-slate-300")}
-                    >
-                        {tempActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                {/* BOTONES DE ACCIÓN: SIEMPRE A LA DERECHA */}
+                <div className="flex gap-1 shrink-0">
+                    {!isEditing && (
+                        <Button size="icon" variant="ghost" onClick={() => setState(p => ({...p, active: !p.active}))} className={cn("h-8 w-8", !state.active ? "text-amber-500 bg-amber-50" : "text-slate-300")}>
+                            {state.active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                        </Button>
+                    )}
+                    <Button size="icon" variant="ghost" onClick={() => setIsEditing(!isEditing)} className={cn("h-8 w-8", isEditing ? "text-rose-500 bg-rose-50" : "text-slate-400")}>
+                        {isEditing ? <X className="h-4 w-4" /> : <Pencil className="h-3.5 w-3.5" />}
                     </Button>
-                    <Button size="icon" variant="ghost" onClick={() => setIsEditing(!isEditing)} className="h-8 w-8 text-slate-400">
-                        <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    {isChanged && (
-                        <Button size="icon" variant="ghost" onClick={handleSave} disabled={loading} className="h-8 w-8 text-emerald-600">
+                    {isEditing && (
+                        <Button size="icon" variant="ghost" onClick={handleSave} disabled={loading} className="h-8 w-8 text-emerald-600 bg-emerald-50">
                             {loading ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4" />}
                         </Button>
                     )}
@@ -140,145 +141,65 @@ function AccountRow({ account,templates }: { account: FinanceAccount,templates: 
             </div>
 
             {isEditing && (
-                <div className="mt-3 pt-3 border-t border-slate-50 space-y-4 animate-in slide-in-from-top-2">
-                    <div className="grid grid-cols-4 gap-2">
-                        {Object.entries(ACCOUNT_TYPES_META).map(([key, meta]) => (
-                            <button
-                                key={key}
-                                type="button"
-                                onClick={() => setTempType(key as FinanceAccountType)}
-                                className={cn(
-                                    "flex flex-col items-center justify-center p-2 rounded-xl border transition-all gap-1",
-                                    tempType === key ? "bg-indigo-600 border-indigo-500 text-white shadow-md" : "bg-slate-50 border-transparent text-slate-400 hover:border-slate-200"
-                                )}
-                            >
-                                <LoadIcon name={meta.icon} className="h-3.5 w-3.5" />
-                                <span className="text-[7px] font-bold uppercase">{meta.label.split(' ')[0]}</span>
-                            </button>
-                        ))}
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black uppercase text-slate-400">Letra</label>
-                            <Input 
-                                value={tempLetter} 
-                                onChange={(e) => setTempLetter(e.target.value.charAt(0).toUpperCase())}
-                                className="h-8 text-center font-black bg-slate-50 border-none"
-                                maxLength={1}
-                            />
-                        </div>
-                        <div className="col-span-2 space-y-1">
-                            <label className="text-[9px] font-black uppercase text-slate-400">Nº Cuenta / IBAN</label>
-                            <Input 
-                                value={tempNumber} 
-                                onChange={(e) => setTempNumber(e.target.value)}
-                                className="h-8 text-[10px] bg-slate-50 border-none font-mono"
-                            />
-                        </div>
-                    </div>
-                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                        <div className="space-y-0.5 pr-4">
-                            <Label className="text-[10px] font-bold uppercase text-slate-700">Movimiento Espejo</Label>
-                            <p className="text-[8px] text-slate-500 leading-tight">
-                                Genera automáticamente el ingreso de contrapartida al recibir una transferencia.
-                            </p>
-                        </div>
-                        <Switch 
-                            checked={tempAutoMirror} 
-                            onCheckedChange={setTempAutoMirror}
-                            className="scale-75 data-[state=checked]:bg-emerald-500"
-                        />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        {/* ✨ CAMPO SALDO INICIAL REINTEGRADO */}
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black uppercase text-slate-400 italic">Saldo Inicial (Ancla)</label>
-                            <Input 
-                                type="number"
-                                step="0.01"
-                                value={tempInitialBalance} 
-                                onChange={(e) => setTempInitialBalance(Number(e.target.value))}
-                                className="h-8 text-[11px] bg-slate-50 border-none font-mono font-bold text-indigo-600"
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black uppercase text-slate-400">Plantilla de Importación</label>
-                            <Select 
-                                value={tempImporterId || 'none'} 
-                                onValueChange={(val: string) => setTempImporterId(val)}
-                            >
-                                <SelectTrigger className="h-8 text-[11px] bg-slate-50 border-none">
-                                    <SelectValue placeholder="Sin plantilla asociada" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">Ninguna (Manual)</SelectItem>
-                                    {templates.map((t: any) => (
-                                        <SelectItem key={t.id} value={t.id} className="text-xs">
-                                            {t.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
+                <div className="mt-4 border-t pt-4">
+                    <AccountFormFields 
+                        templates={templates}
+                        data={state}
+                        onChange={(f: string, v: any) => {
+                            if (f === 'slug') setIsSlugCustom(true);
+                            setState(p => ({...p, [f]: v}));
+                        }}
+                    />
                 </div>
             )}
         </div>
-    )
+    );
 }
 
-// --- FORMULARIO NUEVA CUENTA ---
-function NewAccountForm({ onSuccess }: { onSuccess: () => void }) {
-    const [pending, setPending] = useState(false)
-    const [type, setType] = useState<FinanceAccountType>('checking')
 
-    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault()
-        setPending(true)
-        const fd = new FormData(e.currentTarget)
-        fd.append('account_type', type)
-        const res = await createAccount({} as any, fd)
-        if (res.success) {
-            toast.success("Cuenta creada")
-            onSuccess()
-        }
-        setPending(false)
-    }
+// --- FORMULARIO NUEVA CUENTA ---
+function NewAccountForm({ templates, onSuccess }: { templates: any[], onSuccess: () => void }) {
+    const [pending, setPending] = useState(false);
+    const [isSlugCustom, setIsSlugCustom] = useState(false);
+    const [state, setState] = useState({
+        name: '', slug: '', number: '', balance: '0', type: 'checking', autoMirror: false, importerId: 'none', color: '#6366f1', letter: ''
+    });
+
+    useEffect(() => {
+        if (!isSlugCustom) setState(p => ({ ...p, slug: slugify(p.name), letter: p.name.charAt(0).toUpperCase() }));
+    }, [state.name, isSlugCustom]);
+
+    const handleSave = async () => {
+        setPending(true);
+        const fd = new FormData();
+        Object.entries(state).forEach(([k, v]) => fd.append(k, String(v)));
+        fd.append('color_theme', state.color); // Mapeo de nombres de campo para la action
+        fd.append('account_number', state.number);
+        fd.append('initial_balance', state.balance);
+        fd.append('account_type', state.type);
+        fd.append('auto_mirror_transfers', String(state.autoMirror));
+        fd.append('avatar_letter', state.letter);
+
+        const res = await createAccount({} as any, fd);
+        if (res.success) onSuccess();
+        setPending(false);
+    };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-4 gap-2">
-                <Input name="name" placeholder="Nombre (Ej: Santander)" required className="col-span-3 h-10 bg-slate-50 border-none font-bold" />
-                <Input name="color_theme" type="color" defaultValue="#6366f1" className="h-10 p-1 bg-slate-50 border-none" />
-            </div>
-            
-            <div className="grid grid-cols-4 gap-2">
-                {Object.entries(ACCOUNT_TYPES_META).map(([key, meta]) => (
-                    <button
-                        key={key}
-                        type="button"
-                        onClick={() => setType(key as FinanceAccountType)}
-                        className={cn(
-                            "flex flex-col items-center justify-center p-2 rounded-xl border transition-all h-14 gap-1",
-                            type === key ? "bg-indigo-600 border-indigo-500 text-white shadow-lg" : "bg-slate-50 border-transparent text-slate-400"
-                        )}
-                    >
-                        <LoadIcon name={meta.icon} className="h-4 w-4" />
-                        <span className="text-[7px] font-bold uppercase">{meta.label.split(' ')[0]}</span>
-                    </button>
-                ))}
-            </div>
-
-            <div className="flex gap-2">
-                <Input name="account_number" placeholder="IBAN..." className="flex-1 h-10 bg-slate-50 border-none font-mono text-xs" />
-                <Input name="initial_balance" placeholder="0.00" type="number" step="0.01" className="w-24 h-10 bg-slate-50 border-none text-right font-mono" />
-            </div>
-            
-            <Button type="submit" disabled={pending} className="w-full bg-indigo-600 h-11 uppercase font-black text-[10px] tracking-widest">
-                {pending ? "Registrando..." : "Añadir Cuenta"}
+        <div className="space-y-4">
+            <AccountFormFields 
+                templates={templates}
+                data={state}
+                onChange={(f: string, v: any) => {
+                    if (f === 'slug') setIsSlugCustom(true);
+                    setState(p => ({...p, [f]: v}));
+                }}
+            />
+            <Button onClick={handleSave} disabled={pending} className="w-full bg-slate-900 h-12 rounded-2xl font-black uppercase text-[10px] tracking-widest">
+                {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Crear Nueva Cuenta"}
             </Button>
-        </form>
-    )
+        </div>
+    );
 }
 
 // --- DIÁLOGO PRINCIPAL ---
@@ -328,7 +249,7 @@ export function AccountSettingsDialog({
 
                         {showNew && (
                             <div className="mb-6 p-4 bg-white rounded-xl border border-indigo-100 shadow-md animate-in slide-in-from-top-2">
-                                <NewAccountForm onSuccess={() => setShowNew(false)} />
+                                <NewAccountForm onSuccess={() => setShowNew(false)} templates={templates} />
                             </div>
                         )}
 

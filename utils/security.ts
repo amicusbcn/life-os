@@ -2,8 +2,9 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 import { UserProfile, AppModule, AppRole } from '@/types/users'
+import { cache } from 'react'
 
-export async function getUserData(moduleKey?: string) {
+export const getUserData = cache(async (moduleKey?: string) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -41,6 +42,9 @@ export async function getUserData(moduleKey?: string) {
 
   const profile = profileRes.data as UserProfile
   if (!profile) redirect('/login')
+  if (profile.status === 'pending' && moduleKey) {
+    redirect('/?message=Debes cambiar tu contraseña para continuar')
+  }
 
   const userRole = profile.role || 'user'
   const isAdminGlobal = userRole === 'admin'
@@ -71,7 +75,7 @@ export async function getUserData(moduleKey?: string) {
     isAdminGlobal,
     modulePermission // 'admin', 'editor', 'viewer' o undefined
   }
-}
+});
 
 /**
  * Valida si el usuario tiene acceso a la consola de administración (Rol 'admin')

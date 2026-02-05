@@ -47,6 +47,8 @@ export interface FinanceAccount {
   icon_name?: string;
   auto_mirror_transfers?:boolean|null;
   importer_id?:string|null;
+  is_hidden: boolean;
+  slug:string;
 }
 
 export interface FinanceCategory {

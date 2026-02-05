@@ -1,27 +1,24 @@
 // app/finance/page.tsx
 import { getUserData } from '@/utils/security';
 import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar';
-
-// Componentes y datos Server-Side
 import { getFinanceDashboardData } from './data'; 
 import { FinanceDashboardView } from './components/FinanceDashboardView';
 import { FinanceMenu } from './components/FinanceMenu';
 
 export default async function FinancePage() {
-    // 1. Seguridad centralizada: obtenemos perfil, módulos y rol en una sola ráfaga
-    const { profile, accessibleModules, userRole } = await getUserData('finance');
+    // 1. Seguridad centralizada
+    const { profile, accessibleModules } = await getUserData('finance');
 
-    // 2. Obtener todos los datos del Dashboard (Delegado a data.ts)
+    // 2. Obtener datos (Quitamos transactions de la vista de saldos si prefieres)
     const { 
         accounts, 
         categories, 
-        transactions, 
         rules, 
         templates, 
         history 
     } = await getFinanceDashboardData();
     
-    // 3. Calcular el Saldo Total Global
+    // 3. Saldo Global (opcional aquí, lo puede calcular el cliente también)
     const totalBalance = accounts.reduce((acc, account) => acc + (account.current_balance || 0), 0);
 
     return (
@@ -29,7 +26,7 @@ export default async function FinancePage() {
             title="Finanzas Personales"
             profile={profile}
             modules={accessibleModules}
-            // Slot Cuerpo: Operaciones de importación y plantillas
+            // Slot Cuerpo: El menú lateral de operativa
             moduleMenu={
                 <FinanceMenu 
                     mode="operative"
@@ -41,7 +38,7 @@ export default async function FinancePage() {
                     currentPanel='dashboard'
                 />
             }
-            // Slot Pie: Gestión de la estructura (Cuentas y Categorías)
+            // Slot Pie: Configuración
             moduleSettings={
                 <FinanceMenu 
                     mode="settings"
@@ -53,14 +50,11 @@ export default async function FinancePage() {
                 />
             }
         >
-            {/* Contenido Principal */}
-            <div className="max-w-7xl mx-auto">
+            {/* 4. VISTA DEL DASHBOARD (Saldos por grupos) */}
+            <div className="max-w-6xl mx-auto px-6 py-8">
                 <FinanceDashboardView 
-                    accounts={accounts}
-                    categories={categories}
-                    transactions={transactions}
-                    rules={rules}
-                    totalBalance={totalBalance}
+                    initialAccounts={accounts} 
+                    templates={templates}
                 />
             </div>
         </UnifiedAppSidebar>

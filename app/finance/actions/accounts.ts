@@ -19,19 +19,18 @@ export async function createAccount(
   
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Usuario no autenticado.' };
-
-  // Logs para depuración
-  console.log("--- Iniciando createAccount ---");
-  console.log("User ID:", user.id);
-
+  
+  const id = formData.get('id');
   const name = formData.get('name') as string;
-  const accountType = formData.get('account_type') as FinanceAccountType;
-  const initialBalanceStr = formData.get('initial_balance') as string;
-  const colorTheme = formData.get('color_theme') as string;
-  const accountNumber = formData.get('account_number') as string;
-  const currency = (formData.get('currency') as string) || 'EUR';
-
-  console.log("Datos recibidos:", { name, accountType, initialBalanceStr, accountNumber });
+  const slug = formData.get('slug');
+  const accountNumber = (formData.get('account_number') as string) || '';
+  const initialBalanceStr = formData.get('initial_balance') as string;// <-- Y aquí
+  const accountType = formData.get('account_type');
+  const colorTheme = formData.get('color_theme');
+  const avatarLetter = formData.get('avatar_letter');
+  const isActive = formData.get('is_active') === 'true';
+  const autoMirror = formData.get('auto_mirror_transfers') === 'true';
+  const importerId = formData.get('importer_id');
 
   if (!name || !accountType) {
     return { success: false, error: 'Nombre y Tipo son obligatorios.' };
@@ -45,7 +44,6 @@ export async function createAccount(
         user_id: user.id,
         name: name.trim(),
         account_type: accountType,
-        currency: currency.toUpperCase(),
         initial_balance: initialBalance,
         current_balance: initialBalance, // ✨ Importante: inicializamos el saldo actual igual al inicial
         color_theme: colorTheme || '#6366f1',
@@ -79,60 +77,40 @@ export async function createAccount(
 
 
 export async function updateAccount(_prevState: ActionResponse, formData: FormData): Promise<ActionResponse> {
-  const supabase = await createClient();
-  const { revalidatePath } = await import('next/cache');
+    const supabase = await createClient();
+    
+    const id = formData.get('id') as string;
+    const name = formData.get('name') as string;
+    const slug = formData.get('slug') as string;
+    const accountNumber = formData.get('account_number') as string;
+    const initialBalanceStr = formData.get('initial_balance') as string;
 
-  // 1. Extraer datos
-  const id = formData.get('id') as string;
-  const name = formData.get('name') as string;
-  const importerId = formData.get('importer_id') as string;
+    try {
+        const updateData: any = {
+            name: name.trim(),
+            slug: slug.trim(),
+            account_number: accountNumber?.replace(/\s/g, '').trim(), // ✨ Forzamos limpieza de espacios aquí también
+            account_type: formData.get('account_type') as any,
+            color_theme: formData.get('color_theme') as string,
+            avatar_letter: (formData.get('avatar_letter') as string)?.toUpperCase(),
+            is_active: formData.get('is_active') === 'true',
+            auto_mirror_transfers: formData.get('auto_mirror_transfers') === 'true',
+            importer_id: formData.get('importer_id') === 'none' ? null : formData.get('importer_id'),
+        };
 
-  // 2. Parseo de saldo (Solo si viene en el FormData, si no, no lo tocamos)
-  const initialBalanceRaw = formData.get('initial_balance');
-  const initialBalance = initialBalanceRaw 
-    ? parseFloat(initialBalanceRaw.toString().replace(',', '.')) 
-    : undefined;
+        if (initialBalanceStr) {
+            // Convertimos "1250,50" -> "1250.50" antes de parsear
+            updateData.initial_balance = parseFloat(initialBalanceStr.replace(',', '.'));
+        }
 
-  const accountType = formData.get('account_type') as any;
-  const colorTheme = formData.get('color_theme') as string;
-  const accountNumber = formData.get('account_number') as string;
-  const avatarLetter = formData.get('avatar_letter') as string;
-  
-  // 3. Booleanos (Conversión segura de string a boolean)
-  const isActive = formData.get('is_active') === 'true';
-  const autoMirrorTransfers = formData.get('auto_mirror_transfers') === 'true'; // <--- NUEVO
+        const { error } = await supabase.from('finance_accounts').update(updateData).eq('id', id);
+        if (error) throw error;
 
-  try {
-    // 4. Construcción dinámica del objeto de actualización
-    const updateData: any = {
-      name: name.trim(),
-      account_type: accountType,
-      color_theme: colorTheme,
-      account_number: accountNumber?.trim(),
-      avatar_letter: avatarLetter?.trim().charAt(0).toUpperCase(),
-      is_active: isActive,
-      auto_mirror_transfers: autoMirrorTransfers,
-      importer_id: importerId === "" ? null : importerId, // 🚩 AÑADIR ESTO    
-    };
-
-    // Solo actualizamos el balance si realmente se ha pasado un valor numérico
-    if (initialBalance !== undefined && !isNaN(initialBalance)) {
-      updateData.initial_balance = initialBalance;
+        revalidatePath('/finance');
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
     }
-
-    const { error } = await supabase
-      .from('finance_accounts')
-      .update(updateData)
-      .eq('id', id);
-
-    if (error) throw error;
-
-    revalidatePath('/finance');
-    return { success: true };
-  } catch (e: any) {
-    console.error('Error updating account:', e);
-    return { success: false, error: e.message };
-  }
 }
 
 // DELETE ACCOUNT (Se mantiene igual, es correcta)

@@ -1,270 +1,180 @@
-// app/finance/components/FinanceDashboardView.tsx
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { 
-    FinanceAccount, 
-    FinanceCategory, 
-    FinanceTransaction, 
-    FinanceRule, 
-    FinanceTransactionSplit 
-} from '@/types/finance';
-import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import React, { useState, useMemo } from 'react';
+import { FinanceAccount } from '@/types/finance';
 import { Button } from '@/components/ui/button';
-import { TransactionSplitDialog } from "./TransactionSplitDialog";
 import { 
-    Split, Search, FilterX, ChevronDown, ChevronRight,
-    ChevronLeft, Check, ChevronsUpDown, Wallet, Eye, EyeOff, Tag
+    Copy, ArrowUpRight, Eye, EyeOff, Wallet, 
+    Landmark, TrendingUp, CreditCard, ChevronDown, Banknote
 } from 'lucide-react';
-import LoadIcon from '@/utils/LoadIcon';
-
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover" ;
-import { cn } from "@/lib/utils";
-import { updateTransactionCategoryAction } from '../actions';
-import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { MagicRuleDialog } from "./MagicRuleDialog";
-import { TransactionList } from "./TransactionList"; // Importamos el nuevo componente
+import Link from 'next/link';
+import { cn } from "@/lib/utils";
+import LoadIcon from '@/utils/LoadIcon';
+import { AccountSettingsDialog } from './AccountSettingsDialog';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-interface FinanceDashboardViewProps {
-    accounts: FinanceAccount[];
-    categories: FinanceCategory[];
-    transactions: FinanceTransaction[];
-    rules: FinanceRule[];
-    totalBalance: number;
-}
+export function FinanceDashboardView({ initialAccounts, templates }: { initialAccounts: FinanceAccount[], templates: any[] }) {
+    const [isPrivate, setIsPrivate] = useState(true);
 
-const ITEMS_PER_PAGE = 25;
-
-export function FinanceDashboardView({ accounts, categories, transactions, rules, totalBalance }: FinanceDashboardViewProps) {
-    const router = useRouter();
-    
-    // --- ESTADOS ---
-    const [isUpdating, setIsUpdating] = useState<string | null>(null);
-    const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-    const [isPrivate, setIsPrivate] = useState(true); 
-    const [searchTerm, setSearchTerm] = useState('');
-    const [categoryFilter, setCategoryFilter] = useState('all');
-    const [accountFilter, setAccountFilter] = useState('all');
-    const [currentPage, setCurrentPage] = useState(1);
-    const [mounted, setMounted] = useState(false);
-    const [magicSuggestion, setMagicSuggestion] = useState<{ concept: string, catId: string, catName: string } | null>(null);
-
-    useEffect(() => { setMounted(true); }, []);
-
-    const toggleRow = (id: string) => {
-        const newRows = new Set(expandedRows);
-        if (newRows.has(id)) newRows.delete(id);
-        else newRows.add(id);
-        setExpandedRows(newRows);
-    };
-
+    // Lógica de Saldos
     const { currentBalance, netWorth } = useMemo(() => {
-        // Definimos qué consideramos "Dinero en mano/disponible"
-        const currentTypes = ['checking', 'savings', 'credit_card', 'cash'];
+        const liquidTypes = ['checking', 'savings', 'credit_card', 'cash'];
+        const current = initialAccounts
+            .filter(acc => liquidTypes.includes(acc.account_type))
+            .reduce((sum, acc) => sum + (Number(acc.current_balance) || 0), 0);
         
-        // Saldo Corriente (Líquido)
-        const current = accounts
-            .filter(acc => currentTypes.includes(acc.account_type))
-            .reduce((sum, acc) => sum + (Number(acc.current_balance) || 0), 0);
+        const total = initialAccounts.reduce((sum, acc) => sum + (Number(acc.current_balance) || 0), 0);
+        
+        return { currentBalance: current, netWorth: total };
+    }, [initialAccounts]);
 
-        // Saldo Total (Patrimonio = Corriente + Inversiones + Otros)
-        const total = accounts
-            .reduce((sum, acc) => sum + (Number(acc.current_balance) || 0), 0);
-
+    // Agrupación para los acordeones
+    const groupedAccounts = useMemo(() => {
         return {
-            currentBalance: current,
-            netWorth: total
+            checking: { label: 'Disponibilidad y Efectivo', icon: 'Wallet', list: initialAccounts.filter(a => a.account_type === 'checking' || a.account_type === 'cash') },
+            credit_card: { label: 'Tarjetas de Crédito', icon: 'CreditCard', list: initialAccounts.filter(a => a.account_type === 'credit_card') },
+            savings: { label: 'Ahorro y Reserva', icon: 'Landmark', list: initialAccounts.filter(a => a.account_type === 'savings') },
+            investment: { label: 'Inversión y Activos', icon: 'TrendingUp', list: initialAccounts.filter(a => a.account_type === 'investment') },
+            loan: { label: 'Préstamos y Deudas', icon: 'Banknote', list: initialAccounts.filter(a => a.account_type === 'loan') },
         };
-    }, [accounts]);
+    }, [initialAccounts]);
 
-    const handleCategoryChange = async (transactionId: string, categoryId: string, concept: string) => {
-        setIsUpdating(transactionId);
-        const result = await updateTransactionCategoryAction(transactionId, categoryId);
-        
-        if (result.success) {
-            const patternExists = rules.some((r: FinanceRule) => 
-                concept.toUpperCase().includes(r.pattern.toUpperCase())
-            );
-            const catName = categories.find(c => c.id === categoryId)?.name || "";
-
-            if (!patternExists && categoryId !== 'pending') {
-                toast.success("Categoría actualizada", {
-                    description: `¿Quieres crear una regla para "${concept}"?`,
-                    duration: 6000,
-                    action: {
-                        label: "🪄 Crear Regla",
-                        onClick: () => setMagicSuggestion({ concept, catId: categoryId, catName }),
-                    },
-                });
-            } else {
-                toast.success("Categoría actualizada", { duration: 2000 });
-            }
-            router.refresh();
-        } else {
-            toast.error("Error al actualizar");
-        }
-        setIsUpdating(null);
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text);
+        toast.success("IBAN copiado");
     };
-
-    const filteredTransactions = useMemo(() => {
-        return transactions.filter(t => {
-            const matchesSearch = t.concept.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesAccount = accountFilter === 'all' || t.account_id === accountFilter;
-            
-            let matchesCategory = false;
-            if (categoryFilter === 'all') {
-                matchesCategory = true;
-            } else if (categoryFilter === 'none') {
-                matchesCategory = t.category_id === null || t.category_id === 'pending' || t.category_id === '';
-            } else {
-                const transactionCat = categories.find(c => c.id === t.category_id);
-                const matchesPrimary = t.category_id === categoryFilter || transactionCat?.parent_id === categoryFilter;
-                
-                const isSplit = t.is_split ?? false;
-                const matchesInSplits = isSplit && t.splits?.some(s => {
-                    const splitCat = categories.find(c => c.id === s.category_id);
-                    return s.category_id === categoryFilter || splitCat?.parent_id === categoryFilter;
-                });
-                
-                matchesCategory = !!(matchesPrimary || matchesInSplits);
-            }
-            return matchesSearch && matchesCategory && matchesAccount;
-        });
-    }, [transactions, searchTerm, categoryFilter, accountFilter, categories]);
-
-    const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE);
-    const paginatedTransactions = useMemo(() => {
-        const start = (currentPage - 1) * ITEMS_PER_PAGE;
-        return filteredTransactions.slice(start, start + ITEMS_PER_PAGE);
-    }, [filteredTransactions, currentPage]);
-
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' });
-    }
-
-    const resetFilters = () => {
-        setSearchTerm('');
-        setCategoryFilter('all');
-        setAccountFilter('all');
-        setCurrentPage(1);
-    };
-
-    if (!mounted) return <div className="mt-8 animate-pulse italic text-slate-400">Cargando dashboard...</div>;
 
     return (
-        <div className="mt-8 space-y-6 pb-20">
-            
-        {/* --- BLOQUE DE SALDOS --- */}
-        <div className="relative overflow-hidden p-6 rounded-[2rem] bg-slate-900 text-white shadow-xl">
-            <div className="relative z-10 flex flex-col md:flex-row justify-between gap-8">
-                
-                {/* Lado Izquierdo: Los dos saldos */}
-                <div className="flex flex-col sm:flex-row gap-8 md:gap-16">
-                    {/* Saldo Corriente */}
-                    <div>
-                        <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Disponible Corriente</p>
-                        <div className="flex items-baseline gap-2">
-                            <h2 className="text-2xl md:text-3xl font-mono font-bold tracking-tighter">
-                                {isPrivate ? "••••••" : currentBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+        <div className="space-y-8 pb-20">
+            {/* --- BLOQUE DESTACADO: SALDO CORRIENTE (DARK) --- */}
+            <div className="relative overflow-hidden p-8 rounded-[2.5rem] bg-slate-900 text-white shadow-2xl border border-white/5">
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+                    <div className="flex flex-col sm:flex-row gap-12 text-center md:text-left">
+                        <div>
+                            <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mb-2">Disponible Real</p>
+                            <h2 className="text-5xl font-mono font-bold tracking-tighter italic text-indigo-400">
+                                {isPrivate ? "••••••" : currentBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
                             </h2>
-                            {!isPrivate && <span className="text-slate-500 text-xs">EUR</span>}
+                        </div>
+                        <div className="relative md:pl-12 md:border-l border-white/10">
+                            <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mb-2">Patrimonio Neto</p>
+                            <h2 className="text-3xl font-mono font-bold tracking-tighter text-slate-300">
+                                {isPrivate ? "••••••" : netWorth.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                            </h2>
                         </div>
                     </div>
 
-                    {/* Patrimonio Total */}
-                    <div className="relative">
-                        <div className="absolute -left-4 top-0 bottom-0 w-[1px] bg-white/10 hidden sm:block" />
-                        <p className="text-indigo-400 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Patrimonio Global</p>
-                        <div className="flex items-baseline gap-2">
-                            <h2 className="text-2xl md:text-3xl font-mono font-bold tracking-tighter text-indigo-100">
-                                {isPrivate ? "••••••" : netWorth.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
-                            </h2>
-                            {!isPrivate && <span className="text-slate-500 text-xs">EUR</span>}
-                        </div>
+                    <div className="flex gap-3">
+                        <AccountSettingsDialog initialAccounts={initialAccounts} templates={templates}>
+                            <Button variant="outline" className="rounded-2xl bg-white/5 border-white/10 hover:bg-white/10 h-12 px-6 uppercase font-black text-[10px] tracking-widest text-slate-300">
+                                Ajustes
+                            </Button>
+                        </AccountSettingsDialog>
+                        <Button variant="outline" onClick={() => setIsPrivate(!isPrivate)} className="rounded-2xl bg-white/5 border-white/10 w-12 h-12 p-0">
+                            {isPrivate ? <Eye size={18} /> : <EyeOff size={18} />}
+                        </Button>
                     </div>
                 </div>
-
-                {/* Botón de Privacidad */}
-                <div className="flex items-center">
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => setIsPrivate(!isPrivate)}
-                        className={cn(
-                            "rounded-xl border-white/10 px-4 h-10",
-                            isPrivate ? "bg-indigo-600 text-white border-transparent" : "bg-white/5 text-slate-300"
-                        )}
-                    >
-                        {isPrivate ? <Eye className="h-4 w-4 mr-2" /> : <EyeOff className="h-4 w-4 mr-2" />}
-                        {isPrivate ? "Revelar" : "Ocultar"}
-                    </Button>
-                </div>
+                {/* Decoración sutil de fondo */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full -mr-32 -mt-32 blur-3xl" />
             </div>
-        </div>
 
-            {/* --- ACORDEÓN DE CUENTAS --- */}
-            <div className={cn(
-                "grid transition-all duration-500",
-                !isPrivate ? "grid-rows-[1fr] opacity-100 mb-4" : "grid-rows-[0fr] opacity-0"
-            )}>
-                <div className="overflow-hidden">
-                    <div className="flex overflow-x-auto pb-4 gap-4 snap-x pt-2 scrollbar-thin scrollbar-thumb-slate-200">
-                        {accounts.map((acc) => (
-                            <div 
-                                key={acc.id} 
-                                onClick={() => {
-                                    setAccountFilter(accountFilter === acc.id ? 'all' : acc.id);
-                                    setCurrentPage(1);
-                                }}
-                                className={cn(
-                                    "min-w-[240px] cursor-pointer snap-start p-5 rounded-2xl shadow-sm border-2 transition-all",
-                                    accountFilter === acc.id ? "border-indigo-500 ring-2 ring-indigo-100" : "border-transparent"
-                                )}
-                                style={{ backgroundColor: acc.color_theme || '#f8fafc' }}
-                            >
-                                <div className="flex justify-between items-start mb-3">
-                                    <div className="p-2 bg-white/60 rounded-lg">
-                                        <LoadIcon name={acc.icon_name || 'Bank'} className="w-4 h-4 text-slate-700" />
+            {/* --- ACORDEONES POR GRUPO --- */}
+            <Accordion type="multiple" defaultValue={['checking', 'savings']} className="space-y-4">
+                {Object.entries(groupedAccounts).map(([key, group]) => (
+                    group.list.length > 0 && (
+                        <AccordionItem key={key} value={key} className="border-none bg-slate-50/50 rounded-[2rem] px-6 overflow-hidden">
+                            <AccordionTrigger className="hover:no-underline py-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-2 bg-white rounded-xl shadow-sm text-slate-600">
+                                        <LoadIcon name={group.icon} size={20} />
                                     </div>
-                                    {accountFilter === acc.id && <Badge className="bg-indigo-500 text-white border-0 text-[10px]">Filtrando</Badge>}
+                                    <div className="text-left">
+                                        <h3 className="text-xs font-black uppercase tracking-widest text-slate-500">{group.label}</h3>
+                                        <p className="text-[10px] font-bold text-indigo-500/70 font-mono">
+                                            {isPrivate ? "•••" : group.list.reduce((s, a) => s + Number(a.current_balance), 0).toLocaleString('es-ES')} €
+                                        </p>
+                                    </div>
                                 </div>
-                                <h3 className="font-bold text-slate-800 text-sm">{acc.name}</h3>
-                                <p className="text-xl font-black text-slate-900 mt-1">
-                                    {isPrivate ? "••••" : (Number(acc.current_balance)).toLocaleString('es-ES', { minimumFractionDigits: 2 })} {acc.currency}
-                                </p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="pb-8">
+                                <div className="flex flex-wrap gap-4 pt-2">
+                                    {group.list.map((acc) => (
+                                        <div 
+                                            key={acc.id} 
+                                            className={cn(
+                                                "group flex flex-col p-6 rounded-[2.2rem] border-2 transition-all duration-300 min-w-[280px] flex-1",
+                                                acc.is_active ? "shadow-sm bg-white" : "opacity-50 grayscale border-dashed bg-slate-50"
+                                            )}
+                                            style={{ 
+                                                backgroundColor: acc.is_active ? acc.color_theme + '15' : undefined, 
+                                                borderColor: acc.is_active ? acc.color_theme + '30' : undefined
+                                            }}
+                                        >
+                                            {/* FILA SUPERIOR: IDENTIDAD */}
+                                            <div className="flex items-start justify-between mb-6">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="p-3 bg-white rounded-2xl shadow-sm text-slate-700" style={{ color: acc.color_theme }}>
+                                                        <LoadIcon name={acc.icon_name || 'Bank'} size={22} />
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <h4 className="font-black text-base text-slate-800 uppercase italic tracking-tighter truncate leading-none mb-1.5">
+                                                            {acc.name}
+                                                        </h4>
+                                                        {acc.account_number && (
+                                                            <TooltipProvider>
+                                                                <Tooltip delayDuration={300}>
+                                                                    <TooltipTrigger asChild>
+                                                                        <button 
+                                                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(acc.account_number!); }}
+                                                                            className="text-[9px] font-mono text-slate-400 hover:text-indigo-600 transition-colors flex items-center gap-1.5"
+                                                                        >
+                                                                            {acc.account_number.replace(/(.{4})/g, '$1 ')}
+                                                                            <Copy size={9} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                        </button>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent className="bg-slate-900 text-white text-[10px] font-bold uppercase">Copiar IBAN</TooltipContent>
+                                                                </Tooltip>
+                                                            </TooltipProvider>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
 
-            {/* --- TABLA DE MOVIMIENTOS --- */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <TransactionList 
-                accounts={accounts}
-                transactions={transactions}
-                categories={categories}
-                accountFilter={accountFilter}
-                onCategoryChange={handleCategoryChange}
-                isPrivate={isPrivate}
-            />
-                
-            </div>
+                                            {/* FILA INFERIOR: SALDO Y ACCIÓN */}
+                                            <div className="flex items-end justify-between mt-auto">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 ml-1">Saldo Disponible</span>
+                                                    <p className="text-3xl font-mono font-bold text-slate-900 tracking-tighter italic leading-none">
+                                                        {isPrivate ? "••••" : Number(acc.current_balance).toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                                                        <span className="text-xs ml-1 font-black text-slate-400">€</span>
+                                                    </p>
+                                                </div>
 
-            {magicSuggestion && (
-                <MagicRuleDialog 
-                    concept={magicSuggestion.concept}
-                    categoryId={magicSuggestion.catId}
-                    categoryName={magicSuggestion.catName}
-                    onClose={() => setMagicSuggestion(null)}
-                />
-            )}
+                                                <TooltipProvider>
+                                                    <Tooltip delayDuration={300}>
+                                                        <TooltipTrigger asChild>
+                                                            <Link 
+                                                                href={`/finance/transactions/${acc.slug}`}
+                                                                className="h-9 w-9 rounded-full bg-white flex items-center justify-center text-slate-900 shadow-sm hover:bg-slate-900 hover:text-white transition-all shrink-0 active:scale-95 border border-slate-100"
+                                                            >
+                                                                <ArrowUpRight size={16} />
+                                                            </Link>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent className="bg-slate-900 text-white text-[10px] font-bold uppercase">Movimientos</TooltipContent>
+                                                    </Tooltip>
+                                                </TooltipProvider>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </AccordionContent>
+                        </AccordionItem>
+                    )
+                ))}
+            </Accordion>
         </div>
     );
 }

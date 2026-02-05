@@ -7,6 +7,7 @@ import { AppModule, UserProfile } from '@/types/users'
 import { DashboardGrid } from '@/app/core/components/DashboardGrid' 
 import LoadIcon from '@/utils/LoadIcon'
 import { getUserData } from '@/utils/security'
+import ForcePasswordChangeDialog from './settings/users/components/ForcePasswordChangeDialog'
 
 export default async function Dashboard() {
     const { profile, accessibleModules, userRole } = await getUserData()
@@ -44,6 +45,7 @@ export default async function Dashboard() {
                         </p>
                     </div>
                 )}
+                <ForcePasswordChangeDialog profileStatus={profile.status} />
             </div>
         </UnifiedAppSidebar>
     )

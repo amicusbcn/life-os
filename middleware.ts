@@ -1,105 +1,100 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  // 1. Inicializar la respuesta (para gestión de cookies de sesión)
+  // 1. Inicializar la respuesta base
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   })
 
+  // 2. Cliente Supabase (CON LA API NUEVA getAll/setAll)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
+        getAll() {
+          return request.cookies.getAll()
         },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({ name, value, ...options })
+        setAll(cookiesToSet) {
+          // A. Actualizar cookies en la petición actual (para que la lógica de abajo las vea)
+          cookiesToSet.forEach(({ name, value }) => 
+            request.cookies.set(name, value)
+          )
+          
+          // B. Recrear la respuesta para asegurar que lleva las cookies actualizadas
           response = NextResponse.next({
-            request: { headers: request.headers },
+            request,
           })
-          response.cookies.set({ name, value, ...options })
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({ name, value: '', ...options })
-          response = NextResponse.next({
-            request: { headers: request.headers },
-          })
-          response.cookies.set({ name, value: '', ...options })
+          
+          // C. Escribir cookies en la respuesta final (para el navegador)
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
         },
       },
     }
   )
 
-  // 2. Verificar usuario
+  // 3. REFRESCAR SESIÓN (Crucial: esto activa el setAll de arriba si el token caducó)
   const { data: { user } } = await supabase.auth.getUser()
+
+  // ============================================================
+  // A PARTIR DE AQUÍ, TU LÓGICA DE NEGOCIO ORIGINAL (INTACTA)
+  // ============================================================
+
   const path = request.nextUrl.pathname
   
-  //si es una url que empieza por /public, dejamos pasar
-
   if (path.startsWith('/shared')) {
     return response
   }
 
-  // ============================================================
-  // 3. LÓGICA DE AUTENTICACIÓN (El "Portero" Básico)
-  // ============================================================
-  
   // A. Si NO hay usuario y no es login/auth, fuera.
-if (!user) {
-    // Definimos las rutas que SÍ se pueden visitar sin login
+  if (!user) {
     const isPublicRoute = 
-        path.startsWith('/login') || 
-        path.startsWith('/auth') || 
-        path === '/update-password' || path.startsWith('/update-password')||
-        path.startsWith('/settings/users/impersonate');
+      path.startsWith('/login') || 
+      path.startsWith('/auth') || 
+      path === '/update-password' || path.startsWith('/update-password') ||
+      path.startsWith('/settings/users/impersonate');
 
-    // Si no es una ruta pública, redirigir al login
     if (!isPublicRoute) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/login'
-        return NextResponse.redirect(url)
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
     }
   }
+
   // B. Si SÍ hay usuario y quiere ir a login, pa' dentro.
   if (user && path.startsWith('/login')) {
     const url = request.nextUrl.clone()
-    // IMPORTANTE: Redirigimos a la raíz, y el paso 4 decidirá dónde va según el modo.
     url.pathname = '/'
     return NextResponse.redirect(url)
   }
 
   // ============================================================
-  // 4. LÓGICA DE MODO DE APLICACIÓN (El "Arquitecto")
+  // 4. LÓGICA DE MODO DE APLICACIÓN
   // ============================================================
 
   const appMode = process.env.NEXT_PUBLIC_APP_MODE || 'full_suite'
 
-  // MODO FAMILIA (Restringido)
+  // MODO FAMILIA
   if (user && appMode === 'family_finance_only') {
-    
-    // DEFINIR ZONA PERMITIDA (Whitelist)
-    // Solo pueden entrar aquí. Todo lo demás será rebotado.
     const allowedPrefixes = [
-      '/finance-shared', // El módulo nuevo
-      '/account',        // Perfil de usuario (si tienes)
-      '/api',           // Necesario para llamadas internas
+      '/finance-shared',
+      '/account',
+      '/api',
     ]
 
     const isAllowed = allowedPrefixes.some(prefix => path.startsWith(prefix))
 
-    // CASO 1: Acceso a la Raíz ('/') -> Redirigir al Dashboard de Finanzas
     if (path === '/') {
       const url = request.nextUrl.clone()
       url.pathname = '/finance-shared'
       return NextResponse.redirect(url)
     }
 
-    // CASO 2: Intentar entrar a zona prohibida (ej: /inventory) -> Redirigir a Finanzas
     if (!isAllowed) {
       const url = request.nextUrl.clone()
       url.pathname = '/finance-shared'
@@ -107,17 +102,11 @@ if (!user) {
     }
   }
 
-  // MODO FULL SUITE (Tu Life-OS completo)
-  // Aquí no ponemos restricciones, eres el admin supremo.
-  
   return response
 }
 
 export const config = {
   matcher: [
-    /*
-     * Excluir estáticos y API interna de Next para no romper la hidratación
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

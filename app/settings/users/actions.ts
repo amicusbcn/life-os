@@ -375,3 +375,56 @@ export async function cancelInvitation(userId: string) {
     return { success: false, error: error.message };
   }
 }
+
+import { z } from 'zod'
+
+const passwordSchema = z.object({
+  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+  confirmPassword: z.string()
+}).refine(data => data.password === data.confirmPassword, {
+  message: "Las contraseñas no coinciden",
+  path: ["confirmPassword"],
+})
+
+export async function updateInitialPassword(formData: FormData) {
+  const supabase = await createClient()
+
+  // 1. Validar inputs
+  const rawData = {
+    password: formData.get('password'),
+    confirmPassword: formData.get('confirmPassword')
+  }
+
+  const validation = passwordSchema.safeParse(rawData)
+  if (!validation.success) {
+    return { success: false, message: validation.error.issues[0].message }
+  }
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("No autenticado")
+
+    // 2. Actualizar contraseña en Supabase Auth
+    const { error: authError } = await supabase.auth.updateUser({
+      password: validation.data.password
+    })
+
+    if (authError) throw authError
+
+    // 3. Actualizar estado en tabla profiles a 'active'
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ status: 'active' })
+      .eq('id', user.id)
+
+    if (profileError) throw profileError
+
+    // 4. Revalidar para que el Layout se entere del cambio
+    revalidatePath('/', 'layout')
+
+    return { success: true, message: 'Contraseña actualizada correctamente' }
+
+  } catch (error: any) {
+    return { success: false, message: error.message || 'Error al actualizar' }
+  }
+}

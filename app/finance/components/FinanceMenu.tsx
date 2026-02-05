@@ -23,7 +23,7 @@ interface FinanceMenuProps {
     templates: any[];
     history: any[];
     mode: 'operative' | 'settings';
-    currentPanel?: 'dashboard' | 'history' 
+    currentPanel?: 'dashboard' | 'transactions' 
 }
 
 export function FinanceMenu({ 
@@ -60,7 +60,7 @@ export function FinanceMenu({
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                     <SidebarMenuButton 
-                    isActive={currentPanel === 'history'}
+                    isActive={currentPanel === 'transactions'}
                     tooltip="Detalle anual"
                     className={cn(
                         "transition-all duration-200",
@@ -73,7 +73,7 @@ export function FinanceMenu({
                         )}
                     >
                         <Scale className="w-4 h-4" />
-                        <Link href="/finance/history">Detalle Anual</Link>
+                        <Link href="/finance/transactions">Detalle Anual</Link>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarSeparator />

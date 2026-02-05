@@ -1,8 +1,8 @@
 // utils/supabase/server.ts
 import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
 export async function createClient() {
-  const { cookies } = await import('next/headers');
   const cookieStore = await cookies()
 
   return createServerClient(
@@ -15,16 +15,19 @@ export async function createClient() {
         },
         setAll(cookiesToSet) {
           try {
+            // 🚨 DEBUG: Vamos a ver si esto se ejecuta al hacer login
+            console.log(`🍪 ServerClient intentando escribir ${cookiesToSet.length} cookies...`)
+            
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             )
-          } catch {
-            // El bloque try/catch maneja casos donde se intenta setear cookies
-            // desde un Server Component (lo cual no se puede), pero no queremos que rompa.
+            console.log("✅ Cookies escritas en el Store correctamente.")
+          } catch (error) {
+            // 🚨 DEBUG: Si esto sale, es que no podemos escribir cookies
+            console.error("❌ ERROR ESCRITURA COOKIES:", error)
           }
         },
       },
     }
   )
 }
-
