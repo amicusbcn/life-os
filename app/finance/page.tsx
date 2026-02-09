@@ -1,7 +1,7 @@
 // app/finance/page.tsx
 import { getUserData } from '@/utils/security';
 import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar';
-import { getFinanceDashboardData } from './data'; 
+import { getDashboardViewData } from './data'; 
 import { FinanceDashboardView } from './components/FinanceDashboardView';
 import { FinanceMenu } from './components/FinanceMenu';
 
@@ -9,14 +9,8 @@ export default async function FinancePage() {
     // 1. Seguridad centralizada
     const { profile, accessibleModules } = await getUserData('finance');
 
-    // 2. Obtener datos (Quitamos transactions de la vista de saldos si prefieres)
-    const { 
-        accounts, 
-        categories, 
-        rules, 
-        templates, 
-        history 
-    } = await getFinanceDashboardData();
+    // 2. Obtener dat(Quitamos transactions de la vista de saldos si prefieres)
+    const { accounts, categories, rules, templates, history } = await getDashboardViewData();
     
     // 3. Saldo Global (opcional aquí, lo puede calcular el cliente también)
     const totalBalance = accounts.reduce((acc, account) => acc + (account.current_balance || 0), 0);

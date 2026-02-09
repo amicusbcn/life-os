@@ -101,11 +101,49 @@ export const TransactionRow = ({
                                         </Button>
                                     </div>
                                 ) : (
-                                    <Command className="bg-slate-900">
-                                        <CommandInput placeholder="Buscar..." />
-                                        <CommandList>
-                                            <CommandEmpty>No hay resultados</CommandEmpty>
-                                            {/* Mapeo de categorías... */}
+                                    <Command className="bg-slate-900 text-white">
+                                        <CommandInput placeholder="Buscar categoría..." className="text-white border-none focus:ring-0" />
+                                        <CommandList className="max-h-[300px] overflow-y-auto">
+                                            <CommandEmpty className="py-4 text-center text-xs text-slate-500 font-bold uppercase">Sin resultados</CommandEmpty>
+                                            
+                                            {/* Acción para resetear a pendiente */}
+                                            <CommandGroup>
+                                                <CommandItem 
+                                                    onSelect={() => onCategorySelect(t, 'pending')}
+                                                    className="text-[10px] font-black uppercase text-rose-400 hover:bg-slate-800 cursor-pointer"
+                                                >
+                                                    <Check className={cn("mr-2 h-3 w-3", t.category_id === 'pending' ? "opacity-100" : "opacity-0")} />
+                                                    Marcar como Pendiente
+                                                </CommandItem>
+                                            </CommandGroup>
+
+                                            {/* Mapeo Jerárquico de Categorías */}
+                                            {categories.filter(c => !c.parent_id).map(parent => (
+                                                <CommandGroup 
+                                                    key={parent.id} 
+                                                    heading={parent.name.toUpperCase()}
+                                                    className="text-[9px] text-slate-500 font-black px-2 pt-3"
+                                                >
+                                                    <CommandItem
+                                                        onSelect={() => onCategorySelect(t, parent.id)}
+                                                        className="text-[11px] font-bold text-indigo-400 hover:bg-slate-800 cursor-pointer"
+                                                    >
+                                                        <Check className={cn("mr-2 h-3 w-3", t.category_id === parent.id ? "opacity-100" : "opacity-0")} />
+                                                        {parent.name} (General)
+                                                    </CommandItem>
+                                                    
+                                                    {categories.filter(sub => sub.parent_id === parent.id).map(sub => (
+                                                        <CommandItem
+                                                            key={sub.id}
+                                                            onSelect={() => onCategorySelect(t, sub.id)}
+                                                            className="text-[11px] pl-8 text-slate-300 hover:bg-slate-800 cursor-pointer"
+                                                        >
+                                                            <Check className={cn("mr-2 h-3 w-3", t.category_id === sub.id ? "opacity-100" : "opacity-0")} />
+                                                            {sub.name}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            ))}
                                         </CommandList>
                                     </Command>
                                 )}

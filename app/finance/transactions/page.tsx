@@ -5,7 +5,7 @@ import { TransactionList } from '@/app/finance/components/TransactionList'
 import { getUserData } from '@/utils/security'
 import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar'
 import { FinanceMenu } from '@/app/finance/components/FinanceMenu'
-import { getFinanceDashboardData } from '@/app/finance/data'
+import { getTransactionViewData } from '@/app/finance/data'
 import { Button } from "@/components/ui/button"
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
@@ -17,12 +17,12 @@ export default async function AccountTransactionsPage({
 }) {
     const { year: queryYear, month: queryMonth } = await searchParams;
 
-    const currentYear = queryYear ? parseInt(queryYear) : 2026;
+    const currentYear = queryYear ? parseInt(queryYear) : new Date().getFullYear();
     const { profile, accessibleModules } = await getUserData('finance');
     
     // 1. Cargamos todos los datos (asegurándonos de que categorías venga bien)
-    const data = await getFinanceDashboardData();
-    const { accounts, categories, rules, templates, history } = data;
+    const data = await getTransactionViewData(currentYear);
+    const { transactions, accounts, categories, rules, templates, history,currentAccount,year } = data;
 
     // 2. Lógica de filtrado por fechas (Año + Mes opcional)
     const supabase = await createClient();
@@ -30,16 +30,6 @@ export default async function AccountTransactionsPage({
     const endDate = `${currentYear}-12-31`;
 
     // 2. Query simplificada: Un solo bloque de datos anual
-    const { data: transactions, error } = await supabase
-        .from('finance_transactions')
-        .select(`
-            *,
-            category:finance_categories(*)
-        `)
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: false });
-
     return (
         <UnifiedAppSidebar
             title="Detalle Anual"
