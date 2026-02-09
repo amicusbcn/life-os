@@ -5,7 +5,7 @@ import { TransactionList } from '@/app/finance/components/TransactionList'
 import { getUserData } from '@/utils/security'
 import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar'
 import { FinanceMenu } from '@/app/finance/components/FinanceMenu'
-import { getFinanceDashboardData } from '@/app/finance/data'
+import { getTransactionViewData } from '../../data'
 import { Button } from "@/components/ui/button"
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
@@ -24,7 +24,7 @@ export default async function AccountTransactionsPage({
     const { profile, accessibleModules } = await getUserData('finance');
     
     // 1. Cargamos todos los datos (asegurándonos de que categorías venga bien)
-    const data = await getFinanceDashboardData();
+    const data = await getTransactionViewData();
     const { accounts, categories, rules, templates, history } = data;
 
     const account = accounts.find(a => a.slug === accountSlug);
