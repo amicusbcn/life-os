@@ -8,11 +8,13 @@ import { LocationManager } from './LocationManager';
 import { MembersManager } from './MembersManager';
 import { DashboardAlerts } from './DashboardAlerts';
 import { PropertyModulesSettings } from './PropertyModulesSettings'; // <--- YA EXISTE
+import { PropertyAlert, PropertyLocation } from '@/types/properties';
+import { DocumentsManager } from './DocumentsManager';
 
 interface Props {
     section: string;
-    zones: any[];
-    alerts: any[];
+    zones: PropertyLocation[];
+    alerts: PropertyAlert[];
 }
 
 export function PropertySettingsContent({ section, zones, alerts }: Props) {

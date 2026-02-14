@@ -4,7 +4,8 @@ import { getUserData } from '@/utils/security';
 import { PropertyProvider } from '../context/PropertyContext'; // Importamos el contexto
 import { 
     getProperties, getPropertyBySlug, getPropertyLocations, 
-    getPropertyMembers, getPropertyContacts, getPropertyAlerts 
+    getPropertyMembers, getPropertyContacts, getPropertyAlerts, 
+    getPropertyDocuments
 } from '../data';
 
 // Importamos el Wrapper que contiene el Sidebar y la lógica de vistas
@@ -27,13 +28,14 @@ export default async function PropertyDetailPage({ params }: PageProps) {
     // 2. Datos de la Propiedad (Server Side)
     const property = await getPropertyBySlug(slug);
     if (!property) notFound();
-
+    
     // 3. Carga paralela del resto de datos
-    const [zones, members, contacts, alerts, allProperties] = await Promise.all([
+    const [zones, members, contacts, alerts,documents, allProperties] = await Promise.all([
         getPropertyLocations(property.id),
         getPropertyMembers(property.id),
         getPropertyContacts(property.id),
         getPropertyAlerts(property.id),
+        getPropertyDocuments(property.id),
         getProperties()
     ]);
 
@@ -41,15 +43,16 @@ export default async function PropertyDetailPage({ params }: PageProps) {
     return (
         // AQUÍ ESTABA EL FALLO: Hay que pasarle los datos al Provider
         <PropertyProvider 
-            property={property}      // <--- OBLIGATORIO
-            members={members}        // <--- OBLIGATORIO
-            currentUserId={user.id}  // <--- OBLIGATORIO (para saber quién eres)
+            property={property}      
+            members={members}        
+            currentUserId={user.id}  
         >
             <PropertyDetailView 
                 property={property}
                 zones={zones}
                 contacts={contacts}
                 alerts={alerts}
+                documents={documents}
                 allProperties={allProperties}
                 profile={profile}
                 accessibleModules={accessibleModules}

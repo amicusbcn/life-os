@@ -3,6 +3,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { v4 as uuidv4 } from 'uuid';
 
 // --- CREATE ---
 export async function createProperty(formData: FormData) {
@@ -31,6 +32,11 @@ export async function createProperty(formData: FormData) {
         policy: formData.get('ins_policy'),
         phone: formData.get('ins_phone'),
     },
+    security_info : {
+        alarm_code: formData.get('alarm_code') as string,
+        company_name: formData.get('alarm_company') as string,
+        company_phone: formData.get('alarm_phone') as string,
+    }
     // Dejamos que active_modules use el valor por defecto de la BBDD
   };
 
@@ -68,12 +74,17 @@ export async function updateProperty(id: string, formData: FormData) {
     // Mapeamos a las columnas JSONB separadas
     wifi_info: {
         ssid: formData.get('wifi_ssid'),
-        password: formData.get('wifi_pass'),
+        password: formData.get('wifi_password'),
     },
     insurance_info: {
-        company: formData.get('ins_company'),
-        policy: formData.get('ins_policy'),
-        phone: formData.get('ins_phone'),
+        company: formData.get('insurance_provider'),
+        policy: formData.get('insurance_policy'),
+        phone: formData.get('insurance_phone'),
+    },
+    security_info : {
+        alarm_code: formData.get('alarm_code') as string,
+        company_name: formData.get('alarm_company') as string,
+        company_phone: formData.get('alarm_phone') as string,
     }
   };
 
@@ -91,10 +102,12 @@ export async function updateProperty(id: string, formData: FormData) {
 
 export async function deleteLocation(locationId: string, propertyId: string) {
     const supabase = await createClient();
+    // Supabase cascade debería borrar los hijos, pero por si acaso
     await supabase.from('property_locations').delete().eq('id', locationId);
     revalidatePath(`/properties/${propertyId}`);
 }
 
+// AÑADIR (Detecta orden automático)
 export async function addLocation(
     propertyId: string, 
     parentId: string | null, 
@@ -103,8 +116,7 @@ export async function addLocation(
 ) {
     const supabase = await createClient();
 
-    // A. Calcular el orden automáticamente (MAX + 1)
-    // Buscamos items hermanos (mismo padre y misma propiedad)
+    // A. Calcular el orden automáticamente (MAX + 1) dentro del mismo padre
     let query = supabase.from('property_locations')
         .select('sort_order')
         .eq('property_id', propertyId)
@@ -126,18 +138,19 @@ export async function addLocation(
         parent_id: parentId,
         name,
         type,
-        sort_order: nextOrder // ¡Automático!
+        sort_order: nextOrder
     });
-    
-    if (error) throw new Error(error.message);
+    if (error) {
+        console.error("❌ [ACTION ERROR] Supabase falló:", error.message);
+        throw new Error(error.message);
+    }
     revalidatePath(`/properties/${propertyId}`);
 }
 
-// 2. REORDENAR (Drag & Drop Save)
+// REORDENAR (Solo actualiza el orden de una lista de IDs)
 export async function reorderLocations(items: { id: string, sort_order: number }[], propertyId: string) {
     const supabase = await createClient();
     
-    // Actualizamos en bloque (o uno a uno, Postgres es rápido)
     const updates = items.map(item => 
         supabase.from('property_locations').update({ sort_order: item.sort_order }).eq('id', item.id)
     );
@@ -145,8 +158,6 @@ export async function reorderLocations(items: { id: string, sort_order: number }
     await Promise.all(updates);
     revalidatePath(`/properties/${propertyId}`);
 }
-
-// ... imports ...
 
 // CREAR MIEMBRO (Fantasma o Invitación)
 export async function addMember(formData: FormData) {
@@ -310,4 +321,78 @@ export async function updatePropertyModules(propertyId: string, modules: Propert
 
     revalidatePath(`/properties`); // Revalidamos para que se actualice la UI
     return { success: true };
+}
+
+
+export async function uploadPropertyDocument(formData: FormData) {
+    const supabase = await createClient();
+    
+    // Recogemos los datos del formulario
+    const file = formData.get('file') as File;
+    const propertyId = formData.get('propertyId') as string;
+    const category = formData.get('category') as string;
+    const name = formData.get('name') as string; // El nombre que escribe el usuario
+    const notes = formData.get('notes') as string; // <--- Tienes campo notes
+    const visibility = formData.get('visibility') as string || 'admins_only'; // <--- NUEVO
+
+    if (!file || !propertyId) throw new Error("Faltan datos");
+
+    // 1. Subir al Storage (Bucket: 'property-documents')
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${uuidv4()}.${fileExt}`;
+    const filePath = `${propertyId}/${fileName}`; // Carpeta por propiedad
+
+    const { error: uploadError } = await supabase.storage
+        .from('property-documents') // Nombre de tu bucket
+        .upload(filePath, file);
+
+    if (uploadError) throw new Error("Error subiendo fichero: " + uploadError.message);
+
+    // 2. Guardar en tu tabla 'property_documents'
+    const { error: dbError } = await supabase
+        .from('property_documents')
+        .insert({
+            property_id: propertyId,
+            name: name || file.name, // Si no pone nombre, usamos el del fichero
+            category: category,
+            file_url: filePath,     // <--- Tu columna se llama file_url
+            file_type: fileExt,     // <--- La columna nueva
+            file_size: file.size,   // <--- La columna nueva
+            notes: notes,
+            visibility: visibility
+        });
+
+    if (dbError) throw new Error("Error en base de datos: " + dbError.message);
+
+    revalidatePath(`/properties/${propertyId}/settings`);
+    return { success: true };
+}
+
+export async function deletePropertyDocument(documentId: string, filePath: string, propertyId: string) {
+    const supabase = await createClient();
+
+    // 1. Borrar de BD
+    const { error: dbError } = await supabase
+        .from('property_documents')
+        .delete()
+        .eq('id', documentId);
+
+    if (dbError) throw new Error(dbError.message);
+
+    // 2. Borrar de Storage
+    await supabase.storage
+        .from('property-documents')
+        .remove([filePath]);
+
+    revalidatePath(`/properties/${propertyId}/settings`);
+}
+
+export async function getDocumentUrl(filePath: string) {
+    const supabase = await createClient();
+    // Generar URL firmada (temporal) porque el bucket es privado
+    const { data } = await supabase.storage
+        .from('property-documents')
+        .createSignedUrl(filePath, 60 * 60); // 1 hora de validez
+    
+    return data?.signedUrl;
 }

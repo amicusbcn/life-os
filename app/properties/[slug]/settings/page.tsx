@@ -5,7 +5,7 @@ import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar';
 import { PropertyProvider } from '../../context/PropertyContext';
 import { 
     getPropertyBySlug, getPropertyLocations, 
-    getPropertyMembers, getPropertyAlerts 
+    getPropertyMembers, getPropertyAlerts, 
 } from '../../data';
 
 import { PropertySettingsMenu } from '../../components/PropertySettingsMenu';

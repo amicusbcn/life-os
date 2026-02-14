@@ -13,92 +13,67 @@ export type ActionResponse =
 // --- 2. CREAR ITEM (Refactorizado y Robusto) ---
 export async function createInventoryItem(formData: FormData): Promise<ActionResponse> {
   const supabase = await createClient()
-
-  // Verificación de Auth (Opcional pero recomendada)
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) return { success: false, error: "Usuario no autenticado" }
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Usuario no autenticado" }
 
   try {
-    // A. Gestión de FOTO
+    // A. Gestión de FOTO (Mantenemos tu lógica pero simplificada)
     const photoFile = formData.get('photo') as File | null
     let photoPath = null
-
     if (photoFile && photoFile.size > 0) {
-      // Nombre único: user_id/timestamp-nombre
       const fileName = `${user.id}/${Date.now()}-${photoFile.name.replace(/\s/g, '_')}`
-      
-      const { data: uploadData, error: uploadError } = await supabase
-        .storage
-        .from('inventory') // Usamos tu bucket 'inventory'
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('inventory')
         .upload(fileName, photoFile)
-
-      if (uploadError) {
-        console.error('Error subiendo imagen:', uploadError)
-        return { success: false, error: 'No se pudo subir la imagen' }
-      }
+      if (uploadError) return { success: false, error: 'Error al subir imagen' }
       photoPath = uploadData.path
     }
 
-    // B. Parseo de Datos
-    const priceRaw = formData.get('price') as string
-    const price = priceRaw ? parseFloat(priceRaw) : null
+    // B. LÓGICA HÍBRIDA (Propiedad vs Personal)
+    const propertyId = formData.get('propertyId') as string || null
+    const locationIdRaw = formData.get('locationId') as string || null
     
-    // Fechas: convertir '' a null
-    const purchaseDate = (formData.get('purchase_date') as string) || null
-    const warrantyDate = (formData.get('warranty_end_date') as string) || null
-    
-    // Relaciones: convertir "no-category"/"no-location" a null
-    const catRaw = formData.get('category_id') as string
-    const categoryId = (catRaw && catRaw !== "no-category") ? catRaw : null
-    
-    const locRaw = formData.get('location_id') as string
-    const locationId = (locRaw && locRaw !== "no-location") ? locRaw : null
-
-    // JSON Enlaces
-    const linksJson = formData.get('external_links_json') as string | null
-    let parsedLinks = []
-    if (linksJson) {
-        try {
-          parsedLinks = JSON.parse(linksJson)
-        } catch (e) {
-          console.error("Error JSON links:", e)
-        }
-    }  
+    // Si hay propertyId, el locationId va a 'property_location_id'
+    // Si NO hay, va al 'location_id' de siempre
+    const isProperty = !!propertyId
+    const locationId = (locationIdRaw && locationIdRaw !== "no-location") ? locationIdRaw : null
 
     // C. Insertar
     const { error } = await supabase.from('inventory_items').insert({
-      user_id: user.id, // Aseguramos ownership explícito
+      user_id: user.id,
       name: formData.get('name') as string,
+      brand: formData.get('brand') as string,
       model: (formData.get('model') as string) || null,
       serial_number: (formData.get('serial_number') as string) || null,
-      price: price,
-      purchase_date: purchaseDate,
-      warranty_end_date: warrantyDate,
-      category_id: categoryId,
-      location_id: locationId,
-      external_links: parsedLinks,
+      price: formData.get('price') ? parseFloat(formData.get('price') as string) : null,
+      purchase_date: (formData.get('purchase_date') as string) || null,
+      warranty_end_date: (formData.get('warranty_end_date') as string) || null,
+      category_id: (formData.get('categoryId') as string !== "no-category") ? formData.get('categoryId') as string : null,
+      
+      // Mapeo dinámico
+      property_id: propertyId,
+      property_location_id: isProperty ? locationId : null,
+      location_id: !isProperty ? locationId : null,
+      
       photo_path: photoPath,
+      external_links: JSON.parse(formData.get('external_links_json') as string || '[]'),
     })
 
-    if (error) {
-      console.error('Error DB:', error)
-      return { success: false, error: error.message }
-    }
+    if (error) return { success: false, error: error.message }
 
+    // Revalidación inteligente
+    revalidatePath('/inventory/[context]', 'page')
+    return { success: true }
   } catch (error) {
-    console.error("Error interno createInventoryItem:", error)
-    return { success: false, error: "Error inesperado al crear el item" }
+    return { success: false, error: "Error interno" }
   }
-
-  revalidatePath('/inventory')
-  return { success: true }
 }
 
 // --- 3. ACTUALIZAR ITEM ---
 export async function updateInventoryItem(formData: FormData): Promise<ActionResponse> {
   const supabase = await createClient()
   
-  const itemId = formData.get('item_id') as string
+  const itemId = formData.get('id') as string
   const oldPhotoPath = formData.get('old_photo_path') as string
   
   try {
@@ -123,44 +98,56 @@ export async function updateInventoryItem(formData: FormData): Promise<ActionRes
     }
 
     // Preparar datos (Reutilizando lógica de limpieza)
-    const price = formData.get('price') ? parseFloat(formData.get('price') as string) : null
-    const purchaseDate = (formData.get('purchase_date') as string) || null
-    const warrantyDate = (formData.get('warranty_end_date') as string) || null
-    
-    const catRaw = formData.get('category_id') as string
-    const categoryId = (catRaw && catRaw !== "no-category") ? catRaw : null
-    
-    const locRaw = formData.get('location_id') as string
-    const locationId = (locRaw && locRaw !== "no-location") ? locRaw : null
+    const propertyId = formData.get('propertyId') as string || null
+    const locationIdRaw = formData.get('locationId') as string || null
+    const isProperty = !!propertyId
+    const locationId = (locationIdRaw && locationIdRaw !== "no-location") ? locationIdRaw : null
 
     const { error } = await supabase
       .from('inventory_items')
       .update({
         name: formData.get('name') as string,
+        brand: formData.get('brand') as string,
         model: (formData.get('model') as string) || null,
         serial_number: (formData.get('serial_number') as string) || null,
-        price: price,
-        purchase_date: purchaseDate,
-        warranty_end_date: warrantyDate,
-        category_id: categoryId,
-        location_id: locationId,
-        photo_path: newPhotoPath
+        price: formData.get('price') ? parseFloat(formData.get('price') as string) : null,
+        purchase_date: (formData.get('purchase_date') as string) || null,
+        warranty_end_date: (formData.get('warranty_end_date') as string) || null,
+        category_id: (formData.get('categoryId') as string !== "no-category") ? formData.get('categoryId') as string : null,
+        
+        property_id: propertyId,
+        property_location_id: isProperty ? locationId : null,
+        location_id: !isProperty ? locationId : null,
+        // No actualizamos photo_path si no ha cambiado
       })
       .eq('id', itemId)
 
     if (error) return { success: false, error: error.message }
 
+    revalidatePath('/inventory/[context]', 'page')
+    return { success: true }
   } catch (e) {
-    return { success: false, error: "Error al actualizar item" }
+    return { success: false, error: "Error al actualizar" }
   }
-
-  revalidatePath(`/inventory/${itemId}`)
-  revalidatePath('/inventory')
-  return { success: true }
 }
+export async function addInventoryLink(itemId: string, currentLinks: any[], newLink: { title: string, url: string }) {
+    const supabase = await createClient();
+    
+    // Combinamos el nuevo link con los existentes
+    const updatedLinks = [...(currentLinks || []), newLink];
 
+    const { error } = await supabase
+        .from('inventory_items')
+        .update({ external_links: updatedLinks })
+        .eq('id', itemId);
+
+    if (error) return { success: false, error: error.message };
+    
+    revalidatePath('/inventory/[context]', 'page');
+    return { success: true };
+}
 // --- 4. BORRAR ITEM ---
-export async function deleteInventoryItem(itemId: string, photoPath: string | null) {
+export async function deleteInventoryItem(itemId: string, photoPath: string | null): Promise<ActionResponse> {
   const supabase = await createClient()
 
   if (photoPath) {
@@ -169,12 +156,26 @@ export async function deleteInventoryItem(itemId: string, photoPath: string | nu
 
   const { error } = await supabase.from('inventory_items').delete().eq('id', itemId)
 
-  if (error) {
-    return { success: false, error: error.message }
-  }
+  if (error) return { success: false, error: error.message }
 
-  redirect('/inventory')
-  // Nota: redirect lanza un error interno de Next.js, por eso no devolvemos ActionResponse aquí.
+  revalidatePath('/inventory/[context]', 'page')
+  return { success: true } // Quitamos el redirect
+}
+
+export async function getInventoryItemDetails(itemId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+      .from('inventory_items')
+      .select(`
+          *,
+          inventory_maintenance_tasks (*),
+          inventory_loans (*)
+      `)
+      .eq('id', itemId)
+      .single();
+
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 // --- 5. MANTENIMIENTO ---
@@ -246,8 +247,8 @@ export async function updateMaintenanceTask(formData: FormData): Promise<ActionR
 
   if (error) return { success: false, error: error.message }
 
-  revalidatePath(`/inventory/${itemId}`)
-  return { success: true }
+  revalidatePath('/inventory/[context]', 'page');
+  return { success: true };
 }
 
 export async function deleteMaintenanceTask(taskId: string, itemId: string) {
@@ -396,4 +397,27 @@ export async function updateLocation(formData: FormData): Promise<ActionResponse
   
   revalidatePath('/inventory')
   return { success: true }
+}
+
+export async function transferItemToProperty(
+    itemId: string, 
+    targetPropertyId: string | null, // null para volver a 'Personal'
+    targetLocationId: string | null
+): Promise<ActionResponse> {
+    const supabase = await createClient();
+
+    const { error } = await supabase
+        .from('inventory_items')
+        .update({
+            property_id: targetPropertyId,
+            // Si es propiedad usamos property_location_id, si es personal location_id
+            property_location_id: targetPropertyId ? targetLocationId : null,
+            location_id: !targetPropertyId ? targetLocationId : null
+        })
+        .eq('id', itemId);
+
+    if (error) return { success: false, error: error.message };
+    
+    revalidatePath('/inventory/[context]', 'page');
+    return { success: true };
 }

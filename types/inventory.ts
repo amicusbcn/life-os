@@ -1,3 +1,5 @@
+import { PropertyLocation } from "./properties";
+
 // app/types/inventory.ts (NUEVO/ACTUALIZADO)
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
@@ -16,7 +18,7 @@ export interface InventoryLocation {
   id: string;
   name: string;
   description?: string;
-  parent_id?: string | null; // <--- ¡AÑADE ESTO!
+  parent_id?: string | null;
 }
 
 export interface InventoryItem {
@@ -25,18 +27,28 @@ export interface InventoryItem {
   name: string;
   model?: string;
   serial_number?: string;
-  purchase_date?: string; // Formato YYYY-MM-DD
+  purchase_date?: string; 
   warranty_end_date?: string;
   price?: number;
   
   category_id?: string;
-  location_id?: string;
   user_id: string;
-  
+    
+  // A) MODO PERSONAL (El que ya tenías)
+  // Referencia a la tabla 'inventory_locations'
+  location_id?: string | null; 
+
+  // B) MODO PROPIEDAD (El nuevo)
+  // Referencia a la tabla 'properties'
+  property_id?: string | null; 
+  property_location_id?: string | null; 
+
+
   photo_path?: string;
   receipt_path?: string;
-  
-  external_links: InventoryLink[]; // Aquí usamos el tipo definido arriba, no solo JSON
+  external_links: InventoryLink[]; 
+  location?: InventoryLocation; // Personal
+  property_location?: PropertyLocation; // Propiedad
 }
 
 

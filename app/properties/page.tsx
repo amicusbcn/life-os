@@ -9,7 +9,7 @@ import Link from 'next/link';
 export default async function PropertiesPage() {
     const { profile, accessibleModules } = await getUserData('properties');
     const properties = await getProperties();
-
+    
     return (
         <UnifiedAppSidebar
             title="Gestión de Propiedades"

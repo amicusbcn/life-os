@@ -16,9 +16,17 @@ export interface Property {
     policy?: string;
     phone?: string;
   };
+  
+  security_info: {
+    alarm_code?: string;
+    company_name?: string;
+    company_phone?: string;
+  }
+  
   active_modules?: PropertyModules
 
   created_at: string;
+
 }
 
 export interface PropertyLocation {
@@ -81,4 +89,17 @@ export interface PropertyModules {
   finance: boolean;
   bookings: boolean;
   inventory: boolean;
+}
+
+export interface PropertyDocument {
+    id: string;
+    property_id: string;
+    name: string;
+    category: string | null; // Puede ser null según tu SQL
+    file_url: string;        // OJO: Aquí guardamos la RUTA (path), no la URL pública
+    notes: string | null;
+    file_type: string | null;
+    file_size: number | null;
+    created_at: string;
+    visibility: 'public' | 'admins_only';
 }

@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { 
     Settings, Users, Map, BellRing, Box, 
-    CreditCard, ArrowLeft 
+    CreditCard, ArrowLeft, 
+    FileText
 } from 'lucide-react';
 import { 
     SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroupLabel 

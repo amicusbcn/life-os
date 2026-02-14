@@ -4,7 +4,9 @@ import React, { useState, useContext } from 'react';
 import Link from 'next/link';
 import { 
     Home, Plus, Settings, LayoutDashboard, Users, 
-    Megaphone, ChevronRight, MapPin 
+    Megaphone, ChevronRight, MapPin, 
+    FileText,
+    Package
 } from 'lucide-react';
 import { 
     SidebarMenu, SidebarMenuItem, SidebarMenuButton, 
@@ -19,12 +21,13 @@ import { cn } from '@/lib/utils';
 import { PropertyForm } from './PropertyForm';
 import { AlertSheet } from './AlertSheet';
 import { PropertyContext } from '../context/PropertyContext';
+import { PropertyViewType } from './PropertyDetailView';
 
 interface PropertiesMenuProps {
     mode:'operative'|'settings';
     properties: any[];
-    currentView?: 'dashboard' | 'contacts';
-    onViewChange?: (view: 'dashboard' | 'contacts') => void;
+    currentView?: PropertyViewType;
+    onViewChange?: (view: PropertyViewType) => void;
 }
 
 export function PropertiesMenu({ mode,properties, currentView, onViewChange }: PropertiesMenuProps) {
@@ -34,6 +37,7 @@ export function PropertiesMenu({ mode,properties, currentView, onViewChange }: P
     const context = useContext(PropertyContext);
     const currentPropertyId = context?.property?.id;
     const currentPropertySlug=context?.property?.slug;
+    const isInventoryActive = context?.property.active_modules?.inventory === true;
     const can = context?.can || (() => false);
     if (mode==='operative'){
         return (
@@ -129,6 +133,25 @@ export function PropertiesMenu({ mode,properties, currentView, onViewChange }: P
                                                 <span>Contactos</span>
                                             </SidebarMenuButton>
                                         </SidebarMenuSubItem>
+                                        <SidebarMenuItem>
+                                            <SidebarMenuButton 
+                                                isActive={currentView === 'documents'}
+                                                onClick={() => onViewChange?.('documents')}
+                                            >
+                                                <FileText className="h-4 w-4" />
+                                                <span>Documentación</span>
+                                            </SidebarMenuButton>
+                                        </SidebarMenuItem>
+                                        {isInventoryActive && (
+                                            <SidebarMenuItem>
+                                                <SidebarMenuButton>
+                                                    <Link href={`/properties/${currentPropertySlug}/inventory`} className="flex items-center w-full">
+                                                        <Package className="mr-2 h-4 w-4" />
+                                                        Inventario
+                                                    </Link>
+                                                </SidebarMenuButton>
+                                            </SidebarMenuItem>
+                )}
                                     </SidebarMenuSub>
                                 </CollapsibleContent>
                             </SidebarMenuItem>

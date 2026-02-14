@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/supabase/server';
-import { Property, PropertyAlert, PropertyContact, PropertyLocation, ZoneWithRooms } from '@/types/properties';
+import { Property, PropertyAlert, PropertyContact, PropertyDocument, PropertyLocation, ZoneWithRooms } from '@/types/properties';
 
 export async function getPropertyBySlug(slug: string): Promise<Property | null> {
   const supabase = await createClient();
@@ -33,27 +33,16 @@ export async function getPropertyById(id: string): Promise<Property | null> {
   return data as Property;
 }
 
-export async function getPropertyLocations(propertyId: string): Promise<ZoneWithRooms[]> {
+export async function getPropertyLocations(propertyId: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from('property_locations')
     .select('*')
     .eq('property_id', propertyId)
-    .order('sort_order', { ascending: true }) 
-    .order('name', { ascending: true });
+    .order('sort_order', { ascending: true }); // Importante el orden
 
-  if (!data) return [];
-
-  const allLocations = data as PropertyLocation[];
-  
-  // Agrupamos en memoria para facilitar la UI (Padres e Hijos)
-  const zones = allLocations.filter(l => l.type === 'zone');
-  const rooms = allLocations.filter(l => l.type === 'room');
-
-  return zones.map(zone => ({
-    ...zone,
-    rooms: rooms.filter(room => room.parent_id === zone.id)
-  }));
+  // Devolvemos la lista plana tal cual. El frontend montará el árbol.
+  return data || [];
 }
 
 import { PropertyMember } from '@/types/properties';
@@ -119,4 +108,21 @@ export async function getPropertyAlerts(propertyId: string): Promise<PropertyAle
         .order('created_at', { ascending: false });
     
     return (data as PropertyAlert[]) || [];
+}
+
+export async function getPropertyDocuments(propertyId: string): Promise<PropertyDocument[]> {
+    const supabase = await createClient();
+    
+    const { data, error } = await supabase
+        .from('property_documents')
+        .select('*')
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Error fetching documents:", error);
+        return [];
+    }
+
+    return data as PropertyDocument[];
 }
