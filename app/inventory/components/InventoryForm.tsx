@@ -10,32 +10,35 @@ import { Loader2, Save, Plus } from 'lucide-react';
 
 // 1. IMPORTAR LAS NUEVAS ACCIONES
 import { createInventoryItem, updateInventoryItem } from '../actions'; 
+import { InventoryCategory, InventoryItem, InventoryLocation } from '@/types/inventory';
+import { ProgressiveLocationSelector } from './ProgressiveLocationSelector';
 
 interface Props {
-    categories: any[];
-    locations: any[];
-    item?: any; 
+    categories: InventoryCategory[];
+    locations: InventoryLocation[];
+    item?: InventoryItem; 
     onSuccess?: () => void;
     propertyId?: string;
 }
 
 export function InventoryForm({ categories, locations, item, onSuccess, propertyId }: Props) {
     const [loading, setLoading] = useState(false);
+    
+    // ✨ ESTADO PARA LA UBICACIÓN (Para el selector progresivo)
+    const [locationId, setLocationId] = useState(item?.location_id || "");
 
-    // Identificamos si es edición o creación
     const isEditing = !!item?.id;
 
     const handleSubmit = async (formData: FormData) => {
         setLoading(true);
         try {
-            // A. INYECTAR CONTEXTO
-            // Pasamos el propertyId para que la acción sepa si es híbrido o personal
             if (propertyId) formData.append('propertyId', propertyId);
-            
-            // Si editamos, pasamos el ID del item
             if (isEditing) formData.append('id', item.id);
+            
+            // ✨ INYECTAMOS EL VALOR DEL SELECTOR PROGRESIVO
+            // Como el selector no es un input nativo, lo metemos a mano aquí
+            formData.append('locationId', locationId);
 
-            // B. DECIDIR ACCIÓN
             const response = isEditing 
                 ? await updateInventoryItem(formData)
                 : await createInventoryItem(formData);
@@ -53,7 +56,6 @@ export function InventoryForm({ categories, locations, item, onSuccess, property
             setLoading(false);
         }
     };
-
     return (
         <form action={handleSubmit} className="space-y-6 pb-4 px-4">
         <div className="space-y-2">
@@ -84,14 +86,12 @@ export function InventoryForm({ categories, locations, item, onSuccess, property
                 </Select>
             </div>
             <div className="space-y-2">
-                <Label>Ubicación</Label>
-                <Select name="locationId" defaultValue={item?.location_id || item?.property_location_id || "no-location"}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="no-location">Sin ubicación</SelectItem>
-                        {locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
-                    </SelectContent>
-                </Select>
+                <Label className="text-sm font-bold">Ubicación Exacta</Label>
+                <ProgressiveLocationSelector 
+                        locations={locations} 
+                        value={locationId}
+                        onChange={(id: string) => setLocationId(id)}
+                    />
             </div>
         </div>
 

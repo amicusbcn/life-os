@@ -60,7 +60,7 @@ export default async function PropertyInventoryPage({
             accessibleModules={accessibleModules}
             backLink={{
                 href: `/properties/${slug}`,
-                label: "Dashboard Propiedad"
+                label: `Volver a ${contextData.name}`
             }}
             
         />

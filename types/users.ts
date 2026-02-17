@@ -35,7 +35,7 @@ export interface UserProfile {
   app_role:AppRole;
   status:UserStatus;
 }
-
+export type ProfileBase = Pick<UserProfile, 'id' | 'full_name' | 'avatar_url'>;
 
 // --- DOMINIO: PERMISOS ---
 export interface ModulePermission {

@@ -28,7 +28,7 @@ export interface Property {
   created_at: string;
 
 }
-
+export type PropertyBase = Pick<Property, 'id' | 'name' | 'slug'>;
 export interface PropertyLocation {
   id: string;
   property_id: string;

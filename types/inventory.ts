@@ -26,6 +26,7 @@ export interface InventoryItem {
   created_at: string;
   name: string;
   model?: string;
+  brand?:string;
   serial_number?: string;
   purchase_date?: string; 
   warranty_end_date?: string;
@@ -51,6 +52,7 @@ export interface InventoryItem {
   property_location?: PropertyLocation; // Propiedad
 }
 
+export type InventoryItemBase = Pick<InventoryItem, 'id' | 'name' | 'property_id'>;
 
 export interface MaintenanceTask {
   id: string;

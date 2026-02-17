@@ -60,7 +60,7 @@ export function InventoryMenu({
                             className="flex items-center gap-2 py-2 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all group"
                         >
                             <ChevronLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
-                            <span className="text-[11px] font-bold uppercase tracking-tighter">Dashboard Propiedad</span>
+                            <span className="text-[11px] font-bold uppercase tracking-tighter">{backLink.label}</span>
                         </Link>
                     </div>
                 )}
