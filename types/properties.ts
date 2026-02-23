@@ -28,6 +28,7 @@ export interface Property {
   created_at: string;
 
 }
+export type PropertySummary = Pick<Property, 'id' | 'name' | 'slug'>;
 export type PropertyBase = Pick<Property, 'id' | 'name' | 'slug'>;
 export interface PropertyLocation {
   id: string;
@@ -89,6 +90,7 @@ export interface PropertyModules {
   finance: boolean;
   bookings: boolean;
   inventory: boolean;
+  maintenance: boolean;
 }
 
 export interface PropertyDocument {

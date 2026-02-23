@@ -1,5 +1,5 @@
 // app/maintenance/task/[id]/page.tsx
-import { getTaskWithTimeline } from '../../data';
+import { getMaintenanceCategories, getTaskWithTimeline } from '../../data';
 import { getUserData } from '@/utils/security';
 import { TaskDetailView } from './TaskDetailView';
 import { notFound } from 'next/navigation';
@@ -11,31 +11,51 @@ interface PageProps {
 }
 
 export default async function TaskPage({ params }: PageProps) {
-    // 1. Desenvolvemos los params (Obligatorio en Next 15)
     const { id } = await params;
 
-    // 2. Obtenemos datos de usuario y módulos
-    const { 
-        profile, 
-        isAdminGlobal, 
-        modulePermission, 
-        accessibleModules 
-    } = await getUserData('maintenance');
-
     try {
-        // 3. Cargamos la tarea
+        // 1. Cargamos la tarea PRIMERO para tener el property_id
         const { task, timeline } = await getTaskWithTimeline(id);
-
         if (!task) return notFound();
+
+        // 2. Ahora pedimos los datos de usuario con CONTEXTO
+        // Al pasarle la tabla 'property_members', getUserData nos dirá si somos owner/admin en esa casa
+        const { 
+            profile, 
+            isAdminGlobal, 
+            modulePermission, 
+            contextRole,    // <--- El rol en la propiedad (owner, member...)
+            accessibleModules 
+        } = await getUserData('maintenance', {
+            table: 'property_members',
+            column: 'property_id',
+            id: task.property_id
+        });
+        const categories = await getMaintenanceCategories();
+
+        // 3. Calculamos el permiso de edición (Nivel 4: Ítem)
+        const isCreator = task.created_by === profile.id;
+        const isResponsible = task.assigned_to === profile.id || task.assigned_member?.user_id === profile.id;
+        const isHouseAdmin = contextRole === 'owner' || contextRole === 'admin';
+        
+        // Unimos todos los niveles: Global + Módulo + Contexto + Ítem
+        const canEdit = isAdminGlobal || modulePermission === 'admin' || isHouseAdmin || isCreator || isResponsible;
+
+        // 4. Obtenemos los miembros para el selector del responsable
         const members = await getPropertyMembers(task.property_id);
+
         return (
             <TaskDetailView 
                 task={task}
                 initialTimeline={timeline}
                 members={members}
                 profile={profile}
-                isAdmin={isAdminGlobal || modulePermission === 'admin'}
+                // Mantenemos isAdmin para lógica de borrado/archivo fuerte
+                isAdmin={isAdminGlobal || modulePermission === 'admin' || isHouseAdmin}
+                // Pasamos canEdit para el botón de edición general
+                canEdit={canEdit} 
                 accessibleModules={accessibleModules}
+                categories={categories}
             />
         );
     } catch (e) {

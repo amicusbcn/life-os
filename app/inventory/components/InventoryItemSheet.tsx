@@ -158,9 +158,6 @@ export function InventoryItemSheet({ basicItem, categories, locations, propertyI
                         ) : (
                             <MaintenanceList 
                                 itemId={itemToDisplay.id} 
-                                // Usamos el nombre que viene de la query de data.ts
-                                tasks={itemToDisplay.inventory_maintenance_tasks || []} 
-                                profiles={availableProfiles} 
                             />
                         )}
                     </TabsContent>

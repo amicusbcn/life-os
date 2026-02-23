@@ -162,21 +162,6 @@ export async function deleteInventoryItem(itemId: string, photoPath: string | nu
   return { success: true } // Quitamos el redirect
 }
 
-export async function getInventoryItemDetails(itemId: string) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-      .from('inventory_items')
-      .select(`
-          *,
-          inventory_maintenance_tasks (*),
-          inventory_loans (*)
-      `)
-      .eq('id', itemId)
-      .single();
-
-  if (error) throw new Error(error.message);
-  return data;
-}
 
 // --- 5. MANTENIMIENTO ---
 export async function createMaintenanceTask(formData: FormData): Promise<ActionResponse> {

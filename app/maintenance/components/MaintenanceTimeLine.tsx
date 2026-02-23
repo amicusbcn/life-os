@@ -9,6 +9,7 @@ import { es } from "date-fns/locale";
 import { useState } from "react";
 import { CommentAction } from "./TimelineActions/CommentAction";
 import { Pencil } from "lucide-react";
+import { TimelineAttachments } from "./TimelineAttachments";
 
 
 export function MaintenanceTimeline({ 
@@ -130,6 +131,7 @@ export function MaintenanceTimeline({
                       <p className="text-sm text-slate-500 italic">
                         <span className="font-bold text-slate-700 not-italic">{log.author?.full_name}</span> {log.content}
                       </p>
+                      <TimelineAttachments files={log.images} />
                       <time className="text-[10px] text-slate-400 font-mono">
                         {format(new Date(log.created_at), "d 'de' MMMM, HH:mm", { locale: es })}
                       </time>
@@ -152,31 +154,7 @@ export function MaintenanceTimeline({
                         <div className="bg-white/50 p-3 rounded-xl border border-green-100 mt-2">
                           <span className="text-[10px] font-bold text-green-700 uppercase tracking-widest">Resultado</span>
                           <p className="text-sm text-slate-700 mt-1 italic">"{log.result_notes}"</p>
-                          {log.images && log.images.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-3">
-                              {log.images.map((url: string, i: number) => {
-                                const isPDF = url.toLowerCase().endsWith('.pdf');
-                                return (
-                                  <a 
-                                    key={i} 
-                                    href={url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="relative group h-16 w-16 rounded-xl overflow-hidden border border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-500 transition-all"
-                                  >
-                                    {isPDF ? (
-                                      <div className="flex flex-col items-center justify-center h-full bg-red-50 text-red-600">
-                                        <FileText size={18} />
-                                        <span className="text-[8px] font-black mt-1">PDF</span>
-                                      </div>
-                                    ) : (
-                                      <img src={url} className="object-cover h-full w-full" alt="Adjunto" />
-                                    )}
-                                  </a>
-                                );
-                              })}
-                            </div>
-                          )}
+                          <TimelineAttachments files={log.images} />
                         </div>
                       ) : (
                         <button 
@@ -201,31 +179,7 @@ export function MaintenanceTimeline({
                       <div className="text-sm text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-2xl rounded-tl-none border border-slate-100 inline-block max-w-[90%]">
                         {log.content}
                       </div>
-                      {log.images && log.images.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-3">
-                          {log.images.map((url: string, i: number) => {
-                            const isPDF = url.toLowerCase().endsWith('.pdf');
-                            return (
-                              <a 
-                                key={i} 
-                                href={url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="relative group h-16 w-16 rounded-xl overflow-hidden border border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-500 transition-all"
-                              >
-                                {isPDF ? (
-                                  <div className="flex flex-col items-center justify-center h-full bg-red-50 text-red-600">
-                                    <FileText size={18} />
-                                    <span className="text-[8px] font-black mt-1">PDF</span>
-                                  </div>
-                                ) : (
-                                  <img src={url} className="object-cover h-full w-full" alt="Adjunto" />
-                                )}
-                              </a>
-                            );
-                          })}
-                        </div>
-                      )}
+                      <TimelineAttachments files={log.images} />
                     </div>
                   )}
                 </div>

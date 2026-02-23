@@ -2,7 +2,7 @@
 
 import { useProperty } from '../context/PropertyContext';
 import { PropertyAlert } from '@/types/properties';
-import { Home, MapPin, Wallet, CalendarDays, Package, Settings } from 'lucide-react';
+import { Home, MapPin, Wallet, CalendarDays, Package, Settings, Wrench } from 'lucide-react';
 import { Card, CardContent } from "@/components/ui/card";
 import Link from 'next/link';
 
@@ -19,7 +19,7 @@ export function PropertyDashboard({ alerts = [] }: Props) {
         { label: 'Gastos', icon: Wallet, href: '?section=modules', active: property.active_modules?.finance },
         { label: 'Turnos', icon: CalendarDays, href: '?section=modules', active: property.active_modules?.bookings },
         { label: 'Inventario', icon: Package, href: `/properties/${property.slug}/inventory`, active: property.active_modules?.inventory },
-        { label: 'Ajustes', icon: Settings, href: `/properties/${property.slug}/settings`, active: can('edit_house') },
+        { label: 'Mantenimientos', icon: Wrench, href: `/properties/${property.slug}/maintenance`, active: property.active_modules?.maintenance},
     ];
 
     return (

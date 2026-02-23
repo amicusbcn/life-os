@@ -91,6 +91,23 @@ export async function getInventoryContextData(context: string) {
     };
 }
 
+export async function getInventoryItemsByProperty(propertyId: string | null) {
+    const supabase = await createClient();
+    
+    let query = supabase
+        .from('inventory_items')
+        .select('id, name, property_id, location_id');
+
+    if (propertyId) {
+        query = query.eq('property_id', propertyId);
+    } else {
+        query = query.is('property_id', null);
+    }
+
+    const { data } = await query.order('name');
+    return data || [];
+}
+
 export async function getInventoryItemDetails(id: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -98,10 +115,8 @@ export async function getInventoryItemDetails(id: string) {
     .select(`
       *,
       category:inventory_categories(id, name, icon),
-      inventory_maintenance_tasks (*,profiles:responsible_user_id (id, full_name, avatar_url) ,
+      inventory_maintenance_tasks (*,profiles:responsible_user_id (id, full_name, avatar_url)),
       inventory_loans (*)
-
-    )
   `).eq('id', id)
   .single();
 

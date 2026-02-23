@@ -1,47 +1,55 @@
-// app/inventory/components/MaintenanceList.tsx
 'use client';
 
-import { MaintenanceCard } from './MaintenanceCard';
-import { MaintenanceNewDialog } from './MaintenanceNewDialog';
-import { Wrench, Plus } from 'lucide-react';
+
+import { Badge } from "@/components/ui/badge";
+import { Wrench, ArrowUpRight, Loader2, Plus } from "lucide-react";
+import Link from 'next/link';
 
 interface Props {
+    tasks: any[]; // Las tareas ya vienen masticadas del servidor
     itemId: string;
-    tasks: any[];
-    profiles: any[];
 }
 
-export function MaintenanceList({ itemId, tasks = [], profiles = [] }: Props) {
+export function MaintenanceList({ tasks, itemId }: Props) {
+    // Ya no hay loading state aquí, porque el Server Component espera a tener los datos
+    
     return (
-        <div className="space-y-6 pb-10">
-            {/* Header con botón de añadir */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Historial de Tareas</h3>
-                    <p className="text-xs text-slate-500">{tasks.length} registros encontrados</p>
-                </div>
-                
-                <MaintenanceNewDialog itemId={itemId} profiles={profiles}>
-                    <button className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full text-xs font-bold hover:bg-orange-100 transition-colors border border-orange-100">
-                        <Plus className="w-3 h-3" /> Añadir Tarea
-                    </button>
-                </MaintenanceNewDialog>
+        <div className="space-y-4">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Historial</h3>
+                <button className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full text-[10px] font-black hover:bg-orange-100 transition-colors border border-orange-100 uppercase italic">
+                    <Plus className="w-3 h-3" /> Añadir Tarea
+                </button>
             </div>
 
-            {/* Lista de Cards */}
             {tasks.length > 0 ? (
                 <div className="grid gap-3">
-                    {tasks.sort((a, b) => new Date(b.last_maintenance_date).getTime() - new Date(a.last_maintenance_date).getTime()).map((task) => (
-                        <MaintenanceCard key={task.id} task={task} profiles={profiles} />
+                    {tasks.map((task) => (
+                        <div key={task.id} className="bg-white border border-slate-100 rounded-xl p-3 hover:border-blue-200 transition-all flex justify-between items-center group">
+                            <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-700 truncate italic">{task.title}</p>
+                                <div className="flex gap-2 mt-1 items-center">
+                                    <Badge variant="outline" className="text-[8px] h-4 uppercase font-black px-1.5 border-slate-200 text-slate-400">
+                                        {task.status}
+                                    </Badge>
+                                    <span className="text-[9px] text-slate-400 uppercase font-medium italic">
+                                        {new Date(task.created_at).toLocaleDateString()}
+                                    </span>
+                                </div>
+                            </div>
+                            <Link 
+                                href={`/maintenance/task/${task.id}`}
+                                className="p-2 rounded-lg bg-slate-50 text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                            >
+                                <ArrowUpRight size={14} />
+                            </Link>
+                        </div>
                     ))}
                 </div>
             ) : (
-                <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed rounded-2xl border-slate-100 bg-slate-50/50">
-                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm mb-3">
-                        <Wrench className="w-5 h-5 text-slate-300" />
-                    </div>
-                    <p className="text-sm text-slate-500 font-medium">No hay mantenimientos registrados</p>
-                    <p className="text-[11px] text-slate-400">Registra revisiones, cambios de filtros o reparaciones.</p>
+                <div className="py-10 text-center border-2 border-dashed rounded-2xl border-slate-100">
+                    <Wrench className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                    <p className="text-xs text-slate-400 font-medium italic">No hay tareas registradas</p>
                 </div>
             )}
         </div>

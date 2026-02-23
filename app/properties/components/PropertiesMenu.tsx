@@ -6,7 +6,8 @@ import {
     Home, Plus, Settings, LayoutDashboard, Users, 
     Megaphone, ChevronRight, MapPin, 
     FileText,
-    Package
+    Package,
+    Wrench
 } from 'lucide-react';
 import { 
     SidebarMenu, SidebarMenuItem, SidebarMenuButton, 
@@ -38,6 +39,7 @@ export function PropertiesMenu({ mode,properties, currentView, onViewChange }: P
     const currentPropertyId = context?.property?.id;
     const currentPropertySlug=context?.property?.slug;
     const isInventoryActive = context?.property.active_modules?.inventory === true;
+    const isMaintenanceActive = context?.property.active_modules?.maintenance === true;
     const can = context?.can || (() => false);
     if (mode==='operative'){
         return (
@@ -151,7 +153,17 @@ export function PropertiesMenu({ mode,properties, currentView, onViewChange }: P
                                                     </Link>
                                                 </SidebarMenuButton>
                                             </SidebarMenuItem>
-                )}
+                                        )}
+                                        {isMaintenanceActive && (
+                                            <SidebarMenuItem>
+                                                <SidebarMenuButton>
+                                                    <Link href={`/properties/${currentPropertySlug}/maintenance`} className="flex items-center w-full">
+                                                        <Wrench className="mr-2 h-4 w-4" />
+                                                        Mantenimiento
+                                                    </Link>
+                                                </SidebarMenuButton>
+                                            </SidebarMenuItem>
+                                        )}
                                     </SidebarMenuSub>
                                 </CollapsibleContent>
                             </SidebarMenuItem>

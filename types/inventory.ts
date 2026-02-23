@@ -43,16 +43,17 @@ export interface InventoryItem {
   // Referencia a la tabla 'properties'
   property_id?: string | null; 
   property_location_id?: string | null; 
-
+  
 
   photo_path?: string;
   receipt_path?: string;
   external_links: InventoryLink[]; 
   location?: InventoryLocation; // Personal
   property_location?: PropertyLocation; // Propiedad
+  inventory_loans?: InventoryLoan[];
 }
 
-export type InventoryItemBase = Pick<InventoryItem, 'id' | 'name' | 'property_id'>;
+export type InventoryItemBase = Pick<InventoryItem, 'id' | 'name' | 'property_id' |'location_id' |'property_location_id'>;
 
 export interface MaintenanceTask {
   id: string;
@@ -80,9 +81,6 @@ export interface Profile {
   avatar_url?: string;
 }
 
-// Tipos de datos que ya tienes:
-export interface InventoryCategory { id: string; name: string; icon?: string; }
-export interface InventoryLocation { id: string; name: string; parent_id?: string | null; }
 
 // 🚨 Interfaz para el menú (pasando los datos)
 export interface InventoryMenuProps {

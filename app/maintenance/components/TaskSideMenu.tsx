@@ -7,15 +7,6 @@ import Link from "next/link";
 export function TaskSideMenu({ task, isAdmin, onArchive }: any) {
     return (
         <SidebarMenu className="gap-2">
-            <SidebarMenuItem>
-                <Link href={`/properties/${task.properties.slug}/maintenance`} passHref>
-                    <Button variant="ghost" className="w-full justify-start gap-2 text-slate-500 hover:text-slate-900">
-                        <ChevronLeft className="h-4 w-4" />
-                        <span>Volver a la lista</span>
-                    </Button>
-                </Link>
-            </SidebarMenuItem>
-
             <div className="px-4 py-2 mt-4">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Acciones de Tarea</p>
             </div>

@@ -1,4 +1,4 @@
-// lib/storage-utils.ts
+// utils/uploads.ts
 import { createClient } from './supabase/client';
 
 interface UploadOptions {
@@ -19,18 +19,17 @@ export async function uploadFile(file: File, options: UploadOptions): Promise<st
   if (!isImage && !isPDF) {
     throw new Error('Solo se permiten imágenes (JPG, PNG, WebP) o archivos PDF');
   }
-
-  // 2. VALIDACIÓN DE TAMAÑO (Antes de procesar)
-  if (file.size > maxSizeMB * 1024 * 1024) {
-    throw new Error(`El archivo es demasiado grande. Máximo ${maxSizeMB}MB permitido.`);
-  }
-
-  // 3. PROCESAMIENTO
-  let fileToUpload: Blob | File = file;
   
+  // 2. PROCESAMIENTO
+  let fileToUpload: Blob | File = file;
   // Si es imagen, la optimizamos. Si es PDF, lo subimos tal cual.
   if (isImage) {
     fileToUpload = await optimizeImage(file, maxWidth);
+  }
+
+  // 3. VALIDACIÓN DE TAMAÑO (Antes de procesar)
+  if (fileToUpload.size > maxSizeMB * 1024 * 1024) {
+    throw new Error(`El archivo es demasiado grande. Máximo ${maxSizeMB}MB permitido.`);
   }
 
   // 4. NOMBRE ÚNICO

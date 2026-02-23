@@ -6,49 +6,90 @@ import { getUserData } from '@/utils/security'
 
 export async function createMaintenanceTask(formData: FormData) {
     const supabase = await createClient()
-    
-    // Extraer datos del FormData
+    const { data: userData } = await supabase.auth.getUser()
+    if (!userData.user) return { success: false, error: "No autorizado" }
+
+    // 1. Extraer metadatos de la tarea
     const title = formData.get('title') as string
-    const propertyId = formData.get('propertyId') as string
     const description = formData.get('description') as string
     const type = formData.get('type') as any
+    const priority = parseInt(formData.get('priority') as string) || 2
+    const propertyId = formData.get('propertyId') as string || null
     const itemId = formData.get('itemId') as string || null
     const locationId = formData.get('locationId') as string || null
-    const assignedTo = formData.get('assignedTo') as string || null
+    const isPersonal = formData.get('is_personal') === 'true'
 
-    const { data: userData } = await supabase.auth.getUser()
-    
-    const { data, error } = await supabase
+    // Parseamos las fotos que vienen del cliente
+    const imagesRaw = formData.get('images') as string
+    const imagesUrls = imagesRaw ? JSON.parse(imagesRaw) : []
+
+    // 2. Lógica de ubicación (la misma de antes)
+    let property_location_id = null
+    let inventory_location_id = null
+    if (!itemId && locationId) {
+        if (isPersonal) inventory_location_id = locationId
+        else property_location_id = locationId
+    }
+
+    // 3. Insertar la Tarea (Los metadatos puros)
+    const { data: task, error: taskError } = await supabase
         .from('maintenance_tasks')
         .insert({
             title,
-            property_id: propertyId,
-            description,
+            description, // La mantenemos aquí también como "resumen" inicial
             type,
-            item_id: itemId,
-            location_id: locationId,
-            assigned_to: assignedTo,
-            created_by: userData.user?.id
+            priority,
+            property_id: isPersonal ? null : propertyId,
+            item_id: itemId || null,
+            location_id:property_location_id || inventory_location_id,
+            status: 'pendiente',
+            created_by: userData.user.id,
         })
         .select()
         .single()
 
-    if (error) return { success: false, error: error.message }
+    if (taskError) return { success: false, error: taskError.message }
 
-    // Log automático de creación
-    await supabase.from('maintenance_logs').insert({
-        task_id: data.id,
-        user_id: userData.user?.id,
-        entry_type: 'sistema',
-        content: description || 'Incidencia abierta sin descripción adicional.'
+    // 4. USAR TU FUNCIÓN EXISTENTE PARA EL PRIMER LOG
+    // Centralizamos aquí las imágenes y la descripción detallada
+    await submitTimelineEntry({
+        taskId: task.id,
+        content: '🛠️ Apertura de incidencia. ' + (description || 'Sin más detalles'),
+        entryType: 'sistema', 
+        images: imagesUrls // Tu función ya sabe qué hacer con esto
     })
 
+    // 5. Revalidaciones
     revalidatePath('/maintenance')
-    revalidatePath(`/properties/${propertyId}/maintenance`)
-    return { success: true, data }
+    if (propertyId) revalidatePath(`/properties/${propertyId}/maintenance`)
+    revalidatePath(`/maintenance/task/${task.id}`)
+
+    return { success: true, data: task }
 }
 
+export async function updateMaintenanceTask(taskId: string, data: any) {
+    const supabase = await createClient();
+    
+    const { error } = await supabase
+        .from('maintenance_tasks')
+        .update({
+            title: data.title,
+            description: data.description,
+            status: data.status,
+            priority: data.priority,
+            type: data.type,
+            category: data.category, // O category_id si usas relación
+            insurance_status: data.insurance_status, // <-- OJO: Mira que en DB se llame así
+            insurance_ref: data.insurance_ref,       // <-- OJO: Mira que en DB se llame así
+            assigned_to: data.assigned_to === 'none' ? null : data.assigned_to
+        })
+        .eq('id', taskId);
 
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath(`/maintenance/task/${taskId}`);
+    return { success: true };
+}
 /**
  * Motor principal de estados:
  * Maneja: aceptar (ongoing), cerrar (closed) y rechazar (cancelled + auto-archive)

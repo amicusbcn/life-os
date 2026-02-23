@@ -4,9 +4,16 @@ import { MaintenanceTask } from '@/types/maintenance';
 import { InventoryItemBase } from '@/types/inventory';
 import { PropertyBase } from '@/types/properties';
 
-export async function getMaintenanceTasks() {
-    const supabase = await createClient();
-    const { data, error } = await supabase
+interface TaskFilters {
+  propertyId?: string;
+  inventoryItemId?: string;
+  isArchived?: boolean;
+}
+
+export async function getMaintenanceTasks(filters: TaskFilters = {}) {
+  const supabase = await createClient();
+  const { propertyId, inventoryItemId, isArchived = false } = filters;
+    let query = supabase
         .from('maintenance_tasks')
         .select(`
                 *,
@@ -19,9 +26,18 @@ export async function getMaintenanceTasks() {
                     full_name
                 )
             `)
-        .order('priority', { ascending: true })
+        .eq('is_archived', isArchived)
+        .order('priority', { ascending: false })
         .order('created_at', { ascending: false });
+    if (propertyId) {
+        query = query.eq('property_id', propertyId);
+    }
 
+    if (inventoryItemId) {
+        query = query.eq('item_id', inventoryItemId);
+    }
+
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return data as MaintenanceTask[];
 }
@@ -30,9 +46,12 @@ export async function getAllInventoryItemsBase() {
     const supabase = await createClient();
     const { data } = await supabase
         .from('inventory_items')
-        .select('id, name, property_id')
-        .order('name');
-    
+        .select(`
+            *,
+            location_id,
+            property_location_id,
+            property_id
+        `)
     return (data || []) as InventoryItemBase[];
 }
 
@@ -49,15 +68,32 @@ export async function getAllPropertiesBase() {
 
 export async function getAllLocations() {
     const supabase = await createClient();
-    const { data } = await supabase
-        .from('property_locations')
-        .select('*')
-        .order('name');
-    
-    return data || [];
+
+    // Lanzamos ambas peticiones en paralelo para no perder tiempo
+    const [propsRes, invRes] = await Promise.all([
+        supabase.from('property_locations').select('*, properties(name)').order('name'),
+        supabase.from('inventory_locations').select('*').order('name')
+    ]);
+
+    // Procesamos ubicaciones de propiedades
+    const propertyLocs = (propsRes.data || []).map(loc => ({
+        ...loc,
+        is_personal: false,
+        // Usamos el nombre de la propiedad como contexto
+        context_name: loc.properties?.name || 'Propiedad'
+    }));
+
+    // Procesamos ubicaciones personales
+    const personalLocs = (invRes.data || []).map(loc => ({
+        ...loc,
+        is_personal: true,
+        property_id: 'personal', // ID ficticio para el filtro del cliente
+        context_name: 'Personal'
+    }));
+
+    return [...propertyLocs, ...personalLocs];
 }
 
-// app/maintenance/data.ts
 
 export async function getTaskWithTimeline(taskId: string) {
     const supabase = await createClient();
@@ -98,4 +134,19 @@ export async function getTaskWithTimeline(taskId: string) {
     if (timelineError) throw timelineError;
 
     return { task, timeline };
+}
+export async function getMaintenanceCategories() {
+  const supabase = await createClient();
+  
+  const { data, error } = await supabase
+    .from('maintenance_categories')
+    .select('*')
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.error("Error al cargar categorías de mantenimiento:", error);
+    return [];
+  }
+
+  return data || [];
 }
