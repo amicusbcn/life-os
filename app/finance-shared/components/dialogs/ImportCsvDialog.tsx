@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { FileSpreadsheet, ArrowRight, Loader2, UploadCloud, RefreshCw, FileUp } from 'lucide-react'
-import { importBankTransactions } from '@/app/finance-shared/actions'
+import { importBankTransactions } from '../../actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 
@@ -124,19 +124,38 @@ export function ImportCsvDialog({ groupId,children }: Props) {
             }
 
             // B. IMPORTE & SALDO
-            const sanitize = (val: string) => val ? val.replace(/\./g, '').replace(',', '.') : '0'
-            const clean = (val: string) => val ? val.replace(/[^0-9.,-]/g, '') : '0'
+            const rawAmount = row[mapAmount] || '0';
+            const isNegative = rawAmount.includes('-') || rawAmount.includes('(');
 
-            // Importe
-            let amount = parseFloat(sanitize(clean(row[mapAmount])))
-            if (isNaN(amount)) amount = 0
-            if (invertSign) amount = amount * -1
+            // Limpiamos: quitamos todo lo que no sea número o coma/punto
+            const cleaned = rawAmount.replace(/[^0-9.,]/g, '');
+
+            // Lógica de decimales: si hay coma y punto, la coma es el decimal (formato ES). 
+            // Si solo hay uno, lo normalizamos a punto para parseFloat.
+            let normalized = cleaned;
+            if (cleaned.includes(',') && cleaned.includes('.')) {
+                normalized = cleaned.replace(/\./g, '').replace(',', '.'); // 1.200,50 -> 1200.50
+            } else {
+                normalized = cleaned.replace(',', '.'); // 10,50 -> 10.50 o 10.50 -> 10.50
+            }
+
+            let amount = parseFloat(normalized) || 0;
+            if (isNegative) amount = -Math.abs(amount);
+            if (invertSign) amount = amount * -1;
 
             // Saldo
-            let balance = undefined
+            let balance = undefined;
             if (mapBalance !== 'none') {
-                balance = parseFloat(sanitize(clean(row[mapBalance])))
-                if (isNaN(balance)) balance = undefined
+                const rawBal = row[mapBalance] || '0';
+                const isBalNeg = rawBal.includes('-') || rawBal.includes('(');
+                let normBal = rawBal.replace(/[^0-9.,]/g, '');
+                if (normBal.includes(',') && normBal.includes('.')) {
+                    normBal = normBal.replace(/\./g, '').replace(',', '.');
+                } else {
+                    normBal = normBal.replace(',', '.');
+                }
+                balance = parseFloat(normBal) || 0;
+                if (isBalNeg) balance = -Math.abs(balance);
             }
 
             return {
@@ -144,7 +163,7 @@ export function ImportCsvDialog({ groupId,children }: Props) {
                 date: dateStr,
                 description: row[mapDesc] || 'Sin concepto',
                 notes: mapNotes !== 'none' ? row[mapNotes] : '',
-                bank_balance: balance, // <--- GUARDAMOS
+                bank_balance: balance,
                 amount: amount,
                 selected: true
             }

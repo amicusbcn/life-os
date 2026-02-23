@@ -56,7 +56,7 @@ export interface SharedTransaction {
   amount: number;
   description: string;
   type: SharedTransactionType;
-  status: SharedTransactionStatus;
+  approval_status: SharedTransactionStatus;
   payment_source: SharedPaymentSource;
   payer_member_id: string | null;
   created_by: string;
@@ -175,20 +175,33 @@ export interface CreateSharedCategoryInput {
 
 export interface CreateTransactionInput {
   group_id: string;
-  date: string; // ISO Date
-  amount: number;
+  account_id: string; // La cuenta donde ocurre el movimiento
+  date: string;
+  amount: number; // El signo es sagrado: negativo sale, positivo entra
   description: string;
+  notes?: string;
   category_id?: string;
+  type: 'income' | 'expense' | 'transfer' | 'loan';
   
-  // LOGICA DE PAGO
+  // Lógica de pago
   payment_source: 'account' | 'member';
-  payer_member_id?: string; // Obligatorio si source es member
-  request_reimbursement?: boolean; // Checkbox de la UI
+  payer_member_id?: string; // Solo si payment_source es 'member'
   
-  // LOGICA DE REPARTO (Para empezar simple: Reparto equitativo entre IDs seleccionados)
-  split_type: 'equal' | 'weighted'; // Cambiamos 'percentage' por 'weighted' que es más preciso
+  // Lógica de aprobación y reembolsos
+  request_reimbursement?: boolean; // Luego en la acción lo mapeamos a 'pending' o 'none'
+  
+  // Lógica de Transferencias
+  transfer_account_id?: string; // Cuenta destino si type === 'transfer'
+  
+  // Lógica de Repartos (Allocations)
   involved_member_ids: string[]; // Quiénes participan en el gasto
-  split_weights?: Record<string, number>;
+  split_type: 'equal' | 'weighted';
+  split_weights?: Record<string, number>; // { "member_uuid": 2, "other_uuid": 1 }
+  
+  // Otros
+  is_provision?: boolean;
+  debt_link_id?: string;
+  parent_transaction_id?: string;
 }
 
 export interface DashboardData {
