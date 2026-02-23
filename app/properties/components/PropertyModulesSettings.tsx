@@ -25,7 +25,7 @@ export function PropertyModulesSettings() {
         setLoading(true);
         // Optimistic UI update (opcional, aquí hacemos update directo)
         try {
-            const currentModules = property.active_modules || { finance: false, bookings: false, inventory: false };
+            const currentModules = property.active_modules || { finance: false, bookings: false, inventory: false,maintenance: false };
             const updatedModules = { ...currentModules, [moduleId]: isActive };
             
             await updatePropertyModules(property.id, updatedModules);
