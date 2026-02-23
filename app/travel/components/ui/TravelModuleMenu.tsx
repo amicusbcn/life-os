@@ -3,12 +3,13 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { Gauge, Tag, History, TreePalm, Plus } from 'lucide-react'
+import { Gauge, Tag, History, TreePalm, Plus, FileText } from 'lucide-react'
 import { TravelContext, TravelMileageTemplate, TravelCategory } from '@/types/travel'
 import { MileageSettingsDialog } from "../dialogs/MileageSettingsDialog"
 import { CategorySettingsDialog } from '../dialogs/CategorySettingsDialog'
 import { SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar'
 import { NewTripDialog } from '../dialogs/NewTripDialog'
+import { NewReportSheet } from '../dialogs/NewReportSheet'
 
 interface TravelModuleMenuProps {
   context: TravelContext;
@@ -38,6 +39,19 @@ export function TravelModuleMenu({ context, templates, categories, mode, employe
             </SidebarMenuButton>
           </NewTripDialog>
         </SidebarMenuItem>
+        {!isPersonal && (
+          <SidebarMenuItem>
+            <NewReportSheet employers={employers} context={context}>
+              <SidebarMenuButton 
+                size="lg" 
+                className="bg-slate-800 text-white hover:bg-slate-900 hover:text-white mt-2 shadow-md transition-all active:scale-95"
+              >
+                <FileText className="h-5 w-5 text-indigo-400" />
+                <span className="font-bold uppercase text-[10px] tracking-wider">Nueva Hoja</span>
+              </SidebarMenuButton>
+            </NewReportSheet>
+          </SidebarMenuItem>
+        )}
         <SidebarMenuItem>
           <SidebarMenuButton 
             onClick={() => router.push(`/travel/${context}/archive`)} 
