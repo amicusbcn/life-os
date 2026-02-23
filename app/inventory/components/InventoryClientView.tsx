@@ -115,9 +115,7 @@ export function InventoryClientView({
                     items={filteredItems} 
                     categories={categories}
                     locations={locations}
-                    availableProperties={availableProperties}
                     currentPropertyId={propertyId}
-                    availableProfiles={availableProfiles}
                />
             </div>
         </UnifiedAppSidebar>

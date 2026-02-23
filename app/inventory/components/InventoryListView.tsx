@@ -9,12 +9,11 @@ import Link from 'next/link'; // <--- Importante: Usamos Link ahora
 interface Props {
     items: any[];
     categories: InventoryCategory[];
-    tasks: any[];
     locations: InventoryLocation[];
     currentPropertyId?: string;
 }
 
-export function InventoryListView({ items, tasks, categories, locations, currentPropertyId }: Props) {
+export function InventoryListView({ items, categories, locations, currentPropertyId }: Props) {
     
     // Helper para manejar URLs de imágenes
     const getImageUrl = (path: string) => {
