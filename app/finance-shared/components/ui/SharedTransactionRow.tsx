@@ -40,8 +40,8 @@ export function SharedTransactionRow({
     const month = dateObj.toLocaleString('es-ES', { month: 'short' }).toUpperCase()
 
     // --- LÓGICA DE ESTADO ---
-    const isExpense = transaction.type === 'expense'
-    const isIncome = transaction.type === 'income'
+    const isExpense = transaction.amount<0
+    const isIncome = transaction.amount>0
     const isTransfer = transaction.type === 'transfer'
     const isLoan = transaction.type === 'loan'
     const isProvision = transaction.is_provision
