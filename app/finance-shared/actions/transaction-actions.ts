@@ -62,7 +62,7 @@ export async function updateSharedTransaction(transactionId: string, input: any)
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: 'No autorizado' };
-
+    console.log(`   ✏️  Updating transaction ${transactionId} with data:`, input);
     try {
         // 1. Buscamos la transacción actual para comparar
         const { data: fetchOld, error: fetchError } = await supabase

@@ -7,7 +7,7 @@ import { upsertSharedTransaction } from './transaction-actions'
 
 export async function updateTransactionCategory(transactionId: string, categoryId: string) {
     const supabase = await createClient()
-
+    console.log(`   🏷️  Updating transaction ${transactionId} to category ${categoryId}`)
     // 1. Obtenemos la info de la NUEVA categoría (para ver si is_loan es true)
     const { data: category, error: catError } = await supabase
         .from('finance_shared_categories')
