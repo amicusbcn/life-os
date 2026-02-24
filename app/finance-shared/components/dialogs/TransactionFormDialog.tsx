@@ -380,6 +380,7 @@ export function TransactionFormDialog({
         
         const payload = {
             id: transactionToEdit?.id,
+            import_id: transactionToEdit?.import_id,
             linked_transaction_id: transactionToEdit?.linked_transaction_id,
             date,
             amount: finalAmount,
@@ -397,7 +398,7 @@ export function TransactionFormDialog({
             debt_link_id: isLoanCat ? linkedTxId : null,
             // --- LA NUEVA LÓGICA CENTRALIZADA ---
             split_template_id: isTemplate ? splitMode : null,
-            manual_weights: manualWeights,
+            manual_weights: !isTemplate ? manualWeights : null,
             // Mandamos allocations solo como fallback o para vista rápida, 
             // el servidor las recalculará de todos modos
             allocations: allocations.filter(a => a.isSelected).map(a => ({ 
@@ -405,7 +406,6 @@ export function TransactionFormDialog({
                 amount: a.amount 
             }))
         }
-        console.log("Enviando al servidor -> split_template_id:", isTemplate ? splitMode : null);
         const res = await upsertSharedTransaction(groupId, payload)
         setLoading(false)
         if (res.error) toast.error(res.error)

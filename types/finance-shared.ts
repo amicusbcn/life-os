@@ -50,6 +50,7 @@ export interface SharedAllocation {
 
 export interface SharedTransaction {
   id: string;
+  import_id?: string | null; // Para identificar transacciones importadas
   group_id: string;
   account_id: string | null;
   date: string; // ISO Date

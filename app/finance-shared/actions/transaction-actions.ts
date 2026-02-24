@@ -84,24 +84,33 @@ export async function updateSharedTransaction(transactionId: string, input: any)
         }
 
 
-        const isTransfer = input.type === 'transfer';
-        const newAmount = parseFloat(input.amount);
+        const currentAmount = input.amount !== undefined ? input.amount : oldTx.amount;
+        let finalType = input.type || oldTx.type;
 
+        if (finalType !== 'transfer' && finalType !== 'loan') {
+            finalType = currentAmount >= 0 ? 'income' : 'expense';
+        }
+
+        const isTransfer = finalType === 'transfer';
+        const amountForCalculations = input.amount !== undefined ? parseFloat(input.amount) : oldTx.amount;
         // 2. PAYLOAD
         const payload: any = {
             date: input.date,
-            amount: newAmount,
             description: input.description,
             notes: input.notes,
-            type: input.type,
+            type: finalType,
             category_id: isTransfer ? null : input.category_id,
             payer_member_id: input.payer_member_id,
             account_id: input.account_id,
             payment_source: input.payment_source,
             approval_status: input.approval_status || 'approved',
-            transfer_account_id: isTransfer ? input.transfer_account_id : null,
-            is_provision: input.is_provision || false
+            transfer_account_id: isTransfer ? (input.transfer_account_id || oldTx.transfer_account_id) : null,
+            is_provision: input.is_provision || false,
+            split_template_id: input.split_template_id || null
         };
+        if (!input.import_id) { 
+            payload.amount = parseFloat(input.amount);
+        }
 
         // 3. UPDATE
         const { error: updateError } = await supabase
@@ -122,7 +131,7 @@ export async function updateSharedTransaction(transactionId: string, input: any)
                 group_id: oldTx.group_id,
                 account_id: input.transfer_account_id,
                 date: input.date,
-                amount: newAmount * -1,
+                amount: amountForCalculations * -1,
                 description: 'Espejo: ' + input.description,
                 type: 'transfer',
                 approval_status: 'approved',
@@ -277,29 +286,68 @@ async function syncAllocations(supabase: any, transactionId: string, input: any)
     // 1. Limpiar anteriores
     await supabase.from('finance_shared_allocations').delete().eq('transaction_id', transactionId);
 
-    let allocations = [];
+    let finalAllocations = [];
+    const amount = parseFloat(input.amount);
 
-    // --- LA MEJORA ---
-    // Si el input ya trae el reparto "cocinado" (como haces en el Dialog), lo usamos directamente
-    if (input.allocations && input.allocations.length > 0) {
-        allocations = input.allocations.map((a: any) => ({
+    // --- ESCENARIO A: USAR PLANTILLA (Búsqueda en DB) ---
+    if (input.split_template_id) {
+        
+        // 1. Buscamos la plantilla incluyendo sus miembros (JOIN)
+        const { data: template, error: tError } = await supabase
+            .from('finance_shared_split_templates')
+            .select(`
+                id,
+                name,
+                members:finance_shared_split_template_members (
+                    member_id,
+                    shares
+                )
+            `)
+            .eq('id', input.split_template_id)
+            .single();
+
+        if (tError || !template || !template.members) {
+            console.error("❌ Error recuperando miembros de la plantilla:", tError);
+        } else {
+            // 2. Mapeamos los datos para que calculateAllocations los entienda
+            const memberIds = template.members.map((m: any) => m.member_id);
+            
+            // Creamos el objeto de pesos (split_weights) a partir de 'shares'
+            const splitWeights: Record<string, number> = {};
+            template.members.forEach((m: any) => {
+                splitWeights[m.member_id] = parseFloat(m.shares);
+            });
+
+            // 3. Calculamos
+            finalAllocations = calculateAllocations(
+                amount,
+                memberIds,
+                'weighted', // Usamos weighted porque tienes una columna 'shares'
+                splitWeights
+            );
+        }
+    } 
+    // --- ESCENARIO B: REPARTO COCINADO (Desde el Formulario manual) ---
+    else if (input.allocations && input.allocations.length > 0) {
+        finalAllocations = input.allocations.map((a: any) => ({
             member_id: a.member_id,
-            amount: a.amount // Aquí ya viene con el signo correcto desde el Dialog
+            amount: a.amount 
         }));
-    } else {
-        // Si no trae nada manual, calculamos el automático como antes
-        allocations = calculateAllocations(
-            input.amount, 
+    } 
+    // --- ESCENARIO C: FALLBACK AUTOMÁTICO (Igualitario) ---
+    else {
+        finalAllocations = calculateAllocations(
+            amount, 
             input.involved_member_ids || [], 
-            input.split_type, 
+            input.split_type || 'equal', 
             input.split_weights
         );
     }
 
     // 3. Insertar
-    if (allocations.length > 0) {
+    if (finalAllocations.length > 0) {
         const { error } = await supabase.from('finance_shared_allocations').insert(
-            allocations.map((a: any) => ({ ...a, transaction_id: transactionId }))
+            finalAllocations.map((a: any) => ({ ...a, transaction_id: transactionId }))
         );
         if (error) throw new Error("Error sincronizando repartos: " + error.message);
     }

@@ -62,10 +62,15 @@ export function TransactionDetailDialog({
     useEffect(() => {
         if (localTx) {
             setSelectedCategoryId(localTx.category_id || (localTx.type === 'transfer' ? 'transfer' : 'uncategorized'))
-            const currentCId = localTx.allocations?.length === 1 ? localTx.allocations[0].member_id : ''
-            setContributorId(currentCId)
+            
+            // Solo seteamos el contributorId si el estado está vacío (carga inicial)
+            // o si localTx ha cambiado de ID.
+            const dbMemberId = localTx.allocations?.[0]?.member_id || '';
+            if (dbMemberId && !contributorId) {
+                setContributorId(dbMemberId);
+            }
         }
-    }, [localTx])
+    }, [localTx?.id]);
 
     if (!localTx) return null
 
@@ -96,9 +101,8 @@ export function TransactionDetailDialog({
         const payload = {
             ...localTx,
             ...updates,
-            type: correctType // <--- SOBREESCRIBIMOS EL ERROR AQUÍ
+            type: correctType 
         };
-
         const res = await updateSharedTransaction(localTx.id, payload) as any;
 
         if (res.error) {
@@ -312,10 +316,10 @@ export function TransactionDetailDialog({
                                 /* CASO B: CATEGORÍA DE ASIGNACIÓN ÚNICA (Selector de Miembros) */
                                 <Select value={contributorId} 
                                     onValueChange={(mId) => {
-                                        setContributorId(mId)
+                                        setContributorId(mId); // La UI cambia instantáneamente
                                         handleQuickUpdate({ 
                                             allocations: [{ member_id: mId, amount: localTx.amount }] 
-                                        })
+                                        });
                                     }}
                                     disabled={!isAdmin}>
                                     <SelectTrigger className="h-9 text-sm border-amber-100 bg-amber-50/50">
