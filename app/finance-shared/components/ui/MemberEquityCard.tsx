@@ -1,20 +1,25 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { formatCurrency, cn } from "@/lib/utils"
-import { History, ArrowDownToLine, ArrowUpFromLine, HandCoins } from "lucide-react"
+import { History, ArrowDownToLine, ArrowUpFromLine, HandCoins, Info } from "lucide-react"
 
 export function MemberEquityCard({ member, isMe, year }: any) {
-    const annualBalance = member.annual_balance || 0
-    const annualPaid = member.annual_paid || 0
-    const annualConsumed = member.annual_consumed || 0
+    // MAPEÓ DE LA NUEVA VISTA SQL
+    // 1. Aportaciones (Ingresos + Gastos donados)
+    const annualPaid = member.debug_allocated_income || 0
     
-    // Préstamos Pendientes (Debt)
+    // 2. Consumo (Gastos confirmados + Gastos pendientes/cubos)
+    const annualConsumed = member.debug_consumed || 0
+    
+    // 3. Préstamos (Saldo histórico de préstamos + reembolsos pendientes)
     const pendingLoanAmount = member.debug_loans || 0
-    const hasPendingLoans = Math.abs(pendingLoanAmount) > 0.01
-
-    // Deuda Histórica Total
+    
+    // 4. Balance Global (El que manda en la cabecera)
     const globalBalance = member.global_balance || 0
-    const hasGlobalDebt = Math.abs(globalBalance) > 0.01
+
+    // LOGICA DE VISIBILIDAD
+    const hasPendingLoans = Math.abs(pendingLoanAmount) > 0.01
+    const hasActivity = Math.abs(annualPaid) > 0.01 || Math.abs(annualConsumed) > 0.01 || hasPendingLoans
 
     return (
         <Card className={cn(
@@ -33,64 +38,71 @@ export function MemberEquityCard({ member, isMe, year }: any) {
                             {member.name} 
                             {isMe && <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-full text-slate-500 font-normal">Tú</span>}
                         </CardTitle>
-                        {/* Ahora el año es dinámico según la prop 'year' */}
-                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Balance {year || 2025}</p>
+                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Estado de Cuenta</p>
                     </div>
                 </div>
 
-                {/* 1. SALDO ANUAL (Ahora en la cabecera) */}
-                <span className={cn("text-2xl font-black tracking-tighter", annualBalance >= 0 ? "text-emerald-600" : "text-rose-600")}>
-                    {annualBalance > 0 ? '+' : ''}{formatCurrency(annualBalance)}
-                </span>
+                {/* SALDO GLOBAL (El resultado final de la caja) */}
+                <div className="text-right">
+                    <span className={cn("text-2xl font-black tracking-tighter", globalBalance >= 0 ? "text-emerald-600" : "text-rose-600")}>
+                        {globalBalance > 0 ? '+' : ''}{formatCurrency(globalBalance)}
+                    </span>
+                </div>
             </CardHeader>
             
             <CardContent className="space-y-4">
-                {/* 2. DESGLOSE ACTIVIDAD (ANUAL) */}
+                {/* DESGLOSE ACTIVIDAD */}
                 <div className="grid grid-cols-2 gap-2">
                     <div className="bg-emerald-50/50 rounded-xl p-3 border border-emerald-100/50">
                         <div className="flex items-center gap-1.5 text-[10px] text-emerald-700 font-bold uppercase mb-1">
                             <ArrowUpFromLine className="h-3 w-3" /> Aportado
                         </div>
-                        <span className="text-lg font-bold text-emerald-800 tracking-tight">{formatCurrency(annualPaid)}</span>
+                        <span className="text-lg font-bold text-emerald-800 tracking-tight">
+                            {formatCurrency(annualPaid)}
+                        </span>
                     </div>
 
                     <div className="bg-rose-50/50 rounded-xl p-3 border border-rose-100/50">
                         <div className="flex items-center gap-1.5 text-[10px] text-rose-700 font-bold uppercase mb-1">
                             <ArrowDownToLine className="h-3 w-3" /> Gastado
                         </div>
-                        <span className="text-lg font-bold text-rose-800 tracking-tight">{formatCurrency(annualConsumed)}</span>
+                        <span className="text-lg font-bold text-rose-800 tracking-tight">
+                            {formatCurrency(annualConsumed)}
+                        </span>
                     </div>
                 </div>
 
-                {/* 3. LÍNEA OPCIONAL: PRÉSTAMOS PENDIENTES */}
+                {/* PRÉSTAMOS Y REEMBOLSOS */}
                 {hasPendingLoans && (
-                    <div className="flex justify-between items-center px-3 py-2 bg-amber-50/50 border border-amber-100 rounded-lg">
-                        <span className="flex items-center gap-2 text-[10px] text-amber-700 font-bold uppercase">
-                            <HandCoins className="h-3.5 w-3.5" /> Préstamos pte:
+                    <div className={cn(
+                        "flex justify-between items-center px-3 py-2 rounded-lg border",
+                        pendingLoanAmount > 0 ? "bg-emerald-50 border-emerald-100" : "bg-amber-50 border-amber-100"
+                    )}>
+                        <span className={cn("flex items-center gap-2 text-[10px] font-bold uppercase", pendingLoanAmount > 0 ? "text-emerald-700" : "text-amber-700")}>
+                            <HandCoins className="h-3.5 w-3.5" /> 
+                            {pendingLoanAmount > 0 ? 'A cobrar' : 'A pagar'}
                         </span>
-                        <span className={cn("text-xs font-bold", pendingLoanAmount > 0 ? "text-emerald-600" : "text-amber-600")}>
-                            {pendingLoanAmount > 0 ? 'Te deben: ' : 'Debes: '}
+                        <span className={cn("text-xs font-black", pendingLoanAmount > 0 ? "text-emerald-600" : "text-amber-600")}>
                             {formatCurrency(Math.abs(pendingLoanAmount))}
                         </span>
                     </div>
                 )}
 
-                {/* 4. ACUMULADO TOTAL */}
+                {/* SALDO INICIAL / PREVIO */}
                 <div className="pt-3 border-t border-dashed border-slate-200">
-                    <div className="flex justify-between items-center text-xs">
+                    <div className="flex justify-between items-center text-[10px]">
                         <span className="flex items-center gap-1.5 text-slate-400 font-medium">
-                            <History className="h-3.5 w-3.5" /> Acumulado Total:
+                            <History className="h-3.5 w-3.5" /> Saldo Inicial:
                         </span>
-                        <span className={cn("font-bold", globalBalance >= 0 ? "text-emerald-600" : "text-rose-500")}>
-                            {globalBalance > 0 ? '+' : ''}{formatCurrency(globalBalance)}
+                        <span className="font-bold text-slate-500">
+                            {formatCurrency(member.initial_balance || 0)}
                         </span>
                     </div>
                 </div>
 
-                {/* Estado vacío */}
-                {!hasGlobalDebt && annualBalance === 0 && annualPaid === 0 && !hasPendingLoans && (
+                {!hasActivity && (
                      <div className="text-center pt-2">
-                        <span className="text-[10px] text-slate-400 italic">Sin actividad registrada</span>
+                        <span className="text-[10px] text-slate-400 italic">Sin movimientos en el histórico</span>
                      </div>
                 )}
             </CardContent>

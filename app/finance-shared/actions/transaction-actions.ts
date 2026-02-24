@@ -18,19 +18,27 @@ export async function createSharedTransaction(input: CreateTransactionInput) {
     if (!user) return { error: 'No autorizado' };
 
     try {
+        // Aseguramos que existe el group_id antes de seguir
+        if (!input.group_id) {
+            throw new Error("El group_id es obligatorio para crear una transacción.");
+        }
+
         const isAdmin = await checkGroupAdminPermission(supabase, input.group_id, user.id);
         
+        // 2. CONSTRUCCIÓN DEL PAYLOAD (Limpiando valores)
         const payload = {
             group_id: input.group_id,
-            account_id: input.account_id,
+            // Si viene de formulario manual, forzamos null si es 'group_account' o vacío
+            account_id: input.account_id === 'group_account' ? null : (input.account_id || null),
             date: input.date,
             amount: input.amount, 
             description: input.description,
             notes: input.notes || null,
-            category_id: input.type === 'transfer' ? null : input.category_id,
-            type: input.type,
+            category_id: input.type === 'transfer' ? null : (input.category_id || null),
+            type: input.type || 'expense',
             payment_source: input.payment_source,
             payer_member_id: input.payment_source === 'member' ? input.payer_member_id : null,
+            // Ojo: revisa si tu columna es approval_status o status a secas
             approval_status: isAdmin ? 'approved' : 'pending', 
             reimbursement_status: input.request_reimbursement ? 'pending' : 'none',
             created_by: user.id,
@@ -43,14 +51,18 @@ export async function createSharedTransaction(input: CreateTransactionInput) {
             .insert(payload)
             .select().single();
 
-        if (txError) throw new Error(txError.message);
+        if (txError) {
+            console.error("❌ ERROR EN INSERT:", txError);
+            throw new Error(txError.message);
+        }
 
-        // Sincronizar repartos con el signo original
+        // Sincronizar repartos
         await syncAllocations(supabase, tx.id, input);
 
         revalidatePath('/finance-shared');
         return { success: true, data: tx };
     } catch (e: any) {
+        console.error("🔴 CRASH EN CREATE:", e.message);
         return { error: e.message };
     }
 }
@@ -62,80 +74,87 @@ export async function updateSharedTransaction(transactionId: string, input: any)
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: 'No autorizado' };
+
     try {
-        // 1. Buscamos la transacción actual para comparar
-        const { data: fetchOld, error: fetchError } = await supabase
+        // 1. Buscamos la transacción actual para tener la base
+        const { data: oldTx, error: fetchError } = await supabase
             .from('finance_shared_transactions')
             .select('*')
-            .eq('id', transactionId);
+            .eq('id', transactionId)
+            .single();
 
-        if (fetchError) {
-            console.error("❌ Error de lectura Supabase:", fetchError.message);
-            throw new Error(fetchError.message);
+        if (fetchError || !oldTx) {
+            throw new Error(`La transacción no existe o no tienes permiso: ${fetchError?.message}`);
         }
 
-        const oldTx = fetchOld?.[0];
-        
-        if (!oldTx) {
-            console.error("❌ NO EXISTE EN DB. ID buscado:", transactionId);
-            // Vamos a ver si existen otras transacciones para descartar RLS total
-            const { count } = await supabase.from('finance_shared_transactions').select('*', { count: 'exact', head: true });
-            throw new Error(`La transacción ${transactionId} no existe o no tienes permiso para verla`);
-        }
-
-
-        const currentAmount = input.amount !== undefined ? input.amount : oldTx.amount;
+        // --- LÓGICA INTELIGENTE DE TIPO (El cerebro de la operación) ---
         let finalType = input.type || oldTx.type;
+        const currentAmount = input.amount !== undefined ? parseFloat(input.amount) : oldTx.amount;
+        const currentCategoryId = input.category_id !== undefined ? input.category_id : oldTx.category_id;
 
-        if (finalType !== 'transfer' && finalType !== 'loan') {
+        // Si hay una categoría, comprobamos si es de tipo préstamo
+        if (currentCategoryId && finalType !== 'transfer') {
+            const { data: cat } = await supabase
+                .from('finance_shared_categories')
+                .select('is_loan')
+                .eq('id', currentCategoryId)
+                .single();
+
+            if (cat?.is_loan) {
+                finalType = 'loan';
+            } else {
+                // Si no es préstamo, volvemos a auto-detectar por signo
+                finalType = currentAmount >= 0 ? 'income' : 'expense';
+            }
+        } else if (finalType !== 'transfer' && finalType !== 'loan') {
+            // Fallback por si no hay categoría
             finalType = currentAmount >= 0 ? 'income' : 'expense';
         }
 
         const isTransfer = finalType === 'transfer';
-        const amountForCalculations = input.amount !== undefined ? parseFloat(input.amount) : oldTx.amount;
-        // 2. PAYLOAD
+
+        // 2. CONSTRUCCIÓN DEL PAYLOAD (Limpiando nulos y tipos)
         const payload: any = {
-            date: input.date,
-            description: input.description,
-            notes: input.notes,
+            date: input.date || oldTx.date,
+            description: input.description || oldTx.description,
+            notes: input.notes !== undefined ? input.notes : oldTx.notes,
             type: finalType,
-            category_id: isTransfer ? null : input.category_id,
-            payer_member_id: input.payer_member_id,
-            account_id: input.account_id,
-            payment_source: input.payment_source,
-            approval_status: input.approval_status || 'approved',
+            category_id: isTransfer ? null : currentCategoryId,
+            payer_member_id: input.payer_member_id || oldTx.payer_member_id,
+            account_id: input.account_id || oldTx.account_id,
+            payment_source: input.payment_source || oldTx.payment_source,
+            approval_status: input.approval_status || oldTx.approval_status || 'approved',
             transfer_account_id: isTransfer ? (input.transfer_account_id || oldTx.transfer_account_id) : null,
-            is_provision: input.is_provision || false,
-            split_template_id: input.split_template_id || null
+            is_provision: input.is_provision !== undefined ? input.is_provision : oldTx.is_provision,
+            split_template_id: input.split_template_id !== undefined ? input.split_template_id : oldTx.split_template_id,
+            debt_link_id: input.debt_link_id !== undefined ? input.debt_link_id : oldTx.debt_link_id
         };
-        if (!input.import_id) { 
+
+        // Solo actualizamos amount si no es una importación bloqueada o si viene explícito
+        if (input.amount !== undefined) {
             payload.amount = parseFloat(input.amount);
         }
 
-        // 3. UPDATE
+        // 3. EJECUTAR EL UPDATE
         const { error: updateError } = await supabase
             .from('finance_shared_transactions')
             .update(payload)
             .eq('id', transactionId);
 
-        if (updateError) {
-            console.error("❌ Error en el UPDATE:", updateError.message);
-            throw new Error(updateError.message);
-        }
+        if (updateError) throw new Error(updateError.message);
         
-        // 4. LÓGICA DE ESPEJO
+        // 4. LÓGICA DE ESPEJO (TRASPASOS)
         let linkedId = oldTx.linked_transaction_id;
-        
-        if (isTransfer && input.transfer_account_id) {
+        if (isTransfer && payload.transfer_account_id) {
             const mirrorPayload = {
                 group_id: oldTx.group_id,
-                account_id: input.transfer_account_id,
-                date: input.date,
-                amount: amountForCalculations * -1,
-                description: 'Espejo: ' + input.description,
+                account_id: payload.transfer_account_id,
+                date: payload.date,
+                amount: (payload.amount || oldTx.amount) * -1,
+                description: 'Espejo: ' + payload.description,
                 type: 'transfer',
                 approval_status: 'approved',
-                transfer_account_id: input.account_id,
+                transfer_account_id: payload.account_id,
                 linked_transaction_id: transactionId,
                 created_by: user.id
             };
@@ -143,13 +162,10 @@ export async function updateSharedTransaction(transactionId: string, input: any)
             if (linkedId) {
                 await supabase.from('finance_shared_transactions').update(mirrorPayload).eq('id', linkedId);
             } else {
-                const { data: newMirror, error: mirrorErr } = await supabase
+                const { data: newMirror } = await supabase
                     .from('finance_shared_transactions')
                     .insert(mirrorPayload)
-                    .select()
-                    .single();
-                
-                if (mirrorErr) console.error("❌ Error creando espejo:", mirrorErr.message);
+                    .select().single();
                 if (newMirror) {
                     linkedId = newMirror.id;
                     await supabase.from('finance_shared_transactions').update({ linked_transaction_id: linkedId }).eq('id', transactionId);
@@ -157,7 +173,9 @@ export async function updateSharedTransaction(transactionId: string, input: any)
             }
         }
 
-        await syncAllocations(supabase, transactionId, input);
+        // 5. SINCRONIZAR REPARTOS
+        // Pasamos el input mezclado con el nuevo tipo para que syncAllocations sepa qué hacer
+        await syncAllocations(supabase, transactionId, { ...input, amount: currentAmount, type: finalType });
 
         revalidatePath('/finance-shared');
         return { success: true, data: { ...oldTx, ...payload, linked_transaction_id: linkedId } };

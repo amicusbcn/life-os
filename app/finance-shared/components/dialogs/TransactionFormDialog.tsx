@@ -322,96 +322,54 @@ export function TransactionFormDialog({
     // --- 5. GUARDAR ---
     const handleSave = async () => {
         if (!desc || !amount) return toast.error('Falta concepto o importe')
-        const inputAmount = parseFloat(amount)
-        if (isNaN(inputAmount)) return toast.error('Importe inválido')
+        
+        // 1. Limpiamos el importe: siempre positivo para el cálculo
+        const absAmount = Math.abs(parseFloat(amount))
+        if (isNaN(absAmount) || absAmount === 0) return toast.error('Importe inválido')
+        
         setLoading(true)
 
-        if (originType === 'account' && !originAccountId && !isProvision) {
-            setLoading(false); return toast.error('Selecciona una cuenta de origen')
-        }
+        // 2. Aplicamos el signo según el botón seleccionado (direction: -1 o 1)
+        const finalAmount = absAmount * direction 
 
-        let finalNotes = notes
-        if (!isProvision && originType === 'member') {
-            const tag = userIntent === 'reimbursement' ? '[SOLICITA REEMBOLSO]' : '[APORTACIÓN]'
-            finalNotes = `${notes} ${tag}`.trim()
-        }
+        // 3. Determinamos el tipo para la base de datos
+        // Si direction es 1 lo guardamos como 'income', si es -1 como 'expense'
+        const type = direction === 1 ? 'income' : 'expense'
 
-        let type = 'expense'
-        let finalAmount = Math.abs(inputAmount)
-        const selectedCategory = categories.find((c: any) => c.id === categoryId)
-
-        if (isTransfer) {
-            type = 'transfer'
-            if (direction === -1) finalAmount = -finalAmount
-        } 
-        else if (isProvision) {
-            type = 'expense' 
-        } 
-        else if (selectedCategory?.is_loan) {
-            type = 'loan'
-            finalAmount = direction === 1 ? Math.abs(inputAmount) : -Math.abs(inputAmount)
-        } 
-        else {
-            type = (direction === 1) ? 'income' : 'expense'
-            finalAmount = Math.abs(inputAmount)
-        }
-
-        const isTemplate = splitTemplates.some((t: any) => t.id === splitMode)
-
-        // LÓGICA DE STATUS SEGÚN VALIDACIÓN ADMIN
-        let status = 'approved'
-        if (isStandardUser) status = 'pending'
-        if (isAccountOwner && originType === 'member') status = 'pending'
-        
-        if (transactionToEdit) {
-            if (isGroupAdmin && isCurrentlyPending) {
-                status = 'approved'
-            } else {
-                status = transactionToEdit.approval_status
-            }
-        }
-
-        
-        const isLoanCat = categories.find((c: any) => c.id === categoryId)?.is_loan;
-        const manualWeights = !isTemplate ? allocations.map(a => ({
-            member_id: a.memberId,
-            weight: a.isSelected ? a.weight : 0
-        })) : null
-        
         const payload = {
+            group_id: groupId, // 👈 SOLUCIÓN AL ERROR: Incluimos el ID del grupo
             id: transactionToEdit?.id,
-            import_id: transactionToEdit?.import_id,
-            linked_transaction_id: transactionToEdit?.linked_transaction_id,
             date,
-            amount: finalAmount,
+            amount: finalAmount, 
             description: desc,
-            notes: finalNotes,
-            type,
+            notes: notes.trim(),
+            type: type,
             
-            status,
+            approval_status: isGroupAdmin ? 'approved' : 'pending',
             is_provision: isProvision,
             payment_source: isProvision ? 'provision' : originType,
             account_id: isProvision ? null : (originType === 'account' ? originAccountId : null),
             payer_member_id: isProvision ? null : (originType === 'member' ? originMemberId : null),
-            category_id: isTransfer ? null : categoryId,
-            transfer_account_id: isTransfer ? transferAccountId : null,
-            debt_link_id: isLoanCat ? linkedTxId : null,
-            // --- LA NUEVA LÓGICA CENTRALIZADA ---
-            split_template_id: isTemplate ? splitMode : null,
-            manual_weights: !isTemplate ? manualWeights : null,
-            // Mandamos allocations solo como fallback o para vista rápida, 
-            // el servidor las recalculará de todos modos
-            allocations: allocations.filter(a => a.isSelected).map(a => ({ 
-                member_id: a.memberId, 
-                amount: a.amount 
-            }))
+            
+            category_id: categoryId,
+            
+            // Reparto (usamos tus estados de modo y pesos)
+            split_template_id: splitMode !== 'manual' ? splitMode : null,
+            manual_weights: splitMode === 'manual' ? allocations.map(a => ({
+                member_id: a.memberId,
+                weight: a.isSelected ? a.weight : 0
+            })) : null
         }
+
         const res = await upsertSharedTransaction(groupId, payload)
+        
         setLoading(false)
-        if (res.error) toast.error(res.error)
-        else {
-            toast.success(transactionToEdit ? 'Actualizado' : 'Creado correctamente')
+        if (res.error) {
+            toast.error(res.error)
+        } else {
+            toast.success(direction === 1 ? 'Entrada guardada' : 'Gasto guardado')
             onOpenChange(false)
+            resetForm()
         }
     }
 
