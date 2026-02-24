@@ -99,9 +99,6 @@ export function TransactionDetailDialog({
             type: correctType // <--- SOBREESCRIBIMOS EL ERROR AQUÍ
         };
 
-        // Este log te dirá la verdad antes de salir al servidor
-        console.log("🚀 Payload final enviado:", payload.type, payload.amount);
-
         const res = await updateSharedTransaction(localTx.id, payload) as any;
 
         if (res.error) {
