@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
-import { getOrphanExpenses, linkOrphansToParent, createChildTransaction } from '@/app/finance-shared/actions'
+import { getOrphanExpenses, linkOrphansToParent, createChildTransaction } from '../../actions'
 import { Loader2, Plus, Link, Trash2, AlertCircle } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -88,7 +88,7 @@ export function JustificationDialog({
             // Allocations por defecto (opcional)
         }
 
-        const res = await createChildTransaction(groupId, payload)
+        const res = await createChildTransaction(groupId, payload) as any
         if (res.data) {
             setExistingChildren([...existingChildren, res.data])
             setNewDesc('')

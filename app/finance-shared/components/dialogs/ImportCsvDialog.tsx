@@ -104,9 +104,6 @@ export function ImportCsvDialog({ groupId,children }: Props) {
             toast.error('Faltan columnas obligatorias (Fecha, Concepto o Importe)')
             return
         }
-
-        console.log("Procesando datos con mapeo:", { mapDate, mapDesc, mapAmount, mapBalance, mapNotes })
-
         const formatted = csvData.map((row, index) => {
             // A. FECHA
             let dateStr = row[mapDate]
@@ -126,44 +123,26 @@ export function ImportCsvDialog({ groupId,children }: Props) {
             // B. IMPORTE & SALDO
             const rawAmount = row[mapAmount] || '0';
             const isNegative = rawAmount.includes('-') || rawAmount.includes('(');
-
-            // Limpiamos: quitamos todo lo que no sea número o coma/punto
-            const cleaned = rawAmount.replace(/[^0-9.,]/g, '');
-
-            // Lógica de decimales: si hay coma y punto, la coma es el decimal (formato ES). 
-            // Si solo hay uno, lo normalizamos a punto para parseFloat.
+            let cleaned = rawAmount.replace(/[^0-9.,]/g, '');
+            
+            // Normalización de coma/punto
             let normalized = cleaned;
             if (cleaned.includes(',') && cleaned.includes('.')) {
-                normalized = cleaned.replace(/\./g, '').replace(',', '.'); // 1.200,50 -> 1200.50
+                normalized = cleaned.replace(/\./g, '').replace(',', '.');
             } else {
-                normalized = cleaned.replace(',', '.'); // 10,50 -> 10.50 o 10.50 -> 10.50
+                normalized = cleaned.replace(',', '.');
             }
 
             let amount = parseFloat(normalized) || 0;
             if (isNegative) amount = -Math.abs(amount);
             if (invertSign) amount = amount * -1;
 
-            // Saldo
-            let balance = undefined;
-            if (mapBalance !== 'none') {
-                const rawBal = row[mapBalance] || '0';
-                const isBalNeg = rawBal.includes('-') || rawBal.includes('(');
-                let normBal = rawBal.replace(/[^0-9.,]/g, '');
-                if (normBal.includes(',') && normBal.includes('.')) {
-                    normBal = normBal.replace(/\./g, '').replace(',', '.');
-                } else {
-                    normBal = normBal.replace(',', '.');
-                }
-                balance = parseFloat(normBal) || 0;
-                if (isBalNeg) balance = -Math.abs(balance);
-            }
-
             return {
-                id: index,
+                id: index, 
+                import_line_number: index + 2, 
                 date: dateStr,
                 description: row[mapDesc] || 'Sin concepto',
                 notes: mapNotes !== 'none' ? row[mapNotes] : '',
-                bank_balance: balance,
                 amount: amount,
                 selected: true
             }
@@ -188,8 +167,8 @@ export function ImportCsvDialog({ groupId,children }: Props) {
         setLoading(true)
         const toImport = processedData
             .filter(item => item.selected)
-            .map(({ date, amount, description, notes, bank_balance }) => ({ 
-                date, amount, description, notes, bank_balance 
+            .map(({ date, amount, description, notes, bank_balance,import_line_number }) => ({ 
+                date, amount, description, notes, bank_balance,import_line_number
             }))
 
         console.log("Enviando al servidor:", toImport.length, "filas")

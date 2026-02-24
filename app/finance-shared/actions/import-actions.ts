@@ -1,3 +1,5 @@
+// /app/finance-shared/actions/import-actions.ts
+'use server'
 import { createClient } from "@/utils/supabase/server"
 import { checkGroupAdminPermission } from "./group-actions"
 import { revalidatePath } from "next/cache"
@@ -7,6 +9,7 @@ export async function importBankTransactions(
     groupId: string, 
     transactions: { 
         date: string, 
+        import_line_number: number,
         amount: number, 
         description: string, 
         notes?: string, 
@@ -65,6 +68,7 @@ export async function importBankTransactions(
             group_id: groupId,
             account_id: targetAccountId,
             import_id: importRecord.id,
+            import_line_number: tx.import_line_number,
             date: tx.date,
             amount: tx.amount, 
             description: tx.description,
@@ -72,7 +76,7 @@ export async function importBankTransactions(
             bank_balance: tx.bank_balance ?? null,
             type: tx.amount < 0 ? 'expense' : 'income', 
             payment_source: 'account',
-            status: 'approved',
+            approval_status: 'approved',
             created_by: user.id
         }))
 

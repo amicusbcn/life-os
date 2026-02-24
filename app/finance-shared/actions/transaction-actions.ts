@@ -24,14 +24,14 @@ export async function createSharedTransaction(input: CreateTransactionInput) {
             group_id: input.group_id,
             account_id: input.account_id,
             date: input.date,
-            amount: input.amount, // La Verdad Absoluta
+            amount: input.amount, 
             description: input.description,
             notes: input.notes || null,
             category_id: input.type === 'transfer' ? null : input.category_id,
             type: input.type || 'expense',
             payment_source: input.payment_source,
             payer_member_id: input.payment_source === 'member' ? input.payer_member_id : null,
-            approval_status: isAdmin ? 'approved' : 'pending', // Unificado a approval_status
+            approval_status: isAdmin ? 'approved' : 'pending', 
             reimbursement_status: input.request_reimbursement ? 'pending' : 'none',
             created_by: user.id,
             is_provision: input.is_provision || false,
@@ -58,39 +58,105 @@ export async function createSharedTransaction(input: CreateTransactionInput) {
 /**
  * ACCIÓN: ACTUALIZAR TRANSACCIÓN
  */
-export async function updateSharedTransaction(transactionId: string, input: CreateTransactionInput) {
+export async function updateSharedTransaction(transactionId: string, input: any) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: 'No autorizado' };
 
     try {
-        // 1. Preparar Payload (Update)
-        const payload = {
+        // 1. Buscamos la transacción actual para comparar
+        const { data: fetchOld, error: fetchError } = await supabase
+            .from('finance_shared_transactions')
+            .select('*')
+            .eq('id', transactionId);
+
+        if (fetchError) {
+            console.error("❌ Error de lectura Supabase:", fetchError.message);
+            throw new Error(fetchError.message);
+        }
+
+        const oldTx = fetchOld?.[0];
+        
+        if (!oldTx) {
+            console.error("❌ NO EXISTE EN DB. ID buscado:", transactionId);
+            // Vamos a ver si existen otras transacciones para descartar RLS total
+            const { count } = await supabase.from('finance_shared_transactions').select('*', { count: 'exact', head: true });
+            throw new Error(`La transacción ${transactionId} no existe o no tienes permiso para verla`);
+        }
+
+
+        const isTransfer = input.type === 'transfer';
+        const newAmount = parseFloat(input.amount);
+
+        // 2. PAYLOAD
+        const payload: any = {
             date: input.date,
-            amount: input.amount,
+            amount: newAmount,
             description: input.description,
-            notes: input.notes || null,
-            category_id: input.type === 'transfer' ? null : input.category_id,
+            notes: input.notes,
+            type: input.type,
+            category_id: isTransfer ? null : input.category_id,
+            payer_member_id: input.payer_member_id,
+            account_id: input.account_id,
             payment_source: input.payment_source,
-            payer_member_id: input.payment_source === 'member' ? input.payer_member_id : null,
-            reimbursement_status: input.request_reimbursement ? 'pending' : 'none',
-            is_provision: input.is_provision || false,
-            transfer_account_id: input.type === 'transfer' ? input.transfer_account_id : null,
+            approval_status: input.approval_status || 'approved',
+            transfer_account_id: isTransfer ? input.transfer_account_id : null,
+            is_provision: input.is_provision || false
         };
 
-        const { error: txError } = await supabase
+        // 3. UPDATE
+        const { error: updateError } = await supabase
             .from('finance_shared_transactions')
             .update(payload)
             .eq('id', transactionId);
 
-        if (txError) throw new Error(txError.message);
+        if (updateError) {
+            console.error("❌ Error en el UPDATE:", updateError.message);
+            throw new Error(updateError.message);
+        }
+        
+        // 4. LÓGICA DE ESPEJO
+        let linkedId = oldTx.linked_transaction_id;
+        
+        if (isTransfer && input.transfer_account_id) {
+            const mirrorPayload = {
+                group_id: oldTx.group_id,
+                account_id: input.transfer_account_id,
+                date: input.date,
+                amount: newAmount * -1,
+                description: 'Espejo: ' + input.description,
+                type: 'transfer',
+                approval_status: 'approved',
+                transfer_account_id: input.account_id,
+                parent_transaction_id: transactionId,
+                linked_transaction_id: transactionId,
+                created_by: user.id
+            };
 
-        // 2. Gestionar Repartos (Borrar y Recrear)
+            if (linkedId) {
+                await supabase.from('finance_shared_transactions').update(mirrorPayload).eq('id', linkedId);
+            } else {
+                const { data: newMirror, error: mirrorErr } = await supabase
+                    .from('finance_shared_transactions')
+                    .insert(mirrorPayload)
+                    .select()
+                    .single();
+                
+                if (mirrorErr) console.error("❌ Error creando espejo:", mirrorErr.message);
+                if (newMirror) {
+                    linkedId = newMirror.id;
+                    await supabase.from('finance_shared_transactions').update({ linked_transaction_id: linkedId }).eq('id', transactionId);
+                }
+            }
+        }
+
         await syncAllocations(supabase, transactionId, input);
 
         revalidatePath('/finance-shared');
-        return { success: true };
+        return { success: true, data: { ...oldTx, ...payload, linked_transaction_id: linkedId } };
+
     } catch (e: any) {
+        console.error("🔴 CRASH EN ACCIÓN:", e.message);
         return { error: e.message };
     }
 }
@@ -213,18 +279,29 @@ async function syncAllocations(supabase: any, transactionId: string, input: any)
     // 1. Limpiar anteriores
     await supabase.from('finance_shared_allocations').delete().eq('transaction_id', transactionId);
 
-    // 2. Calcular nuevos
-    const allocations = calculateAllocations(
-        input.amount, 
-        input.involved_member_ids || [], 
-        input.split_type, 
-        input.split_weights
-    );
+    let allocations = [];
 
-    // 3. Insertar si hay datos
+    // --- LA MEJORA ---
+    // Si el input ya trae el reparto "cocinado" (como haces en el Dialog), lo usamos directamente
+    if (input.allocations && input.allocations.length > 0) {
+        allocations = input.allocations.map((a: any) => ({
+            member_id: a.member_id,
+            amount: a.amount // Aquí ya viene con el signo correcto desde el Dialog
+        }));
+    } else {
+        // Si no trae nada manual, calculamos el automático como antes
+        allocations = calculateAllocations(
+            input.amount, 
+            input.involved_member_ids || [], 
+            input.split_type, 
+            input.split_weights
+        );
+    }
+
+    // 3. Insertar
     if (allocations.length > 0) {
         const { error } = await supabase.from('finance_shared_allocations').insert(
-            allocations.map(a => ({ ...a, transaction_id: transactionId }))
+            allocations.map((a: any) => ({ ...a, transaction_id: transactionId }))
         );
         if (error) throw new Error("Error sincronizando repartos: " + error.message);
     }

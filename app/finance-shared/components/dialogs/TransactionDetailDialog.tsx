@@ -17,13 +17,9 @@ import {
 
 import { SharedMember, SharedCategory, SharedAccount } from '@/types/finance-shared'
 import { 
-    approveTransaction, 
     deleteTransaction, 
-    updateTransactionCategory, 
-    setTransactionContributor,
-    updateTransactionSplitMode, // Necesitarás crear esta acción o usar una genérica
-    upsertSharedTransaction
-} from '@/app/finance-shared/actions'
+    updateSharedTransaction
+} from '../../actions'
 
 interface Props {
     transaction: any
@@ -87,31 +83,26 @@ export function TransactionDetailDialog({
     // --- ACCIONES ---
     const handleQuickUpdate = async (updates: any) => {
         if (!isAdmin) return;
-        setLoading(true)
+        setLoading(true);
 
-        // Combinamos todo: lo que tiene la tx + los cambios
         const payload = {
-            ...localTx,
-            ...updates
+            ...localTx, // Mantenemos lo que había
+            ...updates  // Sobrescribimos con lo nuevo (type, transfer_account_id, etc.)
         };
-        const res = await upsertSharedTransaction(localTx.group_id, payload)
+
+        const res = await updateSharedTransaction(localTx.id, payload) as any;
 
         if (res.error) {
-            toast.error(res.error)
+            console.error("🔴 CLIENTE: Error recibido:", res.error);
+            toast.error(res.error);
         } else {
-            // ACTUALIZACIÓN DE LA UI SIN ESPERAR AL SERVER
-            // Si el servidor te devuelve la data completa con allocations, úsala:
-            if (res.data) {
-                setLocalTx(res.data) 
-            } else {
-                // Si no, mergeamos manual para que al menos el Select se mueva
-                setLocalTx((prev: any) => ({ ...prev, ...updates }))
-            }
+            if (res.data) setLocalTx(res.data);
+            else setLocalTx((prev: any) => ({ ...prev, ...updates }));
             
-            router.refresh()
-            toast.success('Cambio guardado')
+            router.refresh();
+            toast.success('Cambio guardado');
         }
-        setLoading(false)
+        setLoading(false);
     };
 
     const handleDelete = async () => {
@@ -218,13 +209,11 @@ export function TransactionDetailDialog({
                                         
                                         if (catId === 'transfer') {
                                             // CONVERSIÓN A TRASPASO
-                                            handleQuickUpdate({ 
-                                                category_id: null, 
-                                                type: 'transfer',
-                                                allocations: [], // Las transferencias no llevan reparto
-                                                // No tocamos transfer_account_id aquí para que el usuario 
-                                                // pueda elegirlo después en el segundo selector
-                                            });
+                                            setLocalTx((prev:any) => ({ 
+                                                ...prev, 
+                                                type: 'transfer', 
+                                                category_id: null 
+                                            }));
                                         } else {
                                             // CONVERSIÓN A GASTO NORMAL
                                             handleQuickUpdate({ 
@@ -280,11 +269,19 @@ export function TransactionDetailDialog({
                                 )}
                             </label>
 
-                            {/* CASO A: ES UNA TRANSFERENCIA (Selector de Cuentas) */}
                             {(selectedCategoryId === 'transfer' || localTx.type === 'transfer') ? (
                                 <Select 
-                                    value={localTx.transfer_account_id || ''} 
-                                    onValueChange={(accId) => handleQuickUpdate({ transfer_account_id: accId })}
+                                    // Forzamos el valor actual o vacío
+                                    value={localTx.transfer_account_id || ""} 
+                                    onValueChange={(accId) => {
+                                        // Enviamos el pack completo para que el servidor no se líe
+                                        handleQuickUpdate({ 
+                                            type: 'transfer',
+                                            category_id: null,
+                                            transfer_account_id: accId,
+                                            account_id: localTx.account_id 
+                                        })
+                                    }}
                                     disabled={!isAdmin}
                                 >
                                     <SelectTrigger className="h-9 text-sm border-indigo-100 bg-indigo-50/30">
@@ -292,6 +289,7 @@ export function TransactionDetailDialog({
                                     </SelectTrigger>
                                     <SelectContent>
                                         {accounts
+                                            // Filtramos para no poder transferir a la misma cuenta
                                             .filter((a: any) => a.id !== localTx.account_id)
                                             .map((a: any) => (
                                                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
@@ -304,7 +302,9 @@ export function TransactionDetailDialog({
                                 <Select value={contributorId} 
                                     onValueChange={(mId) => {
                                         setContributorId(mId)
-                                        handleQuickUpdate({ allocations: [{ member_id: mId, amount: localTx.amount }] })
+                                        handleQuickUpdate({ 
+                                            allocations: [{ member_id: mId, amount: localTx.amount }] 
+                                        })
                                     }}
                                     disabled={!isAdmin}>
                                     <SelectTrigger className="h-9 text-sm border-amber-100 bg-amber-50/50">

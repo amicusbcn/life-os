@@ -1,6 +1,4 @@
 // /app/finance-shared/actions/index.ts
-'use server'
-
 export * from './account-actions'
 export * from './categorization-actions'
 export * from './category-actions'
