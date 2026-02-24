@@ -47,49 +47,6 @@ export async function updateTransactionCategory(transactionId: string, categoryI
     return { success: true }
 }
 
-// CAMBIO RÁPIDO DE REPARTO (Para Aportaciones: Asigna todo a uno)
-export async function setTransactionContributor(transactionId: string, memberId: string, amount: number) {
-    const supabase = await createClient()
-    
-    console.log("🚀 Intentando setTransactionContributor:", { transactionId, memberId, amount })
-
-    // 1. Borrar
-    const { error: delError } = await supabase
-        .from('finance_shared_allocations')
-        .delete()
-        .eq('transaction_id', transactionId)
-    
-    if (delError) {
-        console.error("❌ Error al borrar:", delError)
-        return { error: delError.message }
-    }
-
-    // 2. Insertar con SELECT para confirmar
-    const { data, error: insError } = await supabase
-        .from('finance_shared_allocations')
-        .insert({
-            transaction_id: transactionId,
-            member_id: memberId,
-            amount: amount
-        })
-        .select() // <--- CRÍTICO PARA DEBUG
-
-    if (insError) {
-        console.error("❌ Error al insertar:", insError)
-        // Aquí verás si es un "Foreign Key Violation"
-        return { error: insError.message }
-    }
-
-    if (!data || data.length === 0) {
-        console.warn("⚠️ No se insertó nada y no hubo error. Revisa el RLS.")
-        return { error: "No se pudo guardar: posible bloqueo de seguridad (RLS)" }
-    }
-
-    console.log("✅ Insertado con éxito:", data)
-    revalidatePath('/finance-shared')
-    return { success: true }
-}
-
 // Acción para buscar gastos huérfanos (Bottom-Up)
 export async function getOrphanExpenses(groupId: string, accountId: string, maxDate: string) {
     const supabase = await createClient()
