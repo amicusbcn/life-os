@@ -21,7 +21,7 @@ export default async function FinanceSharedPage(props: Props) {
     const { profile, accessibleModules, userRole } = await getUserData();
     const searchParams = await props.searchParams;
     const isAdmin = userRole === 'admin';
-    const view = searchParams.view || 'general';
+    const view = searchParams.view || 'dashboard';
     const viewTitles: Record<string, string> = {
         dashboard: 'Resumen Anual',
         general: 'Movimientos Globales',

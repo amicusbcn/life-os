@@ -37,7 +37,7 @@ interface Props {
 
 export function FinanceSharedView({ groups, activeGroupId, dashboardData }: Props) {
     const searchParams = useSearchParams()
-    const activeTab = searchParams.get('view') || 'general'
+    const activeTab = searchParams.get('view') || 'dashboard'
     const currentYear = Number(searchParams.get('year')) || new Date().getFullYear()
 
     useEffect(() => {
