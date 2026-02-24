@@ -20,15 +20,14 @@ export async function updateTransactionCategory(transactionId: string, categoryI
     // 2. Obtenemos el importe del movimiento actual (para recalcular income/expense si deja de ser préstamo)
     const { data: transaction, error: txError } = await supabase
         .from('finance_shared_transactions')
-        .select('amount')
+        .select('amount,type')
         .eq('id', transactionId)
         .single()
 
     if (txError || !transaction) return { error: 'Transacción no encontrada' }
 
     // 3. LÓGICA DE TIPO (Igual que en el formulario)
-    let newType = transaction.amount >= 0 ? 'income' : 'expense' // Por defecto según signo
-
+    let newType = transaction.type
     if (category.is_loan) {
         newType = 'loan' // Si la categoría es préstamo, forzamos tipo préstamo
     }
