@@ -268,28 +268,21 @@ export function FinanceSharedView({ groups, activeGroupId, dashboardData }: Prop
         setDetailTx(null)      // Cerramos detalle
         setIsFormOpen(true)    // Abrimos form
     }
-
+    //NAVEGACION DEL DETALLE
+    const currentIndex = detailTx 
+    ? currentTabTransactions.findIndex((t: any) => t.id === detailTx.id) 
+    : -1;
     const handleNextDetail = () => {
-    if (!detailTx) return;
-    // Cambiado 'transactions' por 'rawTransactions'
-    const currentIndex = rawTransactions.findIndex((t: any) => t.id === detailTx.id);
-    if (currentIndex !== -1 && currentIndex < rawTransactions.length - 1) {
-        setDetailTx(rawTransactions[currentIndex + 1]);
-    } else {
-        toast.info("Es el último movimiento de la lista");
-    }
-};
-
-const handlePrevDetail = () => {
-    if (!detailTx) return;
-    // Cambiado 'transactions' por 'rawTransactions'
-    const currentIndex = rawTransactions.findIndex((t: any) => t.id === detailTx.id);
-    if (currentIndex > 0) {
-        setDetailTx(rawTransactions[currentIndex - 1]);
-    } else {
-        toast.info("Es el primer movimiento de la lista");
-    }
-};
+        if (currentIndex < currentTabTransactions.length - 1) {
+                setDetailTx(currentTabTransactions[currentIndex + 1]);
+        }
+    };
+    
+    const handlePrevDetail = () => {
+        if (currentIndex > 0) {
+                setDetailTx(currentTabTransactions[currentIndex - 1]);
+        }
+    };
 
     return (
         <div className="space-y-6 pb-20">
@@ -463,14 +456,15 @@ const handlePrevDetail = () => {
                 onClose={() => setDetailTx(null)}
                 members={members}
                 categories={categories}
-                accounts={accounts} // O rawAccounts si te da error
+                accounts={accounts} 
                 isAdmin={isAdmin}
                 onEdit={handleEditFromDetail}
                 splitTemplates={splitTemplates}
                 onNext={handleNextDetail}
                 onPrev={handlePrevDetail}
-                // Buscamos dinámicamente el ID de la cuenta bancaria principal
                 mainBankAccountId={mainBankAccountId}
+                isFirst={currentIndex === 0}
+                isLast={currentIndex === currentTabTransactions.length - 1} 
             />
 
             {/* 2. GESTOR DE CUBOS */}

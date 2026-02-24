@@ -30,17 +30,19 @@ interface Props {
     accounts: SharedAccount[]
     isAdmin: boolean
     onEdit: () => void
-    onNext?: () => void // Para navegación
-    onPrev?: () => void // Para navegación
+    onNext?: () => void
+    onPrev?: () => void
     splitTemplates: any[]
     defaultAccountId?: string
     mainBankAccountId?:string
+    isFirst?: boolean 
+    isLast?: boolean
 }
 
 export function TransactionDetailDialog({ 
-    transaction: initialTransaction, // Renombramos la prop para evitar conflictos
+    transaction: initialTransaction, 
     open, onClose, members, categories, accounts,
-    isAdmin, onEdit, onNext, onPrev, splitTemplates, defaultAccountId, mainBankAccountId
+    isAdmin, onEdit, onNext, onPrev, splitTemplates, defaultAccountId, mainBankAccountId, isFirst, isLast
 }: Props) {
     const router = useRouter()
     const [loading, setLoading] = useState(false)
@@ -165,10 +167,22 @@ export function TransactionDetailDialog({
                 
                 {/* NAVEGACIÓN SUPERIOR (Punto 7) */}
                 <div className="absolute top-4 right-12 flex gap-1 z-50">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-white/80 backdrop-blur" onClick={onPrev} disabled={!onPrev}>
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 rounded-full bg-white/80 backdrop-blur" 
+                        onClick={onPrev} 
+                        disabled={!onPrev || isFirst}
+                    >
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-white/80 backdrop-blur" onClick={onNext} disabled={!onNext}>
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 rounded-full bg-white/80 backdrop-blur" 
+                        onClick={onNext} 
+                        disabled={!onNext || isLast} 
+                    >
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
