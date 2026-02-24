@@ -128,7 +128,6 @@ export async function updateSharedTransaction(transactionId: string, input: any)
                 type: 'transfer',
                 approval_status: 'approved',
                 transfer_account_id: input.account_id,
-                parent_transaction_id: transactionId,
                 linked_transaction_id: transactionId,
                 created_by: user.id
             };

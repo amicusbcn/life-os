@@ -78,7 +78,9 @@ export function CreateTransactionDialog({ groupId, members, categories, currentU
         request_reimbursement: requestReimbursement,
         split_type: splitType,
         involved_member_ids: involvedIds,
-        split_weights: splitType === 'weighted' ? finalWeights : undefined
+        split_weights: splitType === 'weighted' ? finalWeights : undefined,
+        account_id: paymentSource === 'account' ? 'group_account' : "" ,
+        type: 'expense'
     }
 
     const res = await createSharedTransaction(payload)
