@@ -85,10 +85,22 @@ export function TransactionDetailDialog({
         if (!isAdmin) return;
         setLoading(true);
 
+        // 1. Calculamos el tipo real basándonos en el dinero del estado local
+        // Ignoramos lo que diga localTx.type si no es transfer/loan
+        let correctType = updates.type || localTx.type;
+        
+        if (correctType !== 'transfer' && correctType !== 'loan') {
+            correctType = localTx.amount >= 0 ? 'income' : 'expense';
+        }
+
         const payload = {
-            ...localTx, // Mantenemos lo que había
-            ...updates  // Sobrescribimos con lo nuevo (type, transfer_account_id, etc.)
+            ...localTx,
+            ...updates,
+            type: correctType // <--- SOBREESCRIBIMOS EL ERROR AQUÍ
         };
+
+        // Este log te dirá la verdad antes de salir al servidor
+        console.log("🚀 Payload final enviado:", payload.type, payload.amount);
 
         const res = await updateSharedTransaction(localTx.id, payload) as any;
 
