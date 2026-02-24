@@ -139,7 +139,6 @@ export function TransactionDetailDialog({
         // El servidor detectará el split_template_id y recalculará todo
         await handleQuickUpdate({ 
             split_template_id: templateId,
-            type: 'expense' // Al aplicar plantilla nos aseguramos de que no sea transfer
         });
     }
     // --- RENDERING ---
@@ -209,16 +208,19 @@ export function TransactionDetailDialog({
                                         
                                         if (catId === 'transfer') {
                                             // CONVERSIÓN A TRASPASO
-                                            setLocalTx((prev:any) => ({ 
+                                            setLocalTx((prev: any) => ({ 
                                                 ...prev, 
                                                 type: 'transfer', 
                                                 category_id: null 
                                             }));
                                         } else {
-                                            // CONVERSIÓN A GASTO NORMAL
+                                            // LÓGICA INTELIGENTE: Si el monto es positivo, es 'income'. Si es negativo, es 'expense'.
+                                            const automaticType = localTx.amount >= 0 ? 'income' : 'expense';
+
+                                            // CONVERSIÓN A MOVIMIENTO CATEGORIZADO
                                             handleQuickUpdate({ 
-                                                category_id: catId, 
-                                                type: 'expense',
+                                                category_id: catId === 'uncategorized' ? null : catId, 
+                                                type: automaticType,
                                                 transfer_account_id: null // Limpiamos rastro de transferencia
                                             });
                                         }
