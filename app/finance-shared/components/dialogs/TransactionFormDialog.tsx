@@ -58,7 +58,7 @@ export function TransactionFormDialog({
 
     // CONSTANTES DE BLOQUEO BANCARIO
     const isMainAccountTx = !!(transactionToEdit && transactionToEdit.account_id === mainBankAccountId);
-    const isCurrentlyPending = transactionToEdit?.status === 'pending'
+    const isCurrentlyPending = transactionToEdit?.approval_status === 'pending'
 
     // --- 2. ESTADOS ---
     const [loading, setLoading] = useState(false)
@@ -367,7 +367,7 @@ export function TransactionFormDialog({
             if (isGroupAdmin && isCurrentlyPending) {
                 status = 'approved'
             } else {
-                status = transactionToEdit.status
+                status = transactionToEdit.approval_status
             }
         }
 
