@@ -28,7 +28,7 @@ export async function createSharedTransaction(input: CreateTransactionInput) {
             description: input.description,
             notes: input.notes || null,
             category_id: input.type === 'transfer' ? null : input.category_id,
-            type: input.type || 'expense',
+            type: input.type,
             payment_source: input.payment_source,
             payer_member_id: input.payment_source === 'member' ? input.payer_member_id : null,
             approval_status: isAdmin ? 'approved' : 'pending', 
