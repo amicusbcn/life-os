@@ -19,9 +19,17 @@ interface Props {
 export default async function FinanceSharedPage(props: Props) {
     // 1. Datos globales de seguridad
     const { profile, accessibleModules, userRole } = await getUserData();
-    const isAdmin = userRole === 'admin';
-
     const searchParams = await props.searchParams;
+    const isAdmin = userRole === 'admin';
+    const view = searchParams.view || 'general';
+    const viewTitles: Record<string, string> = {
+        dashboard: 'Resumen Anual',
+        general: 'Movimientos Globales',
+        mine: 'Mis Gastos',
+        pending: 'Pendientes',
+        balances: 'Saldos del Grupo'
+    };
+    const dynamicTitle = viewTitles[view as string] || 'Gastos Compartidos';
     const showImpersonationBar = isAdmin && searchParams.debug === 'true';
 
     const groups = await getSharedGroups();
@@ -38,7 +46,7 @@ export default async function FinanceSharedPage(props: Props) {
     if (!activeGroupId || groups.length === 0 || !dashboardData) {
         return (
             <UnifiedAppSidebar
-                title="Finanzas Compartidas"
+                title={dynamicTitle}
                 profile={profile}
                 modules={accessibleModules}
                 moduleMenu={null}
@@ -79,7 +87,7 @@ export default async function FinanceSharedPage(props: Props) {
             members={dashboardData?.members || []}
         >
             <UnifiedAppSidebar
-                title="Gastos Compartidos"
+                title={dynamicTitle}
                 profile={profile}
                 modules={accessibleModules}
                 // Inyectamos el menú operativo (Cuerpo)

@@ -1,7 +1,7 @@
 // /app/finance-shared/components/FinanceSharedView.tsx
 'use client'
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { SharedGroup, DashboardData } from "@/types/finance-shared"
 
@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Search, Plus, Settings, HandCoins } from "lucide-react"
+import { Search, Plus, Settings, HandCoins, AlertCircle, Clock, CheckCircle2 } from "lucide-react"
 
 // UI COMPONENTS
 import { SharedTransactionRow } from "./ui/SharedTransactionRow" 
@@ -26,6 +26,7 @@ import { MemberEquityCard } from "./ui/MemberEquityCard"
 // CONTEXTO
 import { useImpersonation } from "./ui/ImpersonationContext"
 import { toast } from "sonner"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 
 interface Props {
     groups: SharedGroup[]
@@ -36,12 +37,18 @@ interface Props {
 
 export function FinanceSharedView({ groups, activeGroupId, dashboardData }: Props) {
     const searchParams = useSearchParams()
+    const activeTab = searchParams.get('view') || 'general'
     const currentYear = Number(searchParams.get('year')) || new Date().getFullYear()
 
+    useEffect(() => {
+        const handleOpenNew = () => handleNewClick()
+        window.addEventListener('open-new-tx', handleOpenNew)
+        return () => window.removeEventListener('open-new-tx', handleOpenNew)
+    }, [])
+    
     // --- ESTADOS DE UI (Filtros) ---
     const [searchTerm, setSearchTerm] = useState('')
     const [filterAccount, setFilterAccount] = useState('all')
-    const [activeTab, setActiveTab] = useState('general')
     
     // --- ESTADOS DE DIÁLOGOS ---
     const [isFormOpen, setIsFormOpen] = useState(false) // Crear/Editar
@@ -286,134 +293,165 @@ const handlePrevDetail = () => {
 
     return (
         <div className="space-y-6 pb-20">
-            
-            {/* HEADER */}
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-2xl font-bold tracking-tight">Finanzas Compartidas</h1>
-                    <YearNavigator currentYear={currentYear} />
+            {/* 1. VISTA DASHBOARD (Análisis) */}
+            {activeTab === 'dashboard' && (
+                <div className="space-y-6">
+                    <DashboardStats 
+                        data={safeData} 
+                        currentMemberId={activeMember?.id} 
+                        mainBankAccountId={mainBankAccountId} 
+                    />
+                    {/* Aquí irán los gráficos futuros */}
                 </div>
-                <div className="flex gap-2">
-                    <Button onClick={handleNewClick} className="gap-2 bg-slate-900 text-white hover:bg-slate-800">
-                        <Plus className="h-4 w-4" /> Nuevo Movimiento
-                    </Button>
+            )}
+
+            {/* 2. VISTA BALANCES (Saldos) */}
+            {activeTab === 'balances' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {members.map((member: any) => (
+                        <MemberEquityCard key={member.id} member={member} isMe={member.user_id === activeMember?.user_id} />
+                    ))}
                 </div>
-            </div>
+            )}
 
-            {/* DASHBOARD */}
-            <DashboardStats data={safeData} currentMemberId={activeMember?.id}  mainBankAccountId={mainBankAccountId} />
-
-            {/* TABS Y LISTADO */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-                    <TabsList className="flex flex-wrap h-auto">
-                        <TabsTrigger value="general">General</TabsTrigger>
-                        <TabsTrigger value="mine">Mis Movimientos</TabsTrigger>
-                        
-                        {tabCounts.justification > 0 && (
-                            <TabsTrigger value="pending_justification" className="data-[state=active]:text-amber-700 data-[state=active]:bg-amber-50 gap-2">
-                                Pte. Justificar
-                                <span className="flex items-center justify-center bg-amber-200 text-amber-800 text-[10px] font-bold h-5 w-5 rounded-full">{tabCounts.justification}</span>
-                            </TabsTrigger>
-                        )}
-                        {tabCounts.allocation > 0 && (
-                            <TabsTrigger value="pending_allocation" className="gap-2">
-                                Pte. Asignar
-                                <span className="flex items-center justify-center bg-red-100 text-red-700 text-[10px] font-bold h-5 w-5 rounded-full">{tabCounts.allocation}</span>
-                            </TabsTrigger>
-                        )}
-                        {tabCounts.approval > 0 && (
-                            <TabsTrigger value="pending_approval" className="gap-2">
-                                Pte. Aprobar
-                                <span className="flex items-center justify-center bg-indigo-100 text-indigo-700 text-[10px] font-bold h-5 w-5 rounded-full">{tabCounts.approval}</span>
-                            </TabsTrigger>
-                        )}
-                        <TabsTrigger value="balances">Saldos</TabsTrigger>
-                        {isAdmin && (
-                            <TabsTrigger value="debt_history" className="gap-2 border-l ml-2 pl-4">
-                                <HandCoins className="h-3.5 w-3.5" /> Préstamos
-                            </TabsTrigger>
-                        )}
-                    </TabsList>
-
-                    {/* FILTROS */}
-                    {activeTab !== 'balances' && (
-                        <div className="flex gap-2 items-center w-full sm:w-auto">
-                            <div className="relative flex-1 sm:w-[200px]">
-                                <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-                                <Input placeholder="Buscar..." className="pl-8 h-9" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/>
-                            </div>
-                            <Select value={filterAccount} onValueChange={setFilterAccount}>
-                                <SelectTrigger className="w-[150px] h-9"><SelectValue placeholder="Cuenta" /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Todas</SelectItem>
-                                    {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
+            {/* 3. VISTAS DE LISTADO (General, Mis Gastos, Pendientes) */}
+            {(activeTab === 'general' || activeTab === 'mine' ) && (
+                <div className="space-y-6">
+                    {/* FILTROS: Solo aparecen aquí */}
+                    <div className="flex gap-2 items-center w-full sm:w-auto bg-white p-2 rounded-xl border shadow-sm">
+                        <div className="relative flex-1 sm:w-[250px]">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                            <Input 
+                                placeholder="Buscar concepto..." 
+                                className="pl-9 h-9 border-none bg-slate-50 focus-visible:ring-1" 
+                                value={searchTerm} 
+                                onChange={e => setSearchTerm(e.target.value)}
+                            />
                         </div>
-                    )}
-                </div>
+                    </div>
 
-                {/* CONTENIDO LISTAS */}
-                {['general', 'mine', 'pending_justification', 'pending_allocation', 'pending_approval'].map(tabName => (
-                    <TabsContent key={tabName} value={tabName} className="mt-0">
-                         <div className="space-y-6">
-                            {Object.keys(groupedView).length === 0 ? (
-                                <div className="text-center py-10 text-slate-400 border border-dashed rounded-lg bg-slate-50/50">No hay movimientos.</div>
-                            ) : (
-                                Object.entries(groupedView).map(([month, txs]) => (
-                                    <div key={month} className="space-y-2">
-                                        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider pl-1 sticky top-0 bg-slate-50/95 py-2 z-10 w-full backdrop-blur-sm border-b mb-2">{month}</h3>
-                                        <div className="space-y-2">
-                                            {txs.map((tx: any) => (
-                                                <div key={tx.id} onClick={() => handleRowClick(tx)} className="cursor-pointer">
-                                                    <SharedTransactionRow 
-                                                        transaction={tx} 
-                                                        members={members}
-                                                        category={tx.category} 
-                                                        account={accounts.find((a: any) => a.id === tx.account_id)}
-                                                        currentMemberId={activeMember?.id}
-                                                        viewPersonal={activeTab === 'mine'}
-                                                        splitTemplates={splitTemplates}
-                                                    />
-                                                </div>
-                                            ))}
+                    {/* LISTADO AGRUPADO */}
+                    <div className="space-y-8">
+                        {Object.entries(groupedView).map(([month, txs]) => (
+                            <div key={month} className="space-y-3">
+                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] pl-1 border-b pb-2">{month}</h3>
+                                <div className="space-y-2">
+                                    {txs.map((tx: any) => (
+                                        <div key={tx.id} onClick={() => handleRowClick(tx)} className="cursor-pointer">
+                                            <SharedTransactionRow 
+                                                transaction={tx} 
+                                                members={members}
+                                                category={tx.category} 
+                                                account={accounts.find((a: any) => a.id === tx.account_id)}
+                                                currentMemberId={activeMember?.id}
+                                                viewPersonal={activeTab === 'mine'}
+                                                splitTemplates={splitTemplates}
+                                            />
                                         </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </TabsContent>
-                ))}
-
-                <TabsContent value="balances">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {members.map((member: any) => (
-                            <MemberEquityCard key={member.id} member={member} isMe={member.user_id === activeMember?.user_id} />
+                                    ))}
+                                </div>
+                            </div>
                         ))}
                     </div>
-                </TabsContent>
-                <TabsContent value="debt_history">
-                    <div className="space-y-4">
-                        <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-700 italic">
-                            Aquí aparecen los préstamos y devoluciones que ya han sido vinculados y saldados.
+                </div>
+            )}
+
+            {activeTab === 'pending' && (
+                <Accordion type="multiple" defaultValue={["approval", "allocation", "justification"]} className="space-y-4">
+                    
+                    {/* SECCIÓN 1: PENDIENTES DE APROBAR */}
+                    {isAdmin && tabCounts.approval > 0 && (
+                        <AccordionItem value="approval" className="bg-white rounded-xl border shadow-sm px-4">
+                            <AccordionTrigger className="hover:no-underline">
+                                <div className="flex items-center gap-2 text-indigo-600">
+                                    <Clock className="h-4 w-4" />
+                                    <span className="text-sm font-bold uppercase tracking-tight">
+                                        Esperando validación ({tabCounts.approval})
+                                    </span>
+                                </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="pt-2 pb-4 space-y-2">
+                                {visibleTransactions.filter(tx => tx.status === 'pending').map(tx => (
+                                    <div key={tx.id} onClick={() => handleRowClick(tx)} className="cursor-pointer">
+                                        <SharedTransactionRow 
+                                                transaction={tx} 
+                                                members={members}
+                                                category={tx.category} 
+                                                account={accounts.find((a: any) => a.id === tx.account_id)}
+                                                currentMemberId={activeMember?.id}
+                                                splitTemplates={splitTemplates}
+                                            />
+                                    </div>
+                                ))}
+                            </AccordionContent>
+                        </AccordionItem>
+                    )}
+
+                    {/* SECCIÓN 2: PENDIENTES DE ASIGNAR */}
+                    {isAdmin && tabCounts.allocation > 0 && (
+                        <AccordionItem value="allocation" className="bg-white rounded-xl border shadow-sm px-4">
+                            <AccordionTrigger className="hover:no-underline">
+                                <div className="flex items-center gap-2 text-rose-600">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <span className="text-sm font-bold uppercase tracking-tight">
+                                        Gastos sin reparto ({tabCounts.allocation})
+                                    </span>
+                                </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="pt-2 pb-4 space-y-2">
+                                {visibleTransactions.filter(tx => !tx.not_detailed && tx.type !== 'transfer' && (!tx.allocations || tx.allocations.length === 0)).map(tx => (
+                                    <div key={tx.id} onClick={() => handleRowClick(tx)} className="cursor-pointer">
+                                        <SharedTransactionRow 
+                                                transaction={tx} 
+                                                members={members}
+                                                category={tx.category} 
+                                                account={accounts.find((a: any) => a.id === tx.account_id)}
+                                                currentMemberId={activeMember?.id}
+                                                splitTemplates={splitTemplates}
+                                            />
+                                    </div>
+                                ))}
+                            </AccordionContent>
+                        </AccordionItem>
+                    )}
+
+                    {/* SECCIÓN 3: CUBOS (Justificación) */}
+                    {tabCounts.justification > 0 && (
+                        <AccordionItem value="justification" className="bg-white rounded-xl border shadow-sm px-4">
+                            <AccordionTrigger className="hover:no-underline">
+                                <div className="flex items-center gap-2 text-amber-600">
+                                    <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                                    <span className="text-sm font-bold uppercase tracking-tight">
+                                        Por detallar ({tabCounts.justification})
+                                    </span>
+                                </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="pt-2 pb-4 space-y-2">
+                                {visibleTransactions.filter(tx => tx.not_detailed && (!isCardOwner || myResponsibleAccountIds.includes(tx.account_id))).map(tx => (
+                                    <div key={tx.id} onClick={() => handleRowClick(tx)} className="cursor-pointer">
+                                        <SharedTransactionRow 
+                                                transaction={tx} 
+                                                members={members}
+                                                category={tx.category} 
+                                                account={accounts.find((a: any) => a.id === tx.account_id)}
+                                                currentMemberId={activeMember?.id}
+                                                splitTemplates={splitTemplates}
+                                            />
+                                    </div>
+                                ))}
+                            </AccordionContent>
+                        </AccordionItem>
+                    )}
+
+                    {/* ESTADO VACÍO (Fuera del Accordion) */}
+                    {tabCounts.justification === 0 && tabCounts.allocation === 0 && tabCounts.approval === 0 && (
+                        <div className="flex flex-col items-center justify-center py-20 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                            <CheckCircle2 className="h-10 w-10 text-emerald-500 mb-3" />
+                            <p className="text-slate-900 font-bold">¡Todo al día!</p>
                         </div>
-                        {processedTransactions
-                            .filter(tx => !!tx.debt_link_id)
-                            .map(tx => (
-                                <SharedTransactionRow 
-                                    transaction={tx} 
-                                    members={members}
-                                    category={tx.category} 
-                                    account={accounts.find((a: any) => a.id === tx.account_id)}
-                                    currentMemberId={activeMember?.id}
-                                    viewPersonal={activeTab === 'mine'}
-                                    splitTemplates={splitTemplates}
-                                />
-                            ))}
-                    </div>
-                </TabsContent>
-            </Tabs>
+                    )}
+                </Accordion>
+            )}            
 
             {/* --- DIÁLOGOS --- */}
 
