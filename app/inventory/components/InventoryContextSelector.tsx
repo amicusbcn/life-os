@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Check, ChevronsUpDown, User, Building2 } from 'lucide-react';
+import { Check, ChevronsUpDown, User, Building2, House } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar';
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem,useSidebar } from '@/components/ui/sidebar';
 
 interface Props {
     currentContext: string; // 'personal' o el slug de la casa
@@ -19,14 +19,24 @@ interface Props {
 }
 
 export function InventoryContextSelector({ currentContext, properties }: Props) {
-    
+    const { open } = useSidebar();
+    const activeProperty = properties.find(p => p.slug === currentContext);
     // Encontrar el nombre actual para mostrarlo en el botón
     const currentName = currentContext === 'personal' 
         ? 'Personal' 
         : properties.find(p => p.slug === currentContext)?.name || 'Seleccionar...';
-
+    if (!open) {
+        // MODO COLAPSADO: Solo un icono con Tooltip
+        return (
+            <SidebarMenuItem>
+                <SidebarMenuButton tooltip={activeProperty?.name || "Inventario Personal"}>
+                    {activeProperty ? <House className="h-4 w-4" /> : <User className="h-4 w-4" />}
+                </SidebarMenuButton>
+            </SidebarMenuItem>
+        );
+    }
     return (
-        <SidebarMenu>
+        <SidebarMenu className='pb-4'>
             <SidebarMenuItem>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>

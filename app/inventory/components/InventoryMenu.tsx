@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { Settings, MapPin, ChevronLeft, Plus, ChevronDown, Tag } from 'lucide-react';
 import { 
-    SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarContent 
+    SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, useSidebar, 
+    SidebarSeparator
 } from '@/components/ui/sidebar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from '@/components/ui/button';
@@ -15,35 +16,34 @@ import { InventorySettingsContent } from './InventorySettingsContent';
 import { InventoryCategory, InventoryLocation } from '@/types/inventory';
 import { LocationTree } from './LocationTree';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { InventoryContextSelector } from './InventoryContextSelector';
 
 interface EnhancedInventoryMenuProps {
     mode: 'operative' | 'settings';
+    userRole?: string;
+    isPropertyContext?: boolean;
+    backLink?: { href: string; label: string };
+    // Estas son las que faltaban para el Selector de Contexto
+    currentContext?: string;
+    properties?: any[];
+    // Para el formulario de nuevo ítem
     categories: InventoryCategory[];
     locations: InventoryLocation[];
-    activeCategory?: string | null;
-    onCategoryChange?: (id: string | null) => void;
-    activeLocation?: string | null;
-    onLocationChange?: (id: string | null) => void;
-    backLink?: { href: string; label: string };
     propertyId?: string;
-    isPropertyContext?: boolean; 
-    userRole?: string; 
 }
 
 export function InventoryMenu({ 
     mode, 
-    categories, 
-    locations, 
-    activeCategory, 
-    onCategoryChange,
-    activeLocation,
-    onLocationChange,
-    propertyId,
+    userRole, 
+    isPropertyContext, 
     backLink,
-    isPropertyContext,
-    userRole
+    currentContext,
+    properties=[],
+    categories,
+    locations,
+    propertyId
 }: EnhancedInventoryMenuProps) {
-    
+    const isInventoryPath = typeof window !== 'undefined' && window.location.pathname.startsWith('/inventory');
     const [isNewItemOpen, setIsNewItemOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -64,96 +64,29 @@ export function InventoryMenu({
                         </Link>
                     </div>
                 )}
+                {/* 2. SELECTOR DE CONTEXTO - ¡EL REGRESO! */}
+                {/* Solo lo ocultamos si estamos en una propiedad Y tenemos botón de volver 
+                    (lo que significa que venimos de la sección de propiedades) */}
+                {!(isPropertyContext && backLink ) && (
+                    <InventoryContextSelector 
+                        currentContext={currentContext!} 
+                        properties={properties || []} 
+                    />
+                )}
 
                 {/* 2. ACCIÓN PRINCIPAL: NUEVO ÍTEM (Solo Admin) */}
                 {canManage && (
-                    <div className="px-2 mb-2">
-                        <Sheet open={isNewItemOpen} onOpenChange={setIsNewItemOpen}>
-                            <SheetTrigger asChild>
-                                <Button className="w-full justify-start gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm font-bold h-10 px-4 rounded-xl">
-                                    <Plus className="h-5 w-5" />
-                                    <span>Nuevo Ítem</span>
-                                </Button>
-                            </SheetTrigger>
-                            <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
-                                <SheetHeader className="mb-6">
-                                    <SheetTitle>Añadir Nuevo Ítem</SheetTitle>
-                                </SheetHeader>
-                                <InventoryForm 
-                                    categories={categories} 
-                                    locations={locations} 
-                                    propertyId={propertyId}
-                                    onSuccess={() => setIsNewItemOpen(false)} 
-                                />
-                            </SheetContent>
-                        </Sheet>
-                    </div>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton 
+                            onClick={() => window.dispatchEvent(new CustomEvent('open-new-item'))}
+                            className="bg-blue-600 text-white hover:bg-blue-700 hover:text-white transition-colors mb-2"
+                            tooltip="Nuevo Ítem"
+                        >
+                            <Plus className="h-4 w-4" />
+                            <span className="font-bold uppercase text-[11px] tracking-tight">Nuevo Ítem</span>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
                 )}
-
-                {/* 3. INFO CONTEXTO (Si no hay propiedad seleccionada) */}
-                {!isPropertyContext && (
-                    <div className="px-4 py-2">
-                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inventario General</p>
-                    </div>
-                )}
-
-                {/* SECCIÓN: UBICACIONES */}
-                <Collapsible defaultOpen className="group/collapsible">
-                    <SidebarGroup>
-                        <CollapsibleTrigger asChild>
-                            <SidebarGroupLabel className="flex w-full cursor-pointer items-center justify-between hover:bg-slate-100 transition-colors py-2 rounded-md px-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                <div className="flex items-center gap-2">
-                                    <MapPin className="h-3 w-3" />
-                                    <span>Ubicaciones</span>
-                                </div>
-                                <ChevronDown className="h-3 w-3 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-0 -rotate-90" />
-                            </SidebarGroupLabel>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="px-0">
-                            <SidebarMenu className="mt-1 ml-2 border-l border-slate-100 pl-2">
-                                <LocationTree 
-                                    locations={locations}
-                                    activeLocation={activeLocation}
-                                    onLocationChange={onLocationChange || (() => {})}
-                                />
-                            </SidebarMenu>
-                        </CollapsibleContent>
-                    </SidebarGroup>
-                </Collapsible>
-
-                {/* SECCIÓN: CATEGORÍAS */}
-                <Collapsible defaultOpen className="group/collapsible">
-                    <SidebarGroup>
-                        <CollapsibleTrigger asChild>
-                            <SidebarGroupLabel className="flex w-full cursor-pointer items-center justify-between hover:bg-slate-100 transition-colors py-2 rounded-md px-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                <div className="flex items-center gap-2">
-                                    <Tag className="h-3 w-3" />
-                                    <span>Categorías</span>
-                                </div>
-                                <ChevronDown className="h-3 w-3 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-0 -rotate-90" />
-                            </SidebarGroupLabel>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                            <SidebarMenu className="mt-1">
-                                {categories.map(cat => (
-                                    <SidebarMenuItem key={cat.id}>
-                                        <SidebarMenuButton 
-                                            isActive={activeCategory === cat.id}
-                                            onClick={() => {
-                                                const nextValue = activeCategory === cat.id ? null : cat.id;
-                                                onCategoryChange?.(nextValue);
-                                            }}
-                                            className="px-4"
-                                        >
-                                            <span className="opacity-60 mr-2">{cat.icon || '📦'}</span>
-                                            <span>{cat.name}</span>
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                ))}
-                            </SidebarMenu>
-                        </CollapsibleContent>
-                    </SidebarGroup>
-                </Collapsible>
             </div>
         );
     }

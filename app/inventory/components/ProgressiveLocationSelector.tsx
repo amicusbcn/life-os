@@ -52,7 +52,7 @@ export function ProgressiveLocationSelector({ locations, value, onChange }: any)
                 <Button
                     variant="outline"
                     role="combobox"
-                    className="w-full justify-between rounded-xl border-slate-200 bg-white font-normal h-10 px-3 hover:bg-slate-50"
+                    className="w-full justify-between rounded-2xl border-slate-200 bg-white font-normal h-12 px-4 hover:bg-slate-50 transition-all shadow-sm"
                 >
                     <div className="flex items-center gap-2 truncate">
                         <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
