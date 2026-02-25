@@ -19,6 +19,7 @@ export interface InventoryLocation {
   name: string;
   description?: string;
   parent_id?: string | null;
+  parent?: InventoryLocation | null;
 }
 
 export interface InventoryItem {

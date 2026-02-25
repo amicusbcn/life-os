@@ -115,6 +115,8 @@ export async function getInventoryItemDetails(id: string) {
     .select(`
       *,
       category:inventory_categories(id, name, icon),
+      property_location:property_location_id (id, name, parent:parent_id(name)),
+      location:location_id (id, name, parent:parent_id(name)),
       inventory_maintenance_tasks (*,profiles:responsible_user_id (id, full_name, avatar_url)),
       inventory_loans (*)
   `).eq('id', id)

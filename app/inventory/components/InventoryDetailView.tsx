@@ -42,7 +42,12 @@ export function InventoryItemDetailView({
 }: Props) {
     const [isEditing, setIsEditing] = useState(false);
     const router = useRouter();
+    const loc = item.property_location || item.location;
 
+    const locationName = loc 
+        ? (loc.parent?.name ? `${loc.parent.name} → ${loc.name}` : loc.name) 
+        : 'Sin ubicación';
+    
     const handleDelete = async () => {
         if (confirm("¿Estás seguro de que quieres eliminar este objeto?")) {
             const res = await deleteInventoryItem(item.id, item.photo_path??null);
@@ -116,11 +121,12 @@ export function InventoryItemDetailView({
                                 item={item} 
                                 categories={categories} 
                                 locations={locations} 
+                                propertyId={item.property_id||""}
                                 onSuccess={() => setIsEditing(false)} 
                             />
                         </div>
                     ) : (
-                        <InventoryItemReadOnly item={item} />
+                        <InventoryItemReadOnly item={item} locationName={locationName} />
                     )}
                 </TabsContent>
 
@@ -150,7 +156,7 @@ export function InventoryItemDetailView({
 }
 
 // Subcomponente de Lectura (Misma lógica que tenías pero más espaciado)
-function InventoryItemReadOnly({ item }: { item: any }) {
+function InventoryItemReadOnly({ item,locationName }: { item: any, locationName: string }) {
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
             <div className="lg:col-span-1 space-y-6">
@@ -169,7 +175,7 @@ function InventoryItemReadOnly({ item }: { item: any }) {
                 <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
                     <p className="text-[10px] font-black uppercase text-indigo-400 mb-2">Ubicación Actual</p>
                     <p className="font-bold text-indigo-900 flex items-center gap-2">
-                        <Box className="w-4 h-4" /> {item.property_locations?.name || 'Sin asignar'}
+                        <Box className="w-4 h-4" /> {locationName}
                     </p>
                 </div>
             </div>

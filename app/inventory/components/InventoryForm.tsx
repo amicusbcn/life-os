@@ -24,8 +24,7 @@ interface Props {
 export function InventoryForm({ categories, locations, item, onSuccess, propertyId }: Props) {
     const [loading, setLoading] = useState(false);
     
-    // ✨ ESTADO PARA LA UBICACIÓN (Para el selector progresivo)
-    const [locationId, setLocationId] = useState(item?.location_id || "");
+    const [locationId, setLocationId] = useState(item?.property_location_id || item?.location_id || "");
 
     const isEditing = !!item?.id;
 
@@ -34,6 +33,7 @@ export function InventoryForm({ categories, locations, item, onSuccess, property
         try {
             if (propertyId) formData.append('propertyId', propertyId);
             if (isEditing) formData.append('id', item.id);
+            console.log("/***********************   PropertyId:", propertyId);
             
             // ✨ INYECTAMOS EL VALOR DEL SELECTOR PROGRESIVO
             // Como el selector no es un input nativo, lo metemos a mano aquí

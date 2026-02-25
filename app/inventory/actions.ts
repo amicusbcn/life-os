@@ -100,13 +100,24 @@ export async function updateInventoryItem(formData: FormData): Promise<ActionRes
     // Preparar datos (Reutilizando lógica de limpieza)
     const propertyId = formData.get('propertyId') as string || null
     const locationIdRaw = formData.get('locationId') as string || null
-    const isValidLocation = locationIdRaw && 
-                        locationIdRaw !== "" && 
-                        locationIdRaw !== "null" && 
-                        locationIdRaw !== "undefined" && 
-                        locationIdRaw !== "no-location";
-    const locationId = isValidLocation ? locationIdRaw : null;
-    const isProperty = propertyId !== null && propertyId !== "" && propertyId !== "null";
+    // Validamos que el ID sea un UUID real y no strings de control
+    const locationId = (locationIdRaw && locationIdRaw !== "" && locationIdRaw !== "no-location" && locationIdRaw !== "null") 
+      ? locationIdRaw 
+      : null;
+    const isProperty = !!propertyId;
+
+      const debugData = {
+    itemId,
+    propertyId,
+    isProperty,
+    locationIdRaw,
+    locationId,
+    destinyColumn: isProperty ? 'property_location_id' : 'location_id'
+};
+  console.log("=== DEBUG INVENTORY UPDATE ===");
+  console.table(debugData);
+
+
 
     const { error } = await supabase
       .from('inventory_items')
@@ -120,10 +131,9 @@ export async function updateInventoryItem(formData: FormData): Promise<ActionRes
         warranty_end_date: (formData.get('warranty_end_date') as string) || null,
         category_id: (formData.get('categoryId') as string !== "no-category") ? formData.get('categoryId') as string : null,
         
-        property_id: isProperty?propertyId:null,
+        property_id: propertyId,
         property_location_id: isProperty ? locationId : null,
         location_id: !isProperty ? locationId : null,
-        // No actualizamos photo_path si no ha cambiado
       })
       .eq('id', itemId)
 
@@ -394,6 +404,7 @@ export async function transferItemToProperty(
     targetPropertyId: string | null, // null para volver a 'Personal'
     targetLocationId: string | null
 ): Promise<ActionResponse> {
+
     const supabase = await createClient();
 
     const { error } = await supabase

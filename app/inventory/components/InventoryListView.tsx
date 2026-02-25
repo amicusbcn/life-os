@@ -14,7 +14,7 @@ interface Props {
 }
 
 export function InventoryListView({ items, categories, locations, currentPropertyId }: Props) {
-    
+
     // Helper para manejar URLs de imágenes
     const getImageUrl = (path: string) => {
         if (!path) return null;
@@ -37,7 +37,7 @@ export function InventoryListView({ items, categories, locations, currentPropert
             </div>
         );
     }
-
+    console.log("     -------     IDs de los items:", items.map(i => i.id));
     return (
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item) => {

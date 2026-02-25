@@ -36,7 +36,6 @@ export function InventoryClientView({
     categories, locations, availableProperties, items,
     profile, accessibleModules, availableProfiles,backLink
 }: Props) {
-    console.log("LOG 1 [ClientView]:", availableProperties);
     const [activeCategory, setActiveCategory] = useState<string | null>(null);
     const [activeLocation, setActiveLocation] = useState<string | null>(null);
 

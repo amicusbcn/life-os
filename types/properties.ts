@@ -37,6 +37,7 @@ export interface PropertyLocation {
   name: string;
   type: 'zone' | 'room';
   created_at: string;
+  parent?: PropertyLocation | null; 
 }
 
 export interface ZoneWithRooms extends PropertyLocation {
