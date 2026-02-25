@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Wallet, CalendarDays, Package } from 'lucide-react';
+import { Wallet, CalendarDays, Package,Wrench } from 'lucide-react';
 import { useProperty } from "../context/PropertyContext";
 import { updatePropertyModules } from "../actions"; // Asegúrate de tener esta acción o importarla bien
 import { PropertyModules } from "@/types/properties";
@@ -15,6 +15,7 @@ const MODULE_DEFINITIONS: { id: keyof PropertyModules; label: string; icon: any;
     { id: 'finance', label: 'Finanzas', description: 'Gastos, botes y presupuestos.', icon: Wallet },
     { id: 'bookings', label: 'Reservas', description: 'Calendario de ocupación.', icon: CalendarDays },
     { id: 'inventory', label: 'Inventario', description: 'Control de stock y suministros.', icon: Package },
+    { id: 'maintenance', label: 'Mantenimiento', description: 'Control de mantenimiento y reparaciones.', icon: Wrench },
 ];
 
 export function PropertyModulesSettings() {
