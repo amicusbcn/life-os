@@ -100,8 +100,13 @@ export async function updateInventoryItem(formData: FormData): Promise<ActionRes
     // Preparar datos (Reutilizando lógica de limpieza)
     const propertyId = formData.get('propertyId') as string || null
     const locationIdRaw = formData.get('locationId') as string || null
-    const isProperty = !!propertyId
-    const locationId = (locationIdRaw && locationIdRaw !== "no-location") ? locationIdRaw : null
+    const isValidLocation = locationIdRaw && 
+                        locationIdRaw !== "" && 
+                        locationIdRaw !== "null" && 
+                        locationIdRaw !== "undefined" && 
+                        locationIdRaw !== "no-location";
+    const locationId = isValidLocation ? locationIdRaw : null;
+    const isProperty = propertyId !== null && propertyId !== "" && propertyId !== "null";
 
     const { error } = await supabase
       .from('inventory_items')
@@ -115,7 +120,7 @@ export async function updateInventoryItem(formData: FormData): Promise<ActionRes
         warranty_end_date: (formData.get('warranty_end_date') as string) || null,
         category_id: (formData.get('categoryId') as string !== "no-category") ? formData.get('categoryId') as string : null,
         
-        property_id: propertyId,
+        property_id: isProperty?propertyId:null,
         property_location_id: isProperty ? locationId : null,
         location_id: !isProperty ? locationId : null,
         // No actualizamos photo_path si no ha cambiado
