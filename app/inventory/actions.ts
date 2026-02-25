@@ -74,67 +74,40 @@ export async function updateInventoryItem(formData: FormData): Promise<ActionRes
   const supabase = await createClient()
   
   const itemId = formData.get('id') as string
-  const oldPhotoPath = formData.get('old_photo_path') as string
+  // Este es el path que viene ya subido desde el cliente
+  const photoPathFromClient = formData.get('photo_path') as string 
   
   try {
-    // Gestión de nueva foto
-    const photoFile = formData.get('photo') as File
-    let newPhotoPath = oldPhotoPath 
-
-    if (photoFile && photoFile.size > 0) {
-      const fileName = `${Date.now()}-${photoFile.name.replace(/\s/g, '_')}`
-      const { data, error: uploadError } = await supabase.storage
-        .from('inventory')
-        .upload(fileName, photoFile)
-      
-      if (uploadError) return { success: false, error: 'Error subiendo nueva imagen' }
-      
-      newPhotoPath = data.path
-
-      // Borrar vieja
-      if (oldPhotoPath) {
-        await supabase.storage.from('inventory').remove([oldPhotoPath])
-      }
-    }
-
-    // Preparar datos (Reutilizando lógica de limpieza)
     const propertyId = formData.get('propertyId') as string || null
     const locationIdRaw = formData.get('locationId') as string || null
-    // Validamos que el ID sea un UUID real y no strings de control
     const locationId = (locationIdRaw && locationIdRaw !== "" && locationIdRaw !== "no-location" && locationIdRaw !== "null") 
       ? locationIdRaw 
       : null;
     const isProperty = !!propertyId;
 
-      const debugData = {
-    itemId,
-    propertyId,
-    isProperty,
-    locationIdRaw,
-    locationId,
-    destinyColumn: isProperty ? 'property_location_id' : 'location_id'
-};
-  console.log("=== DEBUG INVENTORY UPDATE ===");
-  console.table(debugData);
+    // Preparamos el objeto de actualización
+    const updateData: any = {
+      name: formData.get('name') as string,
+      brand: formData.get('brand') as string,
+      model: (formData.get('model') as string) || null,
+      serial_number: (formData.get('serial_number') as string) || null,
+      price: formData.get('price') ? parseFloat(formData.get('price') as string) : null,
+      purchase_date: (formData.get('purchase_date') as string) || null,
+      warranty_end_date: (formData.get('warranty_end_date') as string) || null,
+      category_id: (formData.get('categoryId') as string !== "no-category") ? formData.get('categoryId') as string : null,
+      property_id: propertyId,
+      property_location_id: isProperty ? locationId : null,
+      location_id: !isProperty ? locationId : null,
+    };
 
-
+    // 📸 Si el cliente nos ha mandado una foto nueva, la incluimos
+    if (photoPathFromClient) {
+      updateData.photo_path = photoPathFromClient;
+    }
 
     const { error } = await supabase
       .from('inventory_items')
-      .update({
-        name: formData.get('name') as string,
-        brand: formData.get('brand') as string,
-        model: (formData.get('model') as string) || null,
-        serial_number: (formData.get('serial_number') as string) || null,
-        price: formData.get('price') ? parseFloat(formData.get('price') as string) : null,
-        purchase_date: (formData.get('purchase_date') as string) || null,
-        warranty_end_date: (formData.get('warranty_end_date') as string) || null,
-        category_id: (formData.get('categoryId') as string !== "no-category") ? formData.get('categoryId') as string : null,
-        
-        property_id: propertyId,
-        property_location_id: isProperty ? locationId : null,
-        location_id: !isProperty ? locationId : null,
-      })
+      .update(updateData)
       .eq('id', itemId)
 
     if (error) return { success: false, error: error.message }

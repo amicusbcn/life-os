@@ -7,8 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Loader2, Save, Plus } from 'lucide-react';
-
-// 1. IMPORTAR LAS NUEVAS ACCIONES
+import { uploadFile } from '@/utils/uploads';
 import { createInventoryItem, updateInventoryItem } from '../actions'; 
 import { InventoryCategory, InventoryItem, InventoryLocation } from '@/types/inventory';
 import { ProgressiveLocationSelector } from './ProgressiveLocationSelector';
@@ -33,10 +32,29 @@ export function InventoryForm({ categories, locations, item, onSuccess, property
         try {
             if (propertyId) formData.append('propertyId', propertyId);
             if (isEditing) formData.append('id', item.id);
-            console.log("/***********************   PropertyId:", propertyId);
             
-            // ✨ INYECTAMOS EL VALOR DEL SELECTOR PROGRESIVO
-            // Como el selector no es un input nativo, lo metemos a mano aquí
+            // 📸 GESTIÓN DE LA FOTO
+            const photoFile = formData.get('photo') as File;
+            
+            // Solo subimos si hay un archivo y tiene nombre (evita subidas vacías)
+            if (photoFile && photoFile.size > 0) {
+                // Subimos al bucket 'inventory' (ajusta el nombre del bucket si es otro)
+                const photoPath = await uploadFile(photoFile, { 
+                    bucket: 'inventory', 
+                    folder: propertyId || 'personal' 
+                });
+                
+                // Reemplazamos el archivo por el string del path en el formDat
+
+                // Forzamos que se guarde solo el path si por error viene la URL completa
+                const cleanPath = photoPath.includes('public/inventory/') 
+                    ? photoPath.split('public/inventory/')[1] 
+                    : photoPath;
+
+                formData.set('photo_path', cleanPath);
+            }
+
+            // ✨ INYECTAMOS LA UBICACIÓN
             formData.append('locationId', locationId);
 
             const response = isEditing 
@@ -50,8 +68,8 @@ export function InventoryForm({ categories, locations, item, onSuccess, property
                 toast.error(response.error || "Error al procesar la solicitud");
             }
         } catch (error) {
-            console.error(error);
-            toast.error("Ocurrió un error inesperado");
+            console.error("Error en handleSubmit:", error);
+            toast.error("Ocurrió un error al subir la imagen o guardar los datos");
         } finally {
             setLoading(false);
         }
