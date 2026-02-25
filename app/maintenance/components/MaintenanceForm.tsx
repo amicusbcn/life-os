@@ -19,10 +19,11 @@ interface Props {
     propertyId?: string;      
     properties?: Property[];  
     userId?: string;           
-    initialItemId?: string;   
+    initialItemId?: string;
+    initialItemName?: string;
     locations: any[]; // Array híbrido con flag is_personal
     inventoryItems: InventoryItem[];
-    users: Profile[];
+    users?: Profile[];
     onSuccess?: () => void;
 }
 
@@ -32,6 +33,7 @@ export function MaintenanceForm({
     locations, 
     inventoryItems, 
     initialItemId, 
+    initialItemName,
     onSuccess 
 }: Props) {
     const [loading, setLoading] = useState(false);
@@ -111,8 +113,15 @@ export function MaintenanceForm({
     };
 
     const handleSubmit = async (formData: FormData) => {
-        if (!contextId) { toast.error("Selecciona dónde ocurre la incidencia"); return; }
-        if (isPersonal && (!selectedItemId || selectedItemId === "none")) {
+        const finalItemId = initialItemId || selectedItemId || ""; // Forzamos "" si no hay nada
+        const finalContextId = contextId || fixedPropertyId || ""; // Forzamos "" si no hay nada
+        
+        if (!finalContextId && !finalItemId) {
+            toast.error("Faltan datos del objeto o propiedad");
+            return;
+        }
+        
+        if (isPersonal && (!finalItemId || finalItemId === "none")) {
             toast.error("En tu inventario personal es obligatorio seleccionar el objeto.");
             return;
         }
@@ -124,24 +133,23 @@ export function MaintenanceForm({
                 const url = await uploadFile(file, { bucket: 'maintenance', folder: 'tasks' });
                 uploadedUrls.push(url);
             }
-
-            formData.append('propertyId', isPersonal ? "" : contextId);
-            if (selectedItemId && selectedItemId !== "none") {
-                // SI HAY ITEM: Mandamos el item y vaciamos las ubicaciones
-                formData.append('itemId', selectedItemId);
+            if (finalItemId && finalItemId !== "none") {
+                formData.append('itemId', finalItemId);
+                formData.append('propertyId', isPersonal ? "" : finalContextId);
+                // Limpiamos explícitamente las ubicaciones para que no haya conflictos
                 formData.append('property_location_id', "");
                 formData.append('inventory_location_id', "");
-            } else if (locationId && locationId !== "none") {
-                // SI NO HAY ITEM PERO SÍ UBICACIÓN:
+            }
+            else if (locationId && locationId !== "none") {
                 formData.append('itemId', "");
+                formData.append('propertyId', finalContextId);
                 if (isPersonal) {
-                    // (Aunque según dijimos, en personal siempre hay item, 
-                    // lo dejamos por seguridad si alguna vez cambias la regla)
                     formData.append('inventory_location_id', locationId);
                 } else {
                     formData.append('property_location_id', locationId);
                 }
             }
+            
             formData.append('images', JSON.stringify(uploadedUrls)); 
 
             const response = await createMaintenanceTask(formData);
@@ -160,72 +168,86 @@ export function MaintenanceForm({
 
     return (
         <form action={handleSubmit} className="space-y-6 px-4">
-            
             {/* --- BLOQUE DE SELECCIÓN CONTINUA (CONTEXTO > UBICACIÓN > ITEM) --- */}
-            <div className="space-y-5 bg-slate-50 p-5 rounded-3xl border border-slate-100 shadow-sm">
-                
-                {/* 1. CONTEXTO */}
-                {!fixedPropertyId && (
-                    <div className="space-y-2">
-                        <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">1. Ámbito</Label>
-                        <Select value={contextId} onValueChange={(v) => { setContextId(v); setLocationId(""); setSelectedItemId(""); }}>
-                            <SelectTrigger className="bg-white rounded-2xl h-12 border-slate-200">
-                                <SelectValue placeholder="¿Propiedad o Personal?" />
+            {!initialItemId ? (
+                <div className="space-y-5 bg-slate-50 p-5 rounded-3xl border border-slate-100 shadow-sm">
+                    
+                    {/* 1. CONTEXTO */}
+                    {!fixedPropertyId && (
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">1. Ámbito</Label>
+                            <Select value={contextId} onValueChange={(v) => { setContextId(v); setLocationId(""); setSelectedItemId(""); }}>
+                                <SelectTrigger className="bg-white rounded-2xl h-12 border-slate-200">
+                                    <SelectValue placeholder="¿Propiedad o Personal?" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="personal" className="font-bold text-blue-600">👤 Mi Inventario Personal</SelectItem>
+                                    {properties?.map(p => (
+                                        <SelectItem key={p.id} value={p.id}>🏢 {p.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    {/* 2. UBICACIÓN (Usando el ProgressiveSelector) */}
+                    <div className={`space-y-2 transition-all duration-300 ${!contextId ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
+                        <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                            2. {isPersonal ? "Filtrar por Estancia (Opcional)" : "Ubicación / Estancia"}
+                        </Label>
+                        <ProgressiveLocationSelector 
+                            locations={filteredLocations} 
+                            value={locationId}
+                            onChange={(val:any) => {
+                                console.log("Nueva ubicación seleccionada:", val); // Comprueba que este ID es el que esperas
+                                setLocationId(val);
+                                setSelectedItemId(""); // Limpiar item al cambiar sitio
+                            }}
+                        />
+                    </div>
+
+                    {/* 3. ITEM (Filtrado por lo anterior) */}
+                    <div className={`space-y-2 transition-all duration-300 ${!contextId ? 'opacity-30 pointer-events-none' : ''}`}>
+                        <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                            3. Objeto Afectado {isPersonal ? '*' : '(Opcional)'}
+                        </Label>
+                        <Select value={selectedItemId} onValueChange={setSelectedItemId}>
+                            <SelectTrigger className={`bg-white rounded-2xl h-12 border-slate-200 transition-all ${
+                                locationId && availableItems.length > 0 ? 'ring-2 ring-blue-100 border-blue-300' : ''
+                            }`}>
+                                <SelectValue placeholder={
+                                    locationId 
+                                    ? `Objetos en esta estancia (${availableItems.length})...` 
+                                    : "Busca un objeto..."
+                                } />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="personal" className="font-bold text-blue-600">👤 Mi Inventario Personal</SelectItem>
-                                {properties?.map(p => (
-                                    <SelectItem key={p.id} value={p.id}>🏢 {p.name}</SelectItem>
-                                ))}
+                                {!isPersonal && <SelectItem value="none">General / Ninguno</SelectItem>}
+                                {availableItems.length > 0 ? (
+                                    availableItems.map(item => (
+                                        <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                                    ))
+                                ) : (
+                                    <SelectItem value="none" disabled>No hay objetos en esta ubicación</SelectItem>
+                                )}
                             </SelectContent>
                         </Select>
                     </div>
-                )}
-
-                {/* 2. UBICACIÓN (Usando el ProgressiveSelector) */}
-                <div className={`space-y-2 transition-all duration-300 ${!contextId ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
-                    <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                        2. {isPersonal ? "Filtrar por Estancia (Opcional)" : "Ubicación / Estancia"}
-                    </Label>
-                    <ProgressiveLocationSelector 
-                        locations={filteredLocations} 
-                        value={locationId}
-                        onChange={(val:any) => {
-                            console.log("Nueva ubicación seleccionada:", val); // Comprueba que este ID es el que esperas
-                            setLocationId(val);
-                            setSelectedItemId(""); // Limpiar item al cambiar sitio
-                        }}
-                    />
                 </div>
-
-                {/* 3. ITEM (Filtrado por lo anterior) */}
-                <div className={`space-y-2 transition-all duration-300 ${!contextId ? 'opacity-30 pointer-events-none' : ''}`}>
-                    <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                        3. Objeto Afectado {isPersonal ? '*' : '(Opcional)'}
-                    </Label>
-                    <Select value={selectedItemId} onValueChange={setSelectedItemId}>
-                        <SelectTrigger className={`bg-white rounded-2xl h-12 border-slate-200 transition-all ${
-                            locationId && availableItems.length > 0 ? 'ring-2 ring-blue-100 border-blue-300' : ''
-                        }`}>
-                            <SelectValue placeholder={
-                                locationId 
-                                ? `Objetos en esta estancia (${availableItems.length})...` 
-                                : "Busca un objeto..."
-                            } />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {!isPersonal && <SelectItem value="none">General / Ninguno</SelectItem>}
-                            {availableItems.length > 0 ? (
-                                availableItems.map(item => (
-                                    <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                                ))
-                            ) : (
-                                <SelectItem value="none" disabled>No hay objetos en esta ubicación</SelectItem>
-                            )}
-                        </SelectContent>
-                    </Select>
+            ): (
+                /* MODO FICHA: Solo mostramos un pequeño badge informativo para confirmar el contexto */
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shrink-0">
+                        <Wrench className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Nueva tarea para:</p>
+                        <p className="text-sm font-bold text-blue-900">
+                            {initialItemName}
+                        </p>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* --- DATOS GENERALES --- */}
             <div className="space-y-4 px-1">

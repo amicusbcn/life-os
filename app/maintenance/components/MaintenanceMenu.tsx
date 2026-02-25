@@ -19,16 +19,16 @@ export function MaintenanceMenu({ userRole, properties, locations, inventoryItem
                             <SidebarMenuItem className="pb-4">
                                 <Sheet>
                                     <SheetTrigger asChild>
-                                        <SidebarMenuButton 
-        size="lg" 
-        tooltip="Nueva Tarea"
-        // Eliminamos w-full y px-4 manuales. 
-        // Usamos flex-none en el icono para que no se desplace.
-        className="bg-slate-900 hover:bg-slate-800 hover:text-white text-white font-bold rounded-xl transition-all duration-300"
-      >
-        <Plus className="h-5 w-5 shrink-0" />
-        <span className="truncate">Nueva Tarea</span>
-      </SidebarMenuButton>
+                                    <SidebarMenuButton 
+                                            size="lg" 
+                                            tooltip="Nueva Tarea"
+                                            // Eliminamos w-full y px-4 manuales. 
+                                            // Usamos flex-none en el icono para que no se desplace.
+                                            className="bg-slate-900 hover:bg-slate-800 hover:text-white text-white font-bold rounded-xl transition-all duration-300"
+                                        >
+                                        <Plus className="h-5 w-5 shrink-0" />
+                                        <span className="truncate">Nueva Tarea</span>
+                                    </SidebarMenuButton>
                                     </SheetTrigger>
                                     <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
                                         <MaintenanceForm {...{properties, locations, inventoryItems, users}} />

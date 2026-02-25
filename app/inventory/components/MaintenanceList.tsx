@@ -1,25 +1,54 @@
 'use client';
 
 
+import { useState } from 'react';
 import { Badge } from "@/components/ui/badge";
-import { Wrench, ArrowUpRight, Loader2, Plus } from "lucide-react";
+import { Wrench, ArrowUpRight, Plus } from "lucide-react";
 import Link from 'next/link';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { MaintenanceForm } from '@/app/maintenance/components/MaintenanceForm';
 
 interface Props {
-    tasks: any[]; // Las tareas ya vienen masticadas del servidor
+    tasks: any[];
     itemId: string;
+    itemName: string;
+    propertyId?: string; 
+    locations: any[];
+    inventoryItems: any[];
 }
 
-export function MaintenanceList({ tasks, itemId }: Props) {
-    // Ya no hay loading state aquí, porque el Server Component espera a tener los datos
-    
+export function MaintenanceList({ tasks, itemId,itemName, propertyId, locations, inventoryItems }: Props) {
+    const [isOpen, setIsOpen] = useState(false);
+
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Historial</h3>
-                <button className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full text-[10px] font-black hover:bg-orange-100 transition-colors border border-orange-100 uppercase italic">
-                    <Plus className="w-3 h-3" /> Añadir Tarea
-                </button>
+                
+                {/* --- CONEXIÓN DEL FORMULARIO --- */}
+                <Sheet open={isOpen} onOpenChange={setIsOpen}>
+                    <SheetTrigger asChild>
+                        <button className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-full text-[10px] font-black hover:bg-orange-100 transition-colors border border-orange-100 uppercase italic">
+                            <Plus className="w-3 h-3" /> Añadir Tarea
+                        </button>
+                    </SheetTrigger>
+                    <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
+                        <SheetHeader className="mb-6">
+                            <SheetTitle>Nueva Tarea de Mantenimiento</SheetTitle>
+                        </SheetHeader>
+                        
+                        <MaintenanceForm 
+                            propertyId={propertyId}
+                            initialItemId={itemId}
+                            initialItemName={itemName}
+                            locations={locations}
+                            inventoryItems={inventoryItems}
+                            onSuccess={() => {
+                                setIsOpen(false);
+                            }}
+                        />
+                    </SheetContent>
+                </Sheet>
             </div>
 
             {tasks.length > 0 ? (

@@ -134,9 +134,9 @@ export function InventoryItemDetailView({
                 <TabsContent value="maintenance">
                     <div className="max-w-3xl">
                         <MaintenanceList 
-                            itemId={item.id} 
-                            tasks={tasks}
-                        />
+                            itemId={item.id}
+                            itemName={item.name}
+                            tasks={tasks} locations={[]} inventoryItems={[]}                        />
                     </div>
                 </TabsContent>
 
