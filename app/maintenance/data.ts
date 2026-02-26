@@ -4,41 +4,62 @@ import { MaintenanceTask } from '@/types/maintenance';
 import { InventoryItemBase } from '@/types/inventory';
 import { PropertyBase } from '@/types/properties';
 
-interface TaskFilters {
-  propertyId?: string;
-  inventoryItemId?: string;
-  isArchived?: boolean;
+export interface TaskFilters {
+    property_id?: string;
+    item_id?: string;
+    is_archived?: boolean;
+    type?: 'correctivo' | 'preventivo';
+    assigned_to?: string;
+    priority?: number;
 }
 
-export async function getMaintenanceTasks(filters: TaskFilters = {}) {
-  const supabase = await createClient();
-  const { propertyId, inventoryItemId, isArchived = false } = filters;
+export async function getMaintenanceTasks(filters: Record<string, any> = {}) {
+    const supabase = await createClient();
+    
+    // 1. Definimos la base de la query
     let query = supabase
         .from('maintenance_tasks')
         .select(`
-                *,
-                properties (id, name, slug),
-                inventory_items (id, name, property_id),
-                assigned_member:property_members!maintenance_tasks_assigned_to_fkey (
+            *,
+            properties (id, name, slug),
+            inventory_items (id, name, property_id),
+            category:maintenance_categories (id, name, icon, color),
+            assigned_member:property_members!maintenance_tasks_assigned_to_fkey (
+                id,
                 name
-                ),
-                created_by_profile:profiles!maintenance_tasks_created_by_fkey (
-                    full_name
-                )
-            `)
-        .eq('is_archived', isArchived)
+            )
+        `);
+
+    // 2. Aplicación Automática de Filtros
+    // Recorremos las llaves del objeto filters
+    Object.keys(filters).forEach((key) => {
+        const value = filters[key];
+
+        // Saltamos si es null o undefined
+        if (value === undefined || value === null) return;
+
+        // LÓGICA INTELIGENTE:
+        // Si el valor es un Array -> usamos .in()
+        // Si no -> usamos .eq()
+        if (Array.isArray(value)) {
+            query = query.in(key, value);
+        } else {
+            query = query.eq(key, value);
+        }
+    });
+
+    // 3. Orden por defecto
+    query = query
         .order('priority', { ascending: false })
         .order('created_at', { ascending: false });
-    if (propertyId) {
-        query = query.eq('property_id', propertyId);
-    }
-
-    if (inventoryItemId) {
-        query = query.eq('item_id', inventoryItemId);
-    }
 
     const { data, error } = await query;
-    if (error) throw new Error(error.message);
+    
+    if (error) {
+        console.error("Supabase Error:", error.message);
+        throw new Error(error.message);
+    }
+    
     return data as MaintenanceTask[];
 }
 

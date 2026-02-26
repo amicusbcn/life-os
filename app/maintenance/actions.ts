@@ -9,57 +9,77 @@ export async function createMaintenanceTask(formData: FormData) {
     const { data: userData } = await supabase.auth.getUser()
     if (!userData.user) return { success: false, error: "No autorizado" }
 
-    // 1. Extraer metadatos de la tarea
+    // 1. Extraer metadatos básicos
     const title = formData.get('title') as string
     const description = formData.get('description') as string
-    const type = formData.get('type') as any
     const priority = parseInt(formData.get('priority') as string) || 2
     const propertyId = formData.get('propertyId') as string || null
     const itemId = formData.get('itemId') as string || null
-    const locationId = formData.get('locationId') as string || null
+    const locationId = formData.get('locationId') as string || null // El ID que viene del Selector Progresivo
     const isPersonal = formData.get('is_personal') === 'true'
 
-    // Parseamos las fotos que vienen del cliente
+    // 2. Extraer metadatos de RECURRENCIA
+    const isRecurring = formData.get('is_recurring') === 'true'
+    const frequencyMonths = formData.get('frequency_months') 
+        ? parseInt(formData.get('frequency_months') as string) 
+        : null
+    const nextOccurrence = formData.get('next_occurrence') as string || null
+    const type = isRecurring ? 'preventivo' : (formData.get('type') as any || 'averia')
+
+    // Parseamos las fotos
     const imagesRaw = formData.get('images') as string
     const imagesUrls = imagesRaw ? JSON.parse(imagesRaw) : []
 
-    // 2. Lógica de ubicación (la misma de antes)
-    let property_location_id = null
-    let inventory_location_id = null
-    if (!itemId && locationId) {
-        if (isPersonal) inventory_location_id = locationId
-        else property_location_id = locationId
-    }
+    const finalLocationId = (!isPersonal && !itemId && locationId && locationId !== "none") 
+        ? locationId 
+        : null
 
-    // 3. Insertar la Tarea (Los metadatos puros)
+    // 3. Insertar la Tarea con las columnas correctas
     const { data: task, error: taskError } = await supabase
         .from('maintenance_tasks')
         .insert({
             title,
-            description, // La mantenemos aquí también como "resumen" inicial
+            description,
             type,
             priority,
             property_id: isPersonal ? null : propertyId,
             item_id: itemId || null,
-            location_id:property_location_id || inventory_location_id,
+            location_id: finalLocationId, 
             status: 'pendiente',
             created_by: userData.user.id,
+            is_recurring: isRecurring,
+            frequency_months: frequencyMonths,
+            next_occurrence: nextOccurrence,
+            images: isRecurring ? imagesUrls : []
         })
         .select()
         .single()
 
-    if (taskError) return { success: false, error: taskError.message }
+    if (taskError) {
+        console.error("Error al crear tarea:", taskError)
+        return { success: false, error: taskError.message }
+    }
 
-    // 4. USAR TU FUNCIÓN EXISTENTE PARA EL PRIMER LOG
-    // Centralizamos aquí las imágenes y la descripción detallada
-    await submitTimelineEntry({
-        taskId: task.id,
-        content: '🛠️ Apertura de incidencia. ' + (description || 'Sin más detalles'),
-        entryType: 'sistema', 
-        images: imagesUrls // Tu función ya sabe qué hacer con esto
-    })
-
-    // 5. Revalidaciones
+    // 5. Crear el Log de apertura
+    if (isRecurring) {
+        // 1. Si es recurrente, creamos la primera "Actividad Programada" en el timeline
+        await submitTimelineEntry({
+            taskId: task.id,
+            content: `Iteración: ${title}`, 
+            entryType: 'actividad', 
+            activityDate: nextOccurrence, 
+            activityStatus: 'programada'
+        })
+    } else {
+        // 2. Si es avería normal, el log clásico de apertura
+        await submitTimelineEntry({
+            taskId: task.id,
+            content: `🛠️ Apertura de incidencia: ${description || 'Sin más detalles'}`,
+            entryType: 'comentario',
+            images: imagesUrls
+        })
+    }
+    // 6. Revalidaciones
     revalidatePath('/maintenance')
     if (propertyId) revalidatePath(`/properties/${propertyId}/maintenance`)
     revalidatePath(`/maintenance/task/${task.id}`)

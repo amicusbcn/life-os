@@ -12,17 +12,18 @@ import { Loader2, Wrench, Camera, X, FileText } from 'lucide-react';
 import { uploadFile } from '@/utils/uploads';
 import { createMaintenanceTask } from '../actions';
 import { ProgressiveLocationSelector } from '../../inventory/components/ProgressiveLocationSelector';
-import { InventoryItem, InventoryLocation, Profile } from '@/types/inventory';
-import { Property } from '@/types/properties';
+import { InventoryItemBase, InventoryLocation, Profile } from '@/types/inventory';
+import { PropertyBase } from '@/types/properties';
+import { Switch } from '@/components/ui/switch';
 
 interface Props {
     propertyId?: string;      
-    properties?: Property[];  
+    properties?: PropertyBase[];  
     userId?: string;           
     initialItemId?: string;
     initialItemName?: string;
     locations: any[]; // Array híbrido con flag is_personal
-    inventoryItems: InventoryItem[];
+    inventoryItems: InventoryItemBase[];
     users?: Profile[];
     onSuccess?: () => void;
 }
@@ -44,6 +45,7 @@ export function MaintenanceForm({
     const [selectedItemId, setSelectedItemId] = useState(initialItemId || "");
 
     const isPersonal = contextId === 'personal';
+    const [isRecurring, setIsRecurring] = useState(false);
 
     // --- 2. FILTRADO PARA EL PROGRESSIVE SELECTOR Y LOS ITEMS ---
     
@@ -115,7 +117,7 @@ export function MaintenanceForm({
     const handleSubmit = async (formData: FormData) => {
         const finalItemId = initialItemId || selectedItemId || ""; // Forzamos "" si no hay nada
         const finalContextId = contextId || fixedPropertyId || ""; // Forzamos "" si no hay nada
-        
+
         if (!finalContextId && !finalItemId) {
             toast.error("Faltan datos del objeto o propiedad");
             return;
@@ -132,6 +134,10 @@ export function MaintenanceForm({
             for (const file of selectedFiles) {
                 const url = await uploadFile(file, { bucket: 'maintenance', folder: 'tasks' });
                 uploadedUrls.push(url);
+            }
+            const recurring = formData.get('is_recurring') === 'true';
+            if (recurring) {
+                formData.set('type', 'preventivo');
             }
             if (finalItemId && finalItemId !== "none") {
                 formData.append('itemId', finalItemId);
@@ -170,68 +176,66 @@ export function MaintenanceForm({
         <form action={handleSubmit} className="space-y-6 px-4">
             {/* --- BLOQUE DE SELECCIÓN CONTINUA (CONTEXTO > UBICACIÓN > ITEM) --- */}
             {!initialItemId ? (
-                <div className="space-y-5 bg-slate-50 p-5 rounded-3xl border border-slate-100 shadow-sm">
-                    
-                    {/* 1. CONTEXTO */}
-                    {!fixedPropertyId && (
-                        <div className="space-y-2">
-                            <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">1. Ámbito</Label>
-                            <Select value={contextId} onValueChange={(v) => { setContextId(v); setLocationId(""); setSelectedItemId(""); }}>
-                                <SelectTrigger className="bg-white rounded-2xl h-12 border-slate-200">
-                                    <SelectValue placeholder="¿Propiedad o Personal?" />
+                <div className="bg-slate-50 p-4 mt-12 rounded-3xl border border-slate-100 shadow-sm space-y-3">
+                    <div className="grid grid-cols-3 gap-3">
+                        
+                        {/* 1. ÁMBITO */}
+                        <div className="space-y-1.5">
+                            <Label className="text-[9px] font-black text-slate-400 uppercase tracking-tighter ml-1">1. Ámbito</Label>
+                            {!fixedPropertyId ? (
+                                <Select value={contextId} onValueChange={(v) => { setContextId(v); setLocationId(""); setSelectedItemId(""); }}>
+                                    <SelectTrigger className="bg-white rounded-xl h-10 border-slate-200 text-xs shadow-sm py-6 w-full">
+                                        <SelectValue placeholder="¿Dónde?" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="personal">👤 Personal</SelectItem>
+                                        {properties?.map(p => (
+                                            <SelectItem key={p.id} value={p.id}>🏢 {p.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <div className="h-10 flex items-center px-3 bg-slate-100 rounded-xl text-[10px] font-bold text-slate-500 border border-slate-200">
+                                    ID PROPIEDAD
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 2. UBICACIÓN */}
+                        <div className={`space-y-1.5 transition-all ${!contextId ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
+                            <Label className="text-[9px] font-black text-slate-400 uppercase tracking-tighter ml-1">2. Estancia</Label>
+                            <ProgressiveLocationSelector 
+                                locations={filteredLocations} 
+                                value={locationId}
+                                compact={true} // Podrías añadir esta prop a tu selector para reducir su altura
+                                onChange={(val:any) => {
+                                    setLocationId(val);
+                                    setSelectedItemId("");
+                                }}
+                            />
+                        </div>
+
+                        {/* 3. OBJETO */}
+                        <div className={`space-y-1.5 transition-all ${!contextId ? 'opacity-30 pointer-events-none' : ''}`}>
+                            <Label className="text-[9px] font-black text-slate-400 uppercase tracking-tighter ml-1">3. Objeto</Label>
+                            <Select value={selectedItemId} onValueChange={setSelectedItemId} disabled={availableItems.length === 0}>
+                                <SelectTrigger className={`bg-white py-6 w-full rounded-xl h-10 border-slate-200 text-xs shadow-sm ${
+                                    locationId && availableItems.length > 0 ? 'ring-2 ring-blue-50 border-blue-200' : ''
+                                }`}>
+                                    <SelectValue placeholder="Objeto..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="personal" className="font-bold text-blue-600">👤 Mi Inventario Personal</SelectItem>
-                                    {properties?.map(p => (
-                                        <SelectItem key={p.id} value={p.id}>🏢 {p.name}</SelectItem>
-                                    ))}
+                                    {!isPersonal && <SelectItem value="none">General</SelectItem>}
+                                    {availableItems.length > 0 ? (
+                                        availableItems.map(item => (
+                                            <SelectItem key={item.id} value={item.id} className="text-xs">{item.name}</SelectItem>
+                                        ))
+                                    ) : (
+                                        <SelectItem value="none" disabled className="text-xs">Vacío</SelectItem>
+                                    )}
                                 </SelectContent>
                             </Select>
                         </div>
-                    )}
-
-                    {/* 2. UBICACIÓN (Usando el ProgressiveSelector) */}
-                    <div className={`space-y-2 transition-all duration-300 ${!contextId ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
-                        <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                            2. {isPersonal ? "Filtrar por Estancia (Opcional)" : "Ubicación / Estancia"}
-                        </Label>
-                        <ProgressiveLocationSelector 
-                            locations={filteredLocations} 
-                            value={locationId}
-                            onChange={(val:any) => {
-                                console.log("Nueva ubicación seleccionada:", val); // Comprueba que este ID es el que esperas
-                                setLocationId(val);
-                                setSelectedItemId(""); // Limpiar item al cambiar sitio
-                            }}
-                        />
-                    </div>
-
-                    {/* 3. ITEM (Filtrado por lo anterior) */}
-                    <div className={`space-y-2 transition-all duration-300 ${!contextId ? 'opacity-30 pointer-events-none' : ''}`}>
-                        <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                            3. Objeto Afectado {isPersonal ? '*' : '(Opcional)'}
-                        </Label>
-                        <Select value={selectedItemId} onValueChange={setSelectedItemId}>
-                            <SelectTrigger className={`bg-white rounded-2xl h-12 border-slate-200 transition-all ${
-                                locationId && availableItems.length > 0 ? 'ring-2 ring-blue-100 border-blue-300' : ''
-                            }`}>
-                                <SelectValue placeholder={
-                                    locationId 
-                                    ? `Objetos en esta estancia (${availableItems.length})...` 
-                                    : "Busca un objeto..."
-                                } />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {!isPersonal && <SelectItem value="none">General / Ninguno</SelectItem>}
-                                {availableItems.length > 0 ? (
-                                    availableItems.map(item => (
-                                        <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                                    ))
-                                ) : (
-                                    <SelectItem value="none" disabled>No hay objetos en esta ubicación</SelectItem>
-                                )}
-                            </SelectContent>
-                        </Select>
                     </div>
                 </div>
             ): (
@@ -286,7 +290,48 @@ export function MaintenanceForm({
                     <Textarea name="description" placeholder="Detalles adicionales sobre el problema..." className="min-h-[100px] rounded-2xl bg-white resize-none" />
                 </div>
             </div>
+            {/* --- RECURRENCIA --- */}
+            <div className={`p-5 rounded-3xl border transition-all duration-300 ${isRecurring ? 'bg-orange-50 border-orange-200' : 'bg-slate-50 border-slate-100'}`}>
+                <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                        <Label className="text-[11px] font-bold text-slate-700 uppercase tracking-tight">Mantenimiento Periódico</Label>
+                        <p className="text-[10px] text-slate-500 italic">¿Quieres programar esta tarea de forma recurrente?</p>
+                    </div>
+                    <Switch 
+                        checked={isRecurring} 
+                        onCheckedChange={setIsRecurring} 
+                    />
+                    {/* Input oculto para el FormData */}
+                    <input type="hidden" name="is_recurring" value={String(isRecurring)} />
+                </div>
 
+                {isRecurring && (
+                    <div className="grid grid-cols-2 gap-4 mt-5 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase text-orange-600 ml-1">Frecuencia</Label>
+                            <div className="relative">
+                                <Input 
+                                    name="frequency_months" 
+                                    type="number" 
+                                    min="1"
+                                    defaultValue={6}
+                                    className="rounded-2xl h-12 bg-white border-orange-200 pl-4 pr-12 focus-visible:ring-orange-500"
+                                />
+                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-orange-400">MESES</span>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase text-orange-600 ml-1">Siguiente fecha</Label>
+                            <Input 
+                                name="next_occurrence" 
+                                type="date" 
+                                defaultValue={new Date().toISOString().split('T')[0]}
+                                className="rounded-2xl h-12 bg-white border-orange-200 focus-visible:ring-orange-500"
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
             {/* --- MULTIMEDIA --- */}
             <div className="space-y-3 px-1">
                 <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Evidencias (Fotos / PDF)</Label>
