@@ -79,30 +79,7 @@ export async function middleware(request: NextRequest) {
 
   const appMode = process.env.NEXT_PUBLIC_APP_MODE || 'full_suite'
 
-  // MODO FAMILIA
-  if (user && appMode === 'family_finance_only') {
-    const allowedPrefixes = [
-      '/finance-shared',
-      '/account',
-      '/api',
-    ]
-
-    const isAllowed = allowedPrefixes.some(prefix => path.startsWith(prefix))
-
-    if (path === '/') {
-      const url = request.nextUrl.clone()
-      url.pathname = '/finance-shared'
-      return NextResponse.redirect(url)
-    }
-
-    if (!isAllowed) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/finance-shared'
-      return NextResponse.redirect(url)
-    }
-  }
-
-  return response
+    return response
 }
 
 export const config = {
