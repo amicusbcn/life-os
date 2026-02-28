@@ -8,7 +8,7 @@ export async function createMaintenanceTask(formData: FormData) {
     const supabase = await createClient()
     const { data: userData } = await supabase.auth.getUser()
     if (!userData.user) return { success: false, error: "No autorizado" }
-
+    
     // 1. Extraer metadatos básicos
     const title = formData.get('title') as string
     const description = formData.get('description') as string

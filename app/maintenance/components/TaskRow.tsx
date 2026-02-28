@@ -92,11 +92,11 @@ export function TaskRow({ task, TypeIcon, property, locationInfo,statusIcon }: a
             <td className="px-6 py-4 relative z-0 text-center">
                 <div className="flex items-center gap-2 justify-center">
                     <div className="h-7 w-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] font-black border-2 border-white shadow-sm">
-                        {task.assigned_member?.full_name?.charAt(0) || '-'}
+                        {task.assigned_member?.name?.charAt(0) || '-'}
                     </div>
                 </div>
                 <span className="text-[11px] font-bold text-slate-600 truncate text-center">
-                    {task.assigned_member?.full_name?.split(' ')[0] || 'S/A'}
+                    {task.assigned_member?.name?.split(' ')[0] || 'S/A'}
                 </span>
             </td>
         </tr>

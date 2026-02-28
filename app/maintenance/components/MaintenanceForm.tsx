@@ -114,51 +114,66 @@ export function MaintenanceForm({
         setPreviews(prev => prev.filter((_, i) => i !== index));
     };
 
-    const handleSubmit = async (formData: FormData) => {
-        const finalItemId = initialItemId || selectedItemId || ""; // Forzamos "" si no hay nada
-        const finalContextId = contextId || fixedPropertyId || ""; // Forzamos "" si no hay nada
-
-        if (!finalContextId && !finalItemId) {
-            toast.error("Faltan datos del objeto o propiedad");
-            return;
-        }
+    // Cambiamos a recibir el evento para usar preventDefault
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
         
-        if (isPersonal && (!finalItemId || finalItemId === "none")) {
+        const formData = new FormData(e.currentTarget);
+        const finalItemId = initialItemId || selectedItemId || "";
+        const finalContextId = contextId || fixedPropertyId || "";
+
+        // --- VALIDACIONES PREVIAS (No borran el formulario) ---
+        
+        // Regla 1: En Personal, el objeto es obligatorio
+        if (isPersonal && (!finalItemId || finalItemId === "none" || finalItemId === "")) {
             toast.error("En tu inventario personal es obligatorio seleccionar el objeto.");
+            return; // Aquí nos detenemos y los datos del usuario siguen en los campos
+        }
+
+        // Regla 2: Datos mínimos
+        if (!finalContextId && !finalItemId) {
+            toast.error("Faltan datos de la propiedad o el objeto");
             return;
         }
 
         setLoading(true);
         try {
+            // 1. Subida de archivos
             const uploadedUrls: string[] = [];
             for (const file of selectedFiles) {
                 const url = await uploadFile(file, { bucket: 'maintenance', folder: 'tasks' });
                 uploadedUrls.push(url);
             }
+            formData.append('images', JSON.stringify(uploadedUrls));
+
+            // 2. Lógica de tipo (Preventivo si es recurrente)
             const recurring = formData.get('is_recurring') === 'true';
-            if (recurring) {
-                formData.set('type', 'preventivo');
-            }
+            if (recurring) formData.set('type', 'preventivo');
+
+            // 3. ASIGNACIÓN LÓGICA (Reglas de negocio)
+            
+            // Limpiamos basura de campos que puedan venir en el FormData
+            formData.delete('propertyId');
+            formData.delete('itemId');
+            formData.delete('location_id');
+            formData.append('is_personal', String(isPersonal));
+            
             if (finalItemId && finalItemId !== "none") {
+                // CASO A: Hay un ítem. La tarea se vincula al ítem.
                 formData.append('itemId', finalItemId);
                 formData.append('propertyId', isPersonal ? "" : finalContextId);
-                // Limpiamos explícitamente las ubicaciones para que no haya conflictos
-                formData.append('property_location_id', "");
-                formData.append('inventory_location_id', "");
-            }
+                // No enviamos localización porque, como dices, ya va con el ítem.
+            } 
             else if (locationId && locationId !== "none") {
-                formData.append('itemId', "");
+                // CASO B: No hay ítem, pero sí localización (Solo propiedades)
                 formData.append('propertyId', finalContextId);
-                if (isPersonal) {
-                    formData.append('inventory_location_id', locationId);
-                } else {
-                    formData.append('property_location_id', locationId);
-                }
+                formData.append('itemId', "");
+                formData.append('locationId', locationId);
             }
-            
-            formData.append('images', JSON.stringify(uploadedUrls)); 
-
+            console.log ("FormData entries:", Array.from(formData.entries())); // Debug para ver qué se envía al servidor
+            // 4. ENVÍO AL SERVIDOR
             const response = await createMaintenanceTask(formData);
+            
             if (response.success) {
                 toast.success("Incidencia registrada correctamente");
                 if (onSuccess) onSuccess();
@@ -166,17 +181,17 @@ export function MaintenanceForm({
                 toast.error(response.error || "Error al guardar");
             }
         } catch (error: any) {
-            toast.error(error.message);
+            toast.error("Error crítico: " + error.message);
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <form action={handleSubmit} className="space-y-6 px-4">
+        <form onSubmit={handleSubmit} className="space-y-6 px-4">
             {/* --- BLOQUE DE SELECCIÓN CONTINUA (CONTEXTO > UBICACIÓN > ITEM) --- */}
             {!initialItemId ? (
-                <div className="bg-slate-50 p-4 mt-12 rounded-3xl border border-slate-100 shadow-sm space-y-3">
+                <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 shadow-sm space-y-3">
                     <div className="grid grid-cols-3 gap-3">
                         
                         {/* 1. ÁMBITO */}

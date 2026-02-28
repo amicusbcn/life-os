@@ -362,8 +362,8 @@ export function MaintenanceClientView({ initialTasks, profile, accessibleModules
                 )}
                 <Sheet open={isNewTaskOpen} onOpenChange={setIsNewTaskOpen}>
                     <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
-                        <SheetHeader className="pb-6">
-                            <SheetTitle className="text-2xl font-black italic uppercase tracking-tighter">Nueva Incidencia</SheetTitle>
+                        <SheetHeader>
+                            <SheetTitle className="text-2xl font-black italic uppercase tracking-tighter">Nueva Incidencia d</SheetTitle>
                         </SheetHeader>
                         <MaintenanceForm 
                             properties={properties} 

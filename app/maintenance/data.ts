@@ -127,11 +127,7 @@ export async function getTaskWithTimeline(taskId: string) {
         properties (id, name, slug),
         inventory_items (id, name),
         category:maintenance_categories (id, name, icon, color),
-        assigned_member:property_members!maintenance_tasks_assigned_to_fkey (
-            id, 
-            name, 
-            user_id
-        ),
+        assigned_member:property_members!maintenance_tasks_assigned_to_fkey (id, name, user_id),
         created_by_profile:profiles!maintenance_tasks_created_by_fkey (full_name)
     `)
         .eq('id', taskId)
@@ -176,4 +172,45 @@ export async function getMaintenanceCategories() {
   }
 
   return data || [];
+}
+
+export async function getCalendarActions() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("No autorizado");
+
+    // 1. Obtenemos las propiedades donde el usuario es miembro
+    const { data: memberships } = await supabase
+        .from('property_members')
+        .select('property_id')
+        .eq('profile_id', user.id);
+
+    const propertyIds = memberships?.map(m => m.property_id) || [];
+
+    // 2. Traemos los logs de tipo 'actividad'
+    // Filtramos: (que pertenezcan a mis propiedades) O (que sean tareas personales mías)
+    const { data: logs, error } = await supabase
+        .from('maintenance_logs')
+        .select(`
+            *,
+            task:maintenance_tasks!inner (
+                id,
+                title,
+                property_id,
+                item_id,
+                type,
+                priority
+            )
+        `)
+        .eq('entry_type', 'actividad')
+        .or(`task.property_id.in.(${propertyIds.join(',')}),task.created_by.eq.${user.id}`)
+        .order('activity_date', { ascending: true });
+
+    if (error) throw error;
+
+    // 3. Mapeamos is_completed como acordamos
+    return logs.map(log => ({
+        ...log,
+        is_completed: log.activity_status === 'realizada'
+    }));
 }
