@@ -1,32 +1,59 @@
 // app/maintenance/calendar/page.tsx
 import { getCalendarActions } from "../data";
-import { MaintenanceCalendar } from "../components/MaintenanceCalendar";
+import { CalendarView } from "../components/CalendarView"; // Nuevo componente de vista
+import { getUserData } from "@/utils/security";
 import { redirect } from "next/navigation";
-import { createClient } from "@/utils/supabase/server";
+import { CalendarEvent } from "@/types/calendar";
 
-export default async function CalendarPage() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) redirect("/login");
+interface PageProps {
+    searchParams: Promise<{ month?: string, year?: string }>;
+}
 
-    // Traemos las acciones (esta es la función que definimos antes)
-    const actions = await getCalendarActions();
+export default async function CalendarPage({ searchParams }: PageProps) {
+    // 1. Resolvemos params y seguridad con getUserData
+    const sParams = await searchParams;
+    const { 
+        profile, 
+        isAdminGlobal, 
+        modulePermission, 
+        accessibleModules 
+    } = await getUserData('maintenance');
 
-    return (
-        <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6">
-            <header>
-                <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">
-                    Calendario de Mantenimiento
-                </h1>
-                <p className="text-sm text-slate-500 font-medium">
-                    Planificación mensual de actividades y revisiones.
-                </p>
-            </header>
+    if (!profile) redirect("/login");
 
-            {/* Pasamos los datos al componente cliente. 
-                Usamos un array vacío como fallback para evitar el error de .filter() */}
-            <MaintenanceCalendar actions={actions || []} />
-        </div>
-    );
+    // 2. Parámetros de tiempo
+    const month = sParams.month ? parseInt(sParams.month) : new Date().getMonth();
+    const year = sParams.year ? parseInt(sParams.year) : new Date().getFullYear();
+
+    try {
+        // 3. Carga de datos de mantenimiento
+        const actions = await getCalendarActions(month, year);
+
+        // 4. Mapeo al contrato UnifiedCalendar
+        const calendarEvents: CalendarEvent[] = actions.map(log => ({
+            id: log.id,
+            date: new Date(log.activity_date),
+            title: log.task.title,
+            type: 'maintenance',
+            status: log.is_completed ? 'completed' : 'pending',
+            payload: { log, task: log.task }
+        }));
+
+        return (
+            <CalendarView 
+                events={calendarEvents}
+                profile={profile}
+                accessibleModules={accessibleModules}
+                isAdmin={isAdminGlobal || modulePermission === 'admin'}
+            />
+        );
+    } catch (e) {
+        console.error("Error en CalendarPage:", e);
+        // Podríamos redirigir o mostrar un estado de error
+        return (
+            <div className="p-x text-center">
+                <p className="text-slate-500 font-bold">Error al cargar el calendario.</p>
+            </div>
+        );
+    }
 }

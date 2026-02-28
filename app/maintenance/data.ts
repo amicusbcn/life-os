@@ -174,41 +174,50 @@ export async function getMaintenanceCategories() {
   return data || [];
 }
 
-export async function getCalendarActions() {
+
+
+export async function getCalendarActions(month: number, year: number) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("No autorizado");
 
-    // 1. Obtenemos las propiedades donde el usuario es miembro
+    // Calculamos el rango del mes
+    const startDate = new Date(year, month, 1).toISOString();
+    const endDate = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+
     const { data: memberships } = await supabase
         .from('property_members')
         .select('property_id')
-        .eq('profile_id', user.id);
+        .eq('user_id', user.id);
 
     const propertyIds = memberships?.map(m => m.property_id) || [];
+    
+    // Filtro de pertenencia (Task)
+    const taskConditions = [`created_by.eq.${user.id}`];
+    if (propertyIds.length > 0) {
+        taskConditions.push(`property_id.in.(${propertyIds.join(',')})`);
+    }
 
-    // 2. Traemos los logs de tipo 'actividad'
-    // Filtramos: (que pertenezcan a mis propiedades) O (que sean tareas personales mías)
     const { data: logs, error } = await supabase
         .from('maintenance_logs')
         .select(`
             *,
             task:maintenance_tasks!inner (
-                id,
-                title,
-                property_id,
-                item_id,
-                type,
-                priority
+                id, title, property_id, type, priority, created_by,
+                item_id, location_id,
+                property:properties (name),
+                item:inventory_items (name),
+                location:property_locations (name)
             )
         `)
         .eq('entry_type', 'actividad')
-        .or(`task.property_id.in.(${propertyIds.join(',')}),task.created_by.eq.${user.id}`)
+        .gte('activity_date', startDate) // Filtro de fecha inicio
+        .lte('activity_date', endDate)   // Filtro de fecha fin
+        .or(taskConditions.join(','), { foreignTable: 'task' })
         .order('activity_date', { ascending: true });
 
     if (error) throw error;
-
-    // 3. Mapeamos is_completed como acordamos
+    
     return logs.map(log => ({
         ...log,
         is_completed: log.activity_status === 'realizada'

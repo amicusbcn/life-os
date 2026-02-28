@@ -99,7 +99,7 @@ export function TaskDetailedInfo({ task, logs, canEdit, onEditClick }: { task: a
         if (log.images && Array.isArray(log.images)) return [...acc, ...log.images];
         return acc;
     }, []);
-    console.log("Variable task en TaskDetailedInfo:", task);
+    
     useEffect(() => {
         async function loadPath() {
             try {
