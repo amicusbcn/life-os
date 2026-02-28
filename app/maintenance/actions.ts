@@ -182,10 +182,12 @@ export async function updateTaskStatus({
  */
 export async function archiveTask({ 
     taskId, 
-    propertyId 
+    propertyId,
+    restore = false
 }: { 
     taskId: string, 
-    propertyId: string 
+    propertyId: string,
+    restore?: boolean // Si es true, desarchiva en lugar de archivar
 }) {
     const supabase = await createClient();
     
@@ -202,18 +204,18 @@ export async function archiveTask({
     const { error: taskError } = await supabase
         .from('maintenance_tasks')
         .update({ 
-            is_archived: true, 
+            is_archived: !restore, 
             archived_at: new Date().toISOString() 
         })
         .eq('id', taskId);
 
     if (taskError) throw taskError;
-
+    const content=restore? `ha desarchivado la incidencia al listado activo.` : `ha archivado la incidencia para limpiar el listado activo.`;;
     await supabase.from('maintenance_logs').insert({
         task_id: taskId,
         user_id: profile.id,
         entry_type: 'sistema',
-        content: `ha archivado la incidencia para limpiar el listado activo.`
+        content: content
     });
 
     revalidatePath(`/maintenance/task/${taskId}`);
@@ -283,28 +285,24 @@ export async function submitTimelineEntry({
 
 export async function updateTimelineEntry({ 
     logId, 
-    taskId, 
-    content, 
-    resultNotes,
-    images, 
+    taskId,
     propertyId,
-    activityDate,
-    assignedMemberId,
-    isCompleted // <--- Nuevo: Booleano opcional
+    ...fields
 }: { 
     logId: string, 
     taskId: string, 
+    propertyId: string,
     content: string, 
     resultNotes: string | null,
     images: string[], 
-    propertyId: string,
     activityDate?: Date | null,
     assignedMemberId?: string | null,
-    isCompleted?: boolean // <--- Nuevo
+    activityStatus?: "programada" | "realizada" | "cancelada",
+    nextIterationDate?: Date | null 
 }) {
     const supabase = await createClient();
     
-    // 1. Validamos seguridad (Agnóstica)
+    // 1. Validamos seguridad
     const { profile, canEdit } = await getUserData('maintenance', {
         table: 'property_members',
         column: 'property_id',
@@ -314,7 +312,7 @@ export async function updateTimelineEntry({
     // 2. Comprobamos autoría
     const { data: existingLog } = await supabase
         .from('maintenance_logs')
-        .select('user_id')
+        .select('content, user_id')
         .eq('id', logId)
         .single();
 
@@ -326,18 +324,20 @@ export async function updateTimelineEntry({
 
     // 3. Preparamos el objeto de actualización
     const updateData: any = {
-        content,
-        result_notes: resultNotes,
-        images,
-        activity_date: activityDate ? new Date(activityDate).toISOString() : null,
-        assigned_to: assignedMemberId || null,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
     };
-
-    // Si nos pasan isCompleted: true, marcamos la fecha de finalización
-    if (isCompleted) {
-        updateData.is_completed = true;
-        updateData.completed_at = new Date().toISOString();
+    if (fields.content !== undefined) updateData.content = fields.content;
+    if (fields.resultNotes !== undefined) updateData.result_notes = fields.resultNotes;
+    if (fields.images !== undefined) updateData.images = fields.images;
+    if (fields.activityDate !== undefined) {
+        updateData.activity_date = fields.activityDate ? fields.activityDate.toISOString() : null;
+    }
+    if (fields.assignedMemberId !== undefined) updateData.assigned_to = fields.assignedMemberId;
+    if (fields.activityStatus !== undefined) {
+        updateData.activity_status = fields.activityStatus;
+        if (fields.activityStatus === 'realizada') {
+            updateData.completed_at = new Date().toISOString();
+        }
     }
 
     // 4. Ejecutamos el update
@@ -347,6 +347,24 @@ export async function updateTimelineEntry({
         .eq('id', logId);
 
     if (error) throw error;
+
+    // 4. Lógica de "Auto-spawn" para tareas recurrentes
+    // Solo si estamos cerrando (realizada) y nos han pasado una fecha de iteración
+    if (fields.activityStatus === 'realizada' && fields.nextIterationDate) {
+        const { error: spawnError } = await supabase
+            .from('maintenance_logs')
+            .insert([{
+                task_id: taskId,
+                content: fields.content || existingLog?.content || "Siguiente iteración",
+                activity_date: fields.nextIterationDate.toISOString(),
+                activity_status: 'programada',
+                entry_type: 'actividad',
+                parent_log_id: logId, // Enlazamos con la anterior
+                user_id: profile.id
+            }]);
+        
+        if (spawnError) console.error("Error creando iteración:", spawnError);
+    }
 
     revalidatePath(`/maintenance/task/${taskId}`);
 }

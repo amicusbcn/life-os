@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
-import { Archive, Edit3, UserPlus, MessageSquare, Zap, CheckCircle2, RotateCcw } from "lucide-react";
+import { Archive, Edit3, UserPlus, MessageSquare, Zap, CheckCircle2, RotateCcw, ArchiveRestore } from "lucide-react";
 import { ActionWrapper } from './TimelineActions/ActionWrapper';
 import { AssignAction } from './TimelineActions/AssignAction';
 import { RejectAction } from './TimelineActions/RejectAction';
@@ -96,7 +96,7 @@ export function TimelineContextActions({ task, isAdmin, isResponsable, members, 
       </div>
     );
   }
-if (task.status === 'cerrada') {
+  if (task.status === 'cerrada' && !task.is_archived) {
     return (
       <div className="flex flex-wrap gap-2 animate-in fade-in">
         {isAdmin && (
@@ -110,12 +110,23 @@ if (task.status === 'cerrada') {
       </div>
     )
   }
-
+  
+  if (task.is_archived) {
+    return (
+      <div className="flex flex-wrap gap-2 animate-in fade-in">
+        {isAdmin && (
+           <Button onClick={() => setActiveForm('unArchive')} variant="outline" size="sm" className="rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50 gap-2">
+             <ArchiveRestore className="h-3.5 w-3.5" /> Desarchivar
+           </Button>
+        )}
+      </div>
+    )
+  }
   return null;
 };
 
   return (
-    <div className="relative ml-14 mt-8 pb-20">
+    <div className="relative group transition-all left-13 top-2 w-[95%]">
       <div className="absolute -left-9 top-4 h-2 w-2 rounded-full bg-blue-500 ring-4 ring-white shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
       
       <div className="space-y-4">
@@ -170,6 +181,26 @@ if (task.status === 'cerrada') {
                       size="sm"
                     >
                       Confirmar Archivo
+                    </Button>
+                  </div>
+                </div>
+              </ActionWrapper>
+            )}
+            {activeForm === 'unArchive' && (
+              <ActionWrapper title="Desarchivar una tarea" onClose={() => setActiveForm(null)}>
+                <div className="p-4 space-y-4">
+                  <p className="text-sm text-slate-500">¿Estás seguro de que quieres desarchivar esta tarea? Aparecerá de nuevo en el listado activo.</p>
+                  <div className="flex justify-end gap-2">
+                    <Button onClick={() => setActiveForm(null)} variant="ghost" size="sm">Cancelar</Button>
+                    <Button 
+                      onClick={async () => {
+                        await archiveTask({ taskId: task.id, propertyId: task.property_id,restore:true });
+                        setActiveForm(null);
+                      }} 
+                      className="bg-slate-800 text-white" 
+                      size="sm"
+                    >
+                      Desarchivar
                     </Button>
                   </div>
                 </div>

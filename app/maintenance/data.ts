@@ -126,6 +126,7 @@ export async function getTaskWithTimeline(taskId: string) {
         *,
         properties (id, name, slug),
         inventory_items (id, name),
+        category:maintenance_categories (id, name, icon, color),
         assigned_member:property_members!maintenance_tasks_assigned_to_fkey (
             id, 
             name, 
@@ -139,7 +140,7 @@ export async function getTaskWithTimeline(taskId: string) {
     if (taskError) throw taskError;
 
     // Traemos el timeline (comentarios + actividades)
-    const { data: timeline, error: timelineError } = await supabase
+    const { data: rawTimeline, error: timelineError } = await supabase
         .from('maintenance_logs')
         .select(`
             *,
@@ -153,9 +154,14 @@ export async function getTaskWithTimeline(taskId: string) {
         .order('created_at', { ascending: true }); // Cronológico
 
     if (timelineError) throw timelineError;
-
+    const timeline = rawTimeline?.map(log => ({
+        ...log,
+        // Aquí es donde sucede la "magia" para no romper el resto de la app
+        is_completed: log.activity_status === 'realizada'
+    })) || [];
     return { task, timeline };
 }
+
 export async function getMaintenanceCategories() {
   const supabase = await createClient();
   

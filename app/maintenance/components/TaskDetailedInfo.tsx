@@ -1,48 +1,74 @@
+// app/maintenance/components/TaskDetailedInfo.tsx
 'use client';
 
-import React, { useEffect ,useState} from 'react';
-import { User, FileText, MapPin, Box, Calendar, Clock, ShieldAlert, Edit3, Home, User2, Activity } from "lucide-react";
+import React, { useEffect, useState } from 'react';
+import { 
+    User, MapPin, Box, Calendar, Clock, ShieldAlert, Edit3, Home, User2, Activity,
+    TriangleAlert, CirclePlay, SquarePause, CircleCheck, OctagonX, 
+    BarChart3, Layers, Tag, ShieldCheck,
+    FileText,
+    RefreshCw,
+    Siren,
+    Zap,
+    Wrench
+} from "lucide-react";
 import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { getTaskLocationPath } from '@/utils/location-utils';
+import LoadIcon from '@/utils/LoadIcon';
+import { cn } from '@/lib/utils';
 
-// --- FUNCIONES AUXILIARES ---
-const getPriorityLabel = (priority: number) => {
+// --- CONFIGURACIÓN DE ESTADOS (Unificada con el Header) ---
+const statusConfig: Record<string, any> = {
+    'pendiente': { icon: <TriangleAlert size={16} />, bgColor: 'bg-amber-500', text: 'Pendiente', lightColor: 'bg-amber-50 border-amber-100 text-amber-700' },
+    'en_proceso': { icon: <CirclePlay size={16} />, bgColor: 'bg-blue-500', text: 'En proceso', lightColor: 'bg-blue-50 border-blue-100 text-blue-700' }, 
+    'bloqueado': { icon: <SquarePause size={16} />, bgColor: 'bg-slate-500', text: 'Bloqueado', lightColor: 'bg-slate-50 border-slate-200 text-slate-700' }, 
+    'completada': { icon: <CircleCheck size={16} />, bgColor: 'bg-green-500', text: 'Completada', lightColor: 'bg-green-50 border-green-100 text-green-700' }, 
+    'cancelada': { icon: <OctagonX size={16} />, bgColor: 'bg-red-500', text: 'Cancelada', lightColor: 'bg-red-50 border-red-100 text-red-700' }
+};
+
+const getPriorityInfo = (priority: number) => {
     switch (priority) {
-        case 1: return 'Baja';
-        case 2: return 'Normal';
-        case 3: return 'Alta';
-        case 4: return 'Urgente';
-        default: return 'Normal';
+        case 1: return { label: 'Baja', color: 'slate', icon: <BarChart3 size={14} /> };
+        case 2: return { label: 'Normal', color: 'blue', icon: <Activity size={14} /> };
+        case 3: return { label: 'Alta', color: 'orange', icon: <TriangleAlert size={14} /> };
+        case 4: return { label: 'Urgente', color: 'red', icon: <Siren size={14} /> };
+        default: return { label: 'Normal', color: 'blue', icon: <Activity size={14} /> };
     }
 };
 
-const getPriorityColor = (priority: number) => {
-    switch (priority) {
-        case 1: return 'bg-slate-100 text-slate-600 border-slate-200';
-        case 2: return 'bg-blue-50 text-blue-600 border-blue-100';
-        case 3: return 'bg-orange-50 text-orange-600 border-orange-100';
-        case 4: return 'bg-red-50 text-red-600 border-red-100';
-        default: return 'bg-blue-50 text-blue-600 border-blue-100';
+const getTypeConfig = (type: string) => {
+    const t = type?.toLowerCase();
+    switch (t) {
+        case 'preventivo':
+            return { label: 'Preventivo', color: 'purple', icon: <RefreshCw size={14} /> };
+        case 'mejora':
+            return { label: 'Mejora', color: 'blue', icon: <Zap size={14} className="fill-blue-500/20" /> };
+        case 'averia':
+        default:
+            return { label: 'Avería', color: 'slate', icon: <Wrench size={14} /> };
     }
 };
+// --- SUBCOMPONENTES ---
 
-// --- SUBCOMPONENTES AUXILIARES ---
-
-function InfoCard({ label, value, color }: { label: string, value: string, color: 'red' | 'blue' | 'slate' | 'orange' }) {
-    const colors = {
+function InfoCard({ label, value, color, icon }: { label: string, value: string, color: string, icon: React.ReactNode }) {
+    const colors: Record<string, string> = {
         red: 'bg-red-50 text-red-700 border-red-100',
         blue: 'bg-blue-50 text-blue-700 border-blue-100',
         slate: 'bg-slate-50 text-slate-700 border-slate-200',
         orange: 'bg-orange-50 text-orange-700 border-orange-100',
+        purple: 'bg-purple-50 text-purple-700 border-purple-100',
     };
 
     return (
-        <div className={`p-3 rounded-xl border ${colors[color]} flex flex-col gap-0.5`}>
-            <span className="text-[9px] font-black uppercase tracking-wider opacity-70">{label}</span>
-            <span className="text-xs font-bold truncate">{value}</span>
+        <div className={cn("p-3 rounded-xl border flex flex-col gap-1", colors[color] || colors.slate)}>
+            <span className="text-[9px] font-black uppercase tracking-widest opacity-60 leading-none">
+                {label}
+            </span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="opacity-80 shrink-0">{icon}</span>
+                <span className="text-xs font-bold truncate leading-none">{value}</span>
+            </div>
         </div>
     );
 }
@@ -63,108 +89,107 @@ function MetaItem({ icon, label, value }: { icon: React.ReactNode, label: string
 
 // --- COMPONENTE PRINCIPAL ---
 
-export function TaskDetailedInfo({ 
-    task, 
-    logs, 
-    canEdit,
-    onEditClick // <--- Nueva prop para abrir el Sheet
-}: { 
-    task: any, 
-    logs: any[],
-    canEdit: boolean, 
-    onEditClick?: () => void 
-}) {    
+export function TaskDetailedInfo({ task, logs, canEdit, onEditClick }: { task: any, logs: any[], canEdit: boolean, onEditClick?: () => void }) {    
     const [fullPath, setFullPath] = useState<string>("Cargando ubicación...");
-    
-    // Extraemos todas las fotos de todos los logs
+    const currentStatus = statusConfig[task.status] || statusConfig['pendiente'];
+    const priority = getPriorityInfo(task.priority);
+    const type = getTypeConfig(task.type);
+    const hasInsurance = task.insurance_status && task.insurance_status !== 'no';
     const allPhotos = logs.reduce((acc: string[], log) => {
-        if (log.images && Array.isArray(log.images)) {
-            return [...acc, ...log.images];
-        }
+        if (log.images && Array.isArray(log.images)) return [...acc, ...log.images];
         return acc;
     }, []);
+
     useEffect(() => {
         async function loadPath() {
             try {
                 const path = await getTaskLocationPath(task);
                 setFullPath(path);
-            } catch (error) {
-                console.error("Error cargando el path:", error);
-                setFullPath("Error al cargar ubicación");
-            }
+            } catch (e) { setFullPath("Error al cargar ubicación"); }
         }
         loadPath();
     }, [task]);
 
-    return (<div className="space-y-6">
-            {/* 1. CABECERA DE ESTADO Y BOTÓN EDITAR */}
-            <div className="flex items-center justify-between gap-4">
-                <div className="flex-1 p-3 bg-white rounded-2xl border-2 border-blue-100 shadow-sm ring-4 ring-blue-50/30 flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white shrink-0">
-                        <Activity size={16} />
+    return (
+        <div className="space-y-6 pb-8 ">
+            {/* 1. CABECERA DE ESTADO UNIFICADA */}
+            <div className="flex items-center justify-between gap-3">
+                <div className={cn("flex-1 p-3 rounded-2xl border-2 shadow-sm flex items-center gap-3 transition-colors", currentStatus.lightColor)}>
+                    <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-white shrink-0 shadow-md", currentStatus.bgColor)}>
+                        {currentStatus.icon}
                     </div>
                     <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Estado Actual</p>
-                        <p className="text-sm font-black text-blue-700 uppercase italic tracking-wider">
-                            {task.status || 'Pendiente'}
+                        <p className="text-[9px] font-black uppercase leading-none mb-1 opacity-70">Estado Actual</p>
+                        <p className="text-sm font-black uppercase italic tracking-wider leading-none">
+                            {currentStatus.text}
                         </p>
                     </div>
                 </div>
                 
-                    {canEdit && (
-                        <Button 
-                            onClick={onEditClick}
-                            variant="outline" 
-                            size="icon" 
-                            className="h-12 w-12 rounded-2xl border-slate-200 hover:bg-blue-50 hover:text-blue-600 transition-all shrink-0 shadow-sm"
-                        >
-                            <Edit3 size={20} />
-                        </Button>
-                    )}
+                {canEdit && (
+                    <Button onClick={onEditClick} variant="outline" size="icon" className="h-12 w-12 rounded-2xl border-slate-200 hover:bg-slate-50 shrink-0 shadow-sm">
+                        <Edit3 size={20} />
+                    </Button>
+                )}
             </div>
 
             {/* 2. DESCRIPCIÓN */}
-            <section className="bg-slate-50/80 p-4 rounded-2xl border border-slate-100">
+            <section className="bg-slate-50/80 p-4 rounded-2xl border border-slate-100 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-2 opacity-10"><FileText size={40} /></div>
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Descripción original</h3>
-                <p className="text-sm text-slate-600 leading-relaxed italic">
+                <p className="text-sm text-slate-600 leading-relaxed italic relative z-10">
                     "{task.description || 'Sin descripción detallada.'}"
                 </p>
             </section>
 
-            {/* 3. CLASIFICACIÓN RÁPIDA */}
+            {/* 3. CLASIFICACIÓN RÁPIDA CON ICONOS */}
             <div className="grid grid-cols-2 gap-2">
-                <InfoCard label="Prioridad" value={getPriorityLabel(task.priority)} color={task.priority > 2 ? 'red' : 'blue'} />
-                <InfoCard label="Tipo" value={task.type || 'Avería'} color="slate" />
-                <InfoCard label="Categoría" value={task.category?.name || 'General'} color="slate" />
-                <InfoCard label="Seguro" value={task.insurance_status ? 'Reclamado' : 'No reclamado'} color={task.insurance_status ? 'orange' : 'slate'} />
+                <InfoCard 
+                    label="Prioridad" 
+                    value={priority.label} 
+                    color={priority.color as any} 
+                    icon={priority.icon} 
+                />
+                <InfoCard 
+                    label="Tipo" 
+                    value={type.label} 
+                    color={type.color as any} 
+                    icon={type.icon} 
+                />
+                <InfoCard 
+                    label="Categoría" 
+                    value={task.category?.name || 'General'} 
+                    color="slate" 
+                    icon={<LoadIcon name={task.category?.icon || 'Tag'} className="h-3 w-3" />}
+                />
+                <InfoCard 
+                    label="Seguro" 
+                    value={hasInsurance ? 'Reclamado' : 'No aplica'} 
+                    color={hasInsurance ? 'orange' : 'slate'} 
+                    icon={<ShieldCheck size={12} />}
+                />
             </div>
 
-            {/* 4. VINCULACIÓN Y CONTEXTO */}
+            {/* 4. LOCALIZACIÓN Y RESPONSABLE */}
             <section className="space-y-4 pt-2">
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Localización</h3>
-                <div className="space-y-3">
-                    {/* El contexto: ¿Propiedad o Personal? */}
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Detalles de asignación</h3>
+                <div className="bg-white rounded-2xl border border-slate-100 p-1 space-y-1 shadow-sm">
                     <MetaItem 
                         icon={task.is_personal ? <User2 size={14}/> : <Home size={14}/>} 
-                        label="Contexto" 
-                        value={task.is_personal ? 'Inventario Personal' : `Propiedad: ${task.properties?.name}`} 
+                        label="Entorno" 
+                        value={task.is_personal ? 'Inventario Personal' : task.properties?.name} 
                     />
-                    {/* La ubicación física */}
-                    <MetaItem 
-                        icon={<MapPin size={14}/>} 
-                        label="Ruta Completa" 
-                        value={fullPath} 
-                    />
+                    <MetaItem icon={<MapPin size={14}/>} label="Ubicación" value={fullPath} />
                     {task.inventory_items && (
-                        <MetaItem icon={<Box size={14}/>} label="Objeto" value={task.inventory_items.name} />
+                        <MetaItem icon={<Box size={14}/>} label="Elemento" value={task.inventory_items.name} />
                     )}
-                    <MetaItem icon={<User size={14}/>} label="Responsable" value={task.assigned_member?.name || 'Sin asignar'} />
+                    <MetaItem icon={<User size={14}/>} label="Asignado a" value={task.assigned_member?.name || 'Sin asignar'} />
                 </div>
             </section>
 
             {/* 5. SEGURO (Si aplica) */}
-            {task.insurance_status && (
-                <section className="p-4 bg-orange-50/50 border border-orange-100 rounded-2xl flex items-center gap-4">
+            {hasInsurance && (
+                <section className="p-4 bg-orange-50/50 border border-orange-100 rounded-2xl flex items-center gap-4 animate-in fade-in slide-in-from-right-2">
                     <div className="h-10 w-10 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center shrink-0">
                         <ShieldAlert size={20} />
                     </div>

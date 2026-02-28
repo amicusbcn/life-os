@@ -30,6 +30,7 @@ export interface MaintenanceTask {
   created_by_profile?: {
     full_name: string;
   };
+  is_archived?: boolean;
   insurance_status?: InsuranceStatus;
   insurance_ref?: string | null;
   category?: MaintenanceCategory;
@@ -56,8 +57,8 @@ export interface MaintenanceLog {
     activity_status?: ActivityStatus | null;
     assigned_to?: string | null;
     created_at: string;
-    // Relación para el perfil del que escribe
     profiles?: { full_name: string; avatar_url: string };
-    // Relación para el asignado a la actividad (ej. tu hermano)
+    is_completed: boolean;
+    image_url?: string | null;
     assigned_profile?: { full_name: string };
 }

@@ -26,20 +26,19 @@ export default async function TaskPage({ params }: PageProps) {
             modulePermission, 
             contextRole,    // <--- El rol en la propiedad (owner, member...)
             accessibleModules 
-        } = await getUserData('maintenance', {
-            table: 'property_members',
-            column: 'property_id',
-            id: task.property_id
-        });
+        } = await getUserData('maintenance',task.property_id ? {
+                table: 'property_members',
+                column: 'property_id',
+                id: task.property_id
+            } : undefined);
         const categories = await getMaintenanceCategories();
 
         // 3. Calculamos el permiso de edición (Nivel 4: Ítem)
         const isCreator = task.created_by === profile.id;
         const isResponsible = task.assigned_to === profile.id || task.assigned_member?.user_id === profile.id;
         const isHouseAdmin = contextRole === 'owner' || contextRole === 'admin';
-        
-        // Unimos todos los niveles: Global + Módulo + Contexto + Ítem
-        const canEdit = isAdminGlobal || modulePermission === 'admin' || isHouseAdmin || isCreator || isResponsible;
+        const isPersonalOwner = !task.property_id && task.created_by === profile.id;
+        const canEdit = isAdminGlobal || modulePermission === 'admin' || isHouseAdmin || isCreator || isResponsible || isPersonalOwner;
 
         // 4. Obtenemos los miembros para el selector del responsable
         const members = await getPropertyMembers(task.property_id);
