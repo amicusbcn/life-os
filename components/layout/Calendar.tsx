@@ -28,10 +28,11 @@ export function Calendar({ events, renderDetail }: CalendarProps) {
 
   // Navegación vía URL
   const navigate = (newDate: Date) => {
-    const params = new URLSearchParams(searchParams);
-    params.set('month', newDate.getMonth().toString());
-    params.set('year', newDate.getFullYear().toString());
-    router.push(`${pathname}?${params.toString()}`);
+    const year = newDate.getFullYear();
+    const month = newDate.getMonth();
+    
+    // Navegación estructural: /maintenance/calendar/2024/04
+    router.push(`/maintenance/calendar/${year}/${month}`);
   };
 
   // Generar días
