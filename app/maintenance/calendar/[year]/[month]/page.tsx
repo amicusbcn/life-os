@@ -13,8 +13,8 @@ export default async function MonthlyCalendarPage({ params }: PageProps) {
   // 1. Resolvemos los parámetros de la URL
   const { year, month } = await params;
   const yearInt = parseInt(year);
-  const monthInt = parseInt(month);
-
+  const monthInt = parseInt(month) - 1; // Ajuste porque los meses en JS van de 0 a 11
+    console.log("Parsed Params:", { year, month, yearInt, monthInt });
   // Validación básica
   if (isNaN(yearInt) || isNaN(monthInt) || monthInt < 0 || monthInt > 11) {
     return notFound();
@@ -47,6 +47,8 @@ export default async function MonthlyCalendarPage({ params }: PageProps) {
                 profile={profile}
                 accessibleModules={accessibleModules}
                 isAdmin={isAdminGlobal || modulePermission === 'admin'}
+                month={monthInt}
+                year={yearInt}
             />
         );
     } catch (e) {

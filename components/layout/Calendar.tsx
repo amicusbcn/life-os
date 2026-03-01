@@ -11,25 +11,23 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { CalendarEvent, CalendarProps } from '@/types/calendar';
 
-export function Calendar({ events, renderDetail }: CalendarProps) {
+export function Calendar({ events, renderDetail, month, year }: CalendarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   
   // Estado para el evento seleccionado (Sheet)
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
   // Obtener fecha de la URL o usar hoy
-  const monthParam = searchParams.get('month');
-  const yearParam = searchParams.get('year');
-  const viewDate = (monthParam && yearParam) 
-    ? new Date(parseInt(yearParam), parseInt(monthParam)) 
+  const monthParam = month;
+  const yearParam = year;
+  const viewDate = (month !== undefined && year !== undefined) 
+    ? new Date(year, month, 1) // Añadimos ,1 para forzar siempre el inicio del mes
     : new Date();
-
   // Navegación vía URL
   const navigate = (newDate: Date) => {
     const year = newDate.getFullYear();
-    const month = newDate.getMonth();
+    const month = newDate.getMonth()+1;
     
     // Navegación estructural: /maintenance/calendar/2024/04
     router.push(`/maintenance/calendar/${year}/${month}`);

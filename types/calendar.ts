@@ -16,4 +16,6 @@ export interface CalendarProps {
   events: CalendarEvent[];
   // Slot para renderizar el detalle de lo que ocurra al hacer click
   renderDetail?: (event: CalendarEvent) => React.ReactNode; 
+  month: number; // Mes actual (0-11)
+  year: number;  // Año actual
 }

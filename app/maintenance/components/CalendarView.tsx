@@ -12,9 +12,11 @@ interface CalendarViewProps {
     profile: any;
     accessibleModules: any[];
     isAdmin: boolean;
+    month: number;
+    year: number;
 }
 
-export function CalendarView({ events, profile, accessibleModules, isAdmin }: CalendarViewProps) {
+export function CalendarView({ events, profile, accessibleModules, isAdmin, month, year }: CalendarViewProps) {
     return (
         <div className="flex h-screen bg-slate-50">
             {/* Sidebar con el contexto de módulos del usuario */}
@@ -41,6 +43,8 @@ export function CalendarView({ events, profile, accessibleModules, isAdmin }: Ca
               <main className="flex-1 overflow-y-auto">
                   <div className="px-4 lg:px-8 max-w-7xl mx-auto">
                       <Calendar 
+                          month={month}
+                          year={year}
                           events={events} 
                           renderDetail={(event) => (
                               <ActivityDetail 
