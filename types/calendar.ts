@@ -18,4 +18,16 @@ export interface CalendarProps {
   renderDetail?: (event: CalendarEvent) => React.ReactNode; 
   month: number; // Mes actual (0-11)
   year: number;  // Año actual
+  holidays?: Holiday[];
+  hide_holidays?: boolean;
 }
+export interface Holiday {
+  id: string;
+  holiday_date: string | Date;
+  name: string;
+  scope: 'national' | 'local' |'personal';
+  locality?: string;
+  is_annual: boolean;
+  user_id?: string;
+}
+

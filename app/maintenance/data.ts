@@ -176,15 +176,28 @@ export async function getMaintenanceCategories() {
 
 
 
+// app/maintenance/data.ts
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
+
 export async function getCalendarActions(month: number, year: number) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("No autorizado");
 
-    // Calculamos el rango del mes
-    const startDate = new Date(year, month, 1).toISOString();
-    const endDate = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+    // 1. CÁLCULO DE LA REJILLA (GRID)
+    // Mes de referencia
+    const baseDate = new Date(year, month, 1);
+    
+    // Lunes de la semana donde empieza el mes
+    const gridStart = startOfWeek(startOfMonth(baseDate), { weekStartsOn: 1 });
+    // Domingo de la semana donde termina el mes
+    const gridEnd = endOfWeek(endOfMonth(baseDate), { weekStartsOn: 1 });
 
+    // Convertimos a ISO para la query
+    const startDate = gridStart.toISOString();
+    const endDate = gridEnd.toISOString();
+
+    // 2. OBTENCIÓN DE PROPIEDADES (Igual que antes)
     const { data: memberships } = await supabase
         .from('property_members')
         .select('property_id')
@@ -192,12 +205,12 @@ export async function getCalendarActions(month: number, year: number) {
 
     const propertyIds = memberships?.map(m => m.property_id) || [];
     
-    // Filtro de pertenencia (Task)
     const taskConditions = [`created_by.eq.${user.id}`];
     if (propertyIds.length > 0) {
         taskConditions.push(`property_id.in.(${propertyIds.join(',')})`);
     }
 
+    // 3. CONSULTA CON EL NUEVO RANGO
     const { data: logs, error } = await supabase
         .from('maintenance_logs')
         .select(`
@@ -211,8 +224,8 @@ export async function getCalendarActions(month: number, year: number) {
             )
         `)
         .eq('entry_type', 'actividad')
-        .gte('activity_date', startDate) // Filtro de fecha inicio
-        .lte('activity_date', endDate)   // Filtro de fecha fin
+        .gte('activity_date', startDate) // Ahora incluye la cola inicial
+        .lte('activity_date', endDate)   // Ahora incluye la cola final
         .or(taskConditions.join(','), { foreignTable: 'task' })
         .order('activity_date', { ascending: true });
 

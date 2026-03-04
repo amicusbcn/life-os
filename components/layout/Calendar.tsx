@@ -3,15 +3,23 @@
 
 import { useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfWeek, endOfWeek, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfWeek, endOfWeek, addMonths, subMonths, getMonth, getDate, isSaturday, isSunday, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { CalendarEvent, CalendarProps } from '@/types/calendar';
+import { getHolidays } from '@/app/core/data';
 
-export function Calendar({ events, renderDetail, month, year }: CalendarProps) {
+export function Calendar({ 
+  events, 
+  holidays = [], 
+  hide_holidays = false, 
+  month, 
+  year, 
+  renderDetail 
+}: CalendarProps) {
   const router = useRouter();
   const pathname = usePathname();
   
@@ -24,6 +32,20 @@ export function Calendar({ events, renderDetail, month, year }: CalendarProps) {
   const viewDate = (month !== undefined && year !== undefined) 
     ? new Date(year, month, 1) // Añadimos ,1 para forzar siempre el inicio del mes
     : new Date();
+
+  const isHoliday = (day: Date) => {
+    if (hide_holidays) return null;
+    
+    return holidays.find(h => {
+      const hDate = new Date(h.holiday_date);
+      if (h.is_annual) {
+        // Solo comparamos mes y día
+        return getMonth(hDate) === getMonth(day) && getDate(hDate) === getDate(day);
+      }
+      // Comparación de fecha exacta
+      return isSameDay(hDate, day);
+    });
+  };
   // Navegación vía URL
   const navigate = (newDate: Date) => {
     const year = newDate.getFullYear();
@@ -38,7 +60,7 @@ export function Calendar({ events, renderDetail, month, year }: CalendarProps) {
     start: startOfWeek(startOfMonth(viewDate), { weekStartsOn: 1 }),
     end: endOfWeek(endOfMonth(viewDate), { weekStartsOn: 1 })
   });
-
+  
   return (
     <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
       {/* HEADER DINÁMICO */}
@@ -62,17 +84,46 @@ export function Calendar({ events, renderDetail, month, year }: CalendarProps) {
       {/* GRID... (Lógica de renderizado igual a la anterior, pero usando events genéricos) */}
       <div className="grid grid-cols-7 auto-rows-[120px]">
         {days.map((day, idx) => {
+          const holiday = isHoliday(day);
+          const isWeekend = isSaturday(day) || isSunday(day);
           const dayEvents = events.filter(e => isSameDay(new Date(e.date), day));
+          const isToday = isSameDay(day, new Date());
+          const isCurrentMonth = isSameMonth(day, viewDate); // Requisito: import { isSameMonth } from 'date-fns'
           return (
-            <div key={idx} className="border-r border-b border-slate-100 p-2">
-              <span className="text-[10px] font-bold">{format(day, 'd')}</span>
+            <div 
+              key={idx} 
+              className={cn(
+                "border-r border-b border-slate-100 p-2 transition-colors relative",
+                // Fondo diferenciado
+                holiday && "bg-rose-50",
+                isWeekend && "bg-rose-50",
+                !isCurrentMonth && "opacity-50"
+              )}
+            >
+              <div className="flex justify-between items-start mb-1">
+                <span className={cn(
+                  "text-[10px] font-bold px-1.5 py-0.5 rounded-md",
+                  isToday ? "bg-blue-600 text-white" : 
+                  holiday ? "text-rose-600" : 
+                  isWeekend ? "text-slate-400" : 
+                  !isCurrentMonth ? "text-slate-500" : "text-slate-600"
+                )}>
+                  {format(day, 'd')}
+                </span>
+
+                {holiday && (
+                  <span className="text-[7px] font-black uppercase text-rose-500/80 tracking-tighter truncate max-w-[60px] text-right">
+                    {holiday.name}
+                  </span>
+                )}
+              </div>
               <div className="mt-2 space-y-1">
                 {dayEvents.map(event => (
                   <button
                     key={event.id}
                     onClick={() => setSelectedEvent(event)}
                     className={cn(
-                      "w-full text-left p-1 rounded-md text-[9px] font-bold truncate",
+                      "w-full text-left p-1 rounded-md text-[9px] font-bold truncat cursor-pointer",
                       event.status === 'completed' ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"
                     )}
                   >

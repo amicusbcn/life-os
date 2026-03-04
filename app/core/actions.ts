@@ -125,3 +125,69 @@ export async function getFeedbackProposals(): Promise<AppFeedback[]> {
 
     return data as AppFeedback[];
 }
+
+/**
+ * Actualiza los datos generales del perfil
+ */
+export async function updateProfile(userId: string, data: {
+    full_name?: string;
+    avatar_url?: string;
+    bio?: string;
+    locality?: string;
+    email_preference?: 'all' | 'high_only' | 'none';
+}) {
+    const supabase = await createClient()
+
+    const { error } = await supabase
+        .from('profiles')
+        .update({
+            full_name: data.full_name,
+            avatar_url: data.avatar_url,
+            bio: data.bio,
+            locality: data.locality?.toLowerCase().trim(),
+            email_preference: data.email_preference,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/') // Revalidamos todo para que el sidebar y el perfil se actualicen
+    return { success: true }
+}
+
+/**
+ * Actualiza el email de acceso
+ * Nota: Esto enviará correos de confirmación
+ */
+export async function updateEmail(newEmail: string) {
+    const supabase = await createClient()
+    
+    // 1. Actualizamos en Auth
+    const { error: authError } = await supabase.auth.updateUser({
+        email: newEmail
+    })
+
+    if (authError) throw new Error(authError.message)
+
+    // Nota: El cambio real en la tabla 'profiles' suele ser mejor 
+    // manejarlo cuando el usuario confirma el link, pero podemos 
+    // intentar actualizarlo aquí también si quieres que sea inmediato.
+    
+    return { success: true, message: "Revisa tu bandeja de entrada para confirmar el cambio" }
+}
+
+/**
+ * Actualiza la contraseña del usuario en Supabase Auth
+ */
+export async function updatePassword(password: string) {
+    const supabase = await createClient();
+
+    const { error } = await supabase.auth.updateUser({
+        password: password
+    });
+
+    if (error) throw new Error(error.message);
+
+    return { success: true };
+}

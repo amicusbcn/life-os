@@ -3,7 +3,7 @@
 
 import { UnifiedAppSidebar } from "@/components/layout/UnifiedAppSidebar"; 
 import { ActivityDetail } from "./ActivityCalendarDatail";
-import { CalendarEvent } from "@/types/calendar";
+import { CalendarEvent, Holiday } from "@/types/calendar";
 import { MaintenanceMenu } from "./MaintenanceMenu";
 import { Calendar } from "@/components/layout/Calendar";
 
@@ -14,9 +14,11 @@ interface CalendarViewProps {
     isAdmin: boolean;
     month: number;
     year: number;
+    holidays: Holiday[]; // Aquí podrías definir un tipo específico para los días festivos
 }
 
-export function CalendarView({ events, profile, accessibleModules, isAdmin, month, year }: CalendarViewProps) {
+export function CalendarView({ events, profile, accessibleModules, isAdmin, month, year,holidays }: CalendarViewProps) {
+    console.log('Rendering CalendarView with events:', holidays);
     return (
         <div className="flex h-screen bg-slate-50">
             {/* Sidebar con el contexto de módulos del usuario */}
@@ -46,6 +48,7 @@ export function CalendarView({ events, profile, accessibleModules, isAdmin, mont
                           month={month}
                           year={year}
                           events={events} 
+                          holidays={holidays}
                           renderDetail={(event) => (
                               <ActivityDetail 
                                   payload={event.payload} 

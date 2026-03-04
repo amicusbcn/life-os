@@ -2,7 +2,7 @@
 'use client'
 
 import React from 'react'
-import { Users, ShieldCheck, Megaphone, Lightbulb, ChevronRight, ArrowDownNarrowWide } from "lucide-react"
+import { Users, ShieldCheck, Megaphone, Lightbulb, ChevronRight, ArrowDownNarrowWide, Globe, Plus } from "lucide-react"
 import Link from 'next/link'
 import { 
   SidebarMenu, 
@@ -16,7 +16,7 @@ import { AddModuleSheet } from '../modules/components/AddModuleSheet'
 import { InviteUserDialog } from '../users/components/InviteUserDialog'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 interface Props {
-  currentPanel?: 'users' | 'modules' | 'notifications' | 'feedback'
+  currentPanel?: 'users' | 'modules' | 'notifications' | 'feedback' | 'regional'
 }
 
 export function SettingsMenu({ currentPanel}: Props) {
@@ -91,6 +91,38 @@ export function SettingsMenu({ currentPanel}: Props) {
         </SidebarMenuItem>
       </Collapsible>
 
+      {/* 3. CONFIGURACIÓN REGIONAL (Nueva Sección) */}
+      <Collapsible open={currentPanel === 'regional'} className="group/collapsible">
+        <SidebarMenuItem>
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton 
+              isActive={currentPanel === 'regional'}
+              tooltip="Configuración Regional"
+              className={cn(
+                  "transition-all duration-200",
+                  "data-[active=true]:!bg-indigo-700 data-[active=true]:!text-indigo-50 data-[active=true]:font-bold",
+                  "data-[active=true]:hover:!bg-indigo-700 data-[active=true]:hover:!text-indigo-50", 
+                  "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                )}
+              >
+              <Globe className={cn("w-4 h-4", currentPanel === 'regional' ? "text-indigo-50" : "text-slate-500")} />
+              <Link href="/settings/festivos" className="flex-1">Configuración Festivos</Link>
+              <ChevronRight className={cn("ml-auto h-3 w-3 transition-transform", currentPanel !== 'regional' ? "hidden": "rotate-90")} />
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <SidebarMenuSub className="border-l-2 border-l-indigo-700 bg-indigo-50">
+              <SidebarMenuSubItem>
+                {/* Aquí inyectaremos luego el Sheet para añadir festivo directamente */}
+                <SidebarMenuButton size="sm" className="text-[11px] text-indigo-700 font-bold">
+                  <Plus className="w-3 h-3 mr-2" />Añadir Festivo
+                </SidebarMenuButton>
+              </SidebarMenuSubItem>
+            </SidebarMenuSub>
+          </CollapsibleContent>
+        </SidebarMenuItem>
+      </Collapsible>
+      
       {/* 3. DIFUSIÓN */}
       <SidebarMenuItem>
         <SidebarMenuButton 

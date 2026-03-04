@@ -2,7 +2,7 @@
 import { getUserData } from '@/utils/security';
 import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar';
 import { SettingsMenu } from './components/SettingsMenu';
-import { Users, ShieldCheck, Megaphone } from "lucide-react";
+import { Users, ShieldCheck, Megaphone, Lightbulb, MapPinned, Globe } from "lucide-react";
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -58,20 +58,60 @@ export default async function SettingsLandingPage() {
                         </Card>
                     </Link>
 
+                    {/* Acceso Rápido a la config. Local */}
+                    
+                    <Link href="/settings/holidays">
+                        <Card className="hover:border-blue-200 hover:shadow-md transition-all cursor-pointer group">
+                            <CardHeader className="flex flex-row items-center gap-4 space-y-0">
+                                <div className="p-2 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
+                                    <Globe className="w-6 h-6 text-blue-600" />
+                                </div>
+                                <CardTitle className="text-lg">Configuración Festivos</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <p className="text-sm text-slate-500 text-balance">
+                                    Festivos locales y otras configuraciones.
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </Link>
+
                     {/* Acceso Rápido a Difusión */}
-                    <Card className="hover:border-amber-200 hover:shadow-md transition-all cursor-pointer group">
-                        <CardHeader className="flex flex-row items-center gap-4 space-y-0">
-                            <div className="p-2 bg-amber-50 rounded-lg group-hover:bg-amber-100 transition-colors">
-                                <Megaphone className="w-6 h-6 text-amber-600" />
-                            </div>
-                            <CardTitle className="text-lg">Difusión</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-sm text-slate-500 text-balance">
-                                Envía notificaciones importantes a todos los usuarios del sistema.
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <Link href="/settings/notifications">
+                        <Card className="hover:border-amber-200 hover:shadow-md transition-all cursor-pointer group">
+                            <CardHeader className="flex flex-row items-center gap-4 space-y-0">
+                                <div className="p-2 bg-amber-50 rounded-lg group-hover:bg-amber-100 transition-colors">
+                                    <Megaphone className="w-6 h-6 text-amber-600" />
+                                </div>
+                                <CardTitle className="text-lg">Difusión</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <p className="text-sm text-slate-500 text-balance">
+                                    Envía notificaciones importantes a todos los usuarios del sistema.
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </Link>
+
+                    
+                    {/* Acceso Rápido a las Sugerencias */}
+                    <Link href="/settings/feedback">
+                        <Card className="hover:border-rose-200 hover:shadow-md transition-all cursor-pointer group">
+                            <CardHeader className="flex flex-row items-center gap-4 space-y-0">
+                                <div className="p-2 bg-rose-50 rounded-lg group-hover:bg-rose-100 transition-colors">
+                                    <Lightbulb className="w-6 h-6 text-rose-600" />
+                                </div>
+                                <CardTitle className="text-lg">Sugerencias</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <p className="text-sm text-slate-500 text-balance">
+                                    Gestiona el Feedback recibido de la app.
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                    
+                    
                 </div>
             </main>
         </UnifiedAppSidebar>

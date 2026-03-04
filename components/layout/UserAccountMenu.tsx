@@ -19,9 +19,10 @@ import { useRouter } from "next/navigation"
 
 interface UserAccountMenuProps {
     user: UserProfile;
+    onProfileClick: () => void;
 }
 
-export function UserAccountMenu({ user }: UserAccountMenuProps) {
+export function UserAccountMenu({ user,onProfileClick }: UserAccountMenuProps) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -58,12 +59,12 @@ export function UserAccountMenu({ user }: UserAccountMenuProps) {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         
-        <Link href="/settings/profile">
-          <DropdownMenuItem className="cursor-pointer">
-            <User className="mr-2 h-4 w-4" />
-            <span>Ver Perfil</span>
-          </DropdownMenuItem>
-        </Link>
+        
+        <DropdownMenuItem className="cursor-pointer" onClick={onProfileClick}>
+          <User className="mr-2 h-4 w-4" />
+          <span>Ver Perfil</span>
+        </DropdownMenuItem>
+        
         
         <DropdownMenuSeparator />
         

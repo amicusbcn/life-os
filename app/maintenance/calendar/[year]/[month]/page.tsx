@@ -4,6 +4,7 @@ import { CalendarView } from "../../../components/CalendarView"; // Nuevo compon
 import { getUserData } from "@/utils/security";
 import { notFound, redirect } from "next/navigation";
 import { CalendarEvent } from "@/types/calendar";
+import { getHolidays } from "@/app/core/data";
 
 interface PageProps {
   params: Promise<{ year: string; month: string }>;
@@ -13,8 +14,8 @@ export default async function MonthlyCalendarPage({ params }: PageProps) {
   // 1. Resolvemos los parámetros de la URL
   const { year, month } = await params;
   const yearInt = parseInt(year);
-  const monthInt = parseInt(month) - 1; // Ajuste porque los meses en JS van de 0 a 11
-    console.log("Parsed Params:", { year, month, yearInt, monthInt });
+  const monthInt = parseInt(month) - 1; 
+
   // Validación básica
   if (isNaN(yearInt) || isNaN(monthInt) || monthInt < 0 || monthInt > 11) {
     return notFound();
@@ -40,6 +41,7 @@ export default async function MonthlyCalendarPage({ params }: PageProps) {
             status: log.is_completed ? 'completed' : 'pending',
             payload: { log, task: log.task }
         }));
+        const holidays = await getHolidays(monthInt, yearInt, 'bilbao',profile.id);
 
         return (
             <CalendarView 
@@ -49,6 +51,7 @@ export default async function MonthlyCalendarPage({ params }: PageProps) {
                 isAdmin={isAdminGlobal || modulePermission === 'admin'}
                 month={monthInt}
                 year={yearInt}
+                holidays={holidays}
             />
         );
     } catch (e) {

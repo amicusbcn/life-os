@@ -1,7 +1,7 @@
 // app/core/components/UnifiedAppSidebar.tsx
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarSeparator, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSelector } from './AppSelector';
 import { FeedbackDialog } from './FeedbackDialog';
@@ -10,10 +10,12 @@ import { AppModule, UserProfile } from '@/types/users';
 import { UserAccountMenu } from './UserAccountMenu';
 import Link from 'next/link';
 import { ChevronLeft, Grip } from 'lucide-react';
+import { ProfileSheet } from '@/app/core/components/ProfileSheet';
 
 interface UnifiedAppSidebarProps {
     title: string;
     profile: UserProfile;
+    localities?: string[];
     moduleMenu: React.ReactNode;
     moduleSettings?: React.ReactNode;
     currentPath?: string |null;
@@ -26,6 +28,7 @@ interface UnifiedAppSidebarProps {
 export function UnifiedAppSidebar({ 
     title, 
     profile, 
+    localities=[],
     moduleMenu,
     moduleSettings, 
     currentPath,
@@ -33,7 +36,7 @@ export function UnifiedAppSidebar({
     backLink,
     children
 }: UnifiedAppSidebarProps) {
-
+    const [isProfileOpen, setIsProfileOpen] = useState(false);
     return (
         <SidebarProvider defaultOpen={true}>
             <Sidebar collapsible="icon" className="border-slate-200">
@@ -102,7 +105,7 @@ export function UnifiedAppSidebar({
                         <NotificationCenter />
                         
                         {/* Menú de Usuario (Avatar) */}
-                        <UserAccountMenu user={profile} />
+                        <UserAccountMenu user={profile} onProfileClick={() => setIsProfileOpen(true)}/>
                     </div>
                 </header>
                 
@@ -113,6 +116,12 @@ export function UnifiedAppSidebar({
                     </div>
                 </main>
             </div>
+            <ProfileSheet 
+                open={isProfileOpen} 
+                onOpenChange={setIsProfileOpen}
+                profile={profile}
+                localities={localities}
+            />
         </SidebarProvider>
     );
 }
