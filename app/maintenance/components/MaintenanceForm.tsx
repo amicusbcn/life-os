@@ -46,7 +46,8 @@ export function MaintenanceForm({
 
     const isPersonal = contextId === 'personal';
     const [isRecurring, setIsRecurring] = useState(false);
-
+    const fixedPropertyName = fixedPropertyId? properties?.find(p => p.id === fixedPropertyId)?.name : "";
+    
     // --- 2. FILTRADO PARA EL PROGRESSIVE SELECTOR Y LOS ITEMS ---
     
     // Filtramos las ubicaciones que el ProgressiveSelector debe mostrar
@@ -211,7 +212,7 @@ export function MaintenanceForm({
                                 </Select>
                             ) : (
                                 <div className="h-10 flex items-center px-3 bg-slate-100 rounded-xl text-[10px] font-bold text-slate-500 border border-slate-200">
-                                    ID PROPIEDAD
+                                    {fixedPropertyName}
                                 </div>
                             )}
                         </div>

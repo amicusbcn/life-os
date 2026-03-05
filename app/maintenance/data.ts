@@ -179,38 +179,43 @@ export async function getMaintenanceCategories() {
 // app/maintenance/data.ts
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 
-export async function getCalendarActions(month: number, year: number) {
+// app/maintenance/data.ts
+
+export async function getCalendarActions(month: number, year: number, propertyId?: string) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("No autorizado");
 
-    // 1. CÁLCULO DE LA REJILLA (GRID)
-    // Mes de referencia
+    // 1. CÁLCULO DE LA REJILLA (Respetamos tu código original al 100%)
     const baseDate = new Date(year, month, 1);
-    
-    // Lunes de la semana donde empieza el mes
     const gridStart = startOfWeek(startOfMonth(baseDate), { weekStartsOn: 1 });
-    // Domingo de la semana donde termina el mes
     const gridEnd = endOfWeek(endOfMonth(baseDate), { weekStartsOn: 1 });
 
-    // Convertimos a ISO para la query
     const startDate = gridStart.toISOString();
     const endDate = gridEnd.toISOString();
 
-    // 2. OBTENCIÓN DE PROPIEDADES (Igual que antes)
-    const { data: memberships } = await supabase
-        .from('property_members')
-        .select('property_id')
-        .eq('user_id', user.id);
+    // 2. LÓGICA DE CONDICIONES DINÁMICA
+    let taskConditions: string[] = [];
 
-    const propertyIds = memberships?.map(m => m.property_id) || [];
-    
-    const taskConditions = [`created_by.eq.${user.id}`];
-    if (propertyIds.length > 0) {
-        taskConditions.push(`property_id.in.(${propertyIds.join(',')})`);
+    if (propertyId) {
+        // MODO PROPIEDAD: Solo las tareas de esta casa
+        taskConditions = [`property_id.eq.${propertyId}`];
+    } else {
+        // MODO GLOBAL: Tu código original exacto
+        const { data: memberships } = await supabase
+            .from('property_members')
+            .select('property_id')
+            .eq('user_id', user.id);
+
+        const propertyIds = memberships?.map(m => m.property_id) || [];
+        
+        taskConditions = [`created_by.eq.${user.id}`];
+        if (propertyIds.length > 0) {
+            taskConditions.push(`property_id.in.(${propertyIds.join(',')})`);
+        }
     }
 
-    // 3. CONSULTA CON EL NUEVO RANGO
+    // 3. CONSULTA (Mantenemos tu select y filtros de actividad)
     const { data: logs, error } = await supabase
         .from('maintenance_logs')
         .select(`
@@ -224,12 +229,15 @@ export async function getCalendarActions(month: number, year: number) {
             )
         `)
         .eq('entry_type', 'actividad')
-        .gte('activity_date', startDate) // Ahora incluye la cola inicial
-        .lte('activity_date', endDate)   // Ahora incluye la cola final
-        .or(taskConditions.join(','), { foreignTable: 'task' })
+        .gte('activity_date', startDate)
+        .lte('activity_date', endDate)
+        .or(taskConditions.join(','), { foreignTable: 'task' }) // Aplicamos los filtros dinámicos
         .order('activity_date', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+        console.error("Error en getCalendarActions:", error);
+        throw error;
+    }
     
     return logs.map(log => ({
         ...log,

@@ -21,15 +21,18 @@ import { updateTimelineEntry } from "../actions";
 export function ActivityDetail({ 
   payload, 
   currentUser,
-  members = [] // Los pasaremos desde el wrapper del calendario
+  members = [],
+  src
 }: { 
   payload: { log: any, task: any },
   currentUser: any,
-  members?: any[]
+  members?: any[],
+  src?:string
 }) {
   const { log, task } = payload;
   const [isReporting, setIsReporting] = useState(false);
-  
+  const taskUrl = `/maintenance/task/${task.id}?src=${src}&eventId=${log.id}`;
+
   const nextIterationDate = addMonths(new Date(), task.frequency_months || 1);
 
   // Lógica de Contexto
@@ -40,7 +43,7 @@ export function ActivityDetail({
   const assetName = itemName || locationName || "Sin ubicación";
   const hasItem = !!itemName;
   const AssetIcon = hasItem ? Wrench : MapPin;
-
+  
   const handleQuickClose = async () => {
     try {
       await updateTimelineEntry({
@@ -120,7 +123,7 @@ export function ActivityDetail({
               {task.title}
             </h3>
             <Button variant="outline" size="icon" className="h-8 w-8 shrink-0 rounded-lg border-slate-200" asChild>
-              <Link href={`/maintenance/task/${task.id}`}>
+              <Link href={taskUrl}>
                 <ArrowUpRight size={16} className="text-slate-500" />
               </Link>
             </Button>

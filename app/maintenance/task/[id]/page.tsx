@@ -8,11 +8,12 @@ import { getPropertyMembers } from '@/app/properties/data';
 // Definimos la interfaz para Next.js 15
 interface PageProps {
     params: Promise<{ id: string }>;
+    searchParams: Promise<{src:string,mode:string,eventId:string}>;
 }
 
-export default async function TaskPage({ params }: PageProps) {
+export default async function TaskPage({ params,searchParams }: PageProps) {
     const { id } = await params;
-
+    const { src,mode,eventId } = await searchParams
     try {
         // 1. Cargamos la tarea PRIMERO para tener el property_id
         const { task, timeline } = await getTaskWithTimeline(id);
@@ -49,12 +50,13 @@ export default async function TaskPage({ params }: PageProps) {
                 initialTimeline={timeline}
                 members={members}
                 profile={profile}
-                // Mantenemos isAdmin para lógica de borrado/archivo fuerte
                 isAdmin={isAdminGlobal || modulePermission === 'admin' || isHouseAdmin}
-                // Pasamos canEdit para el botón de edición general
                 canEdit={canEdit} 
                 accessibleModules={accessibleModules}
                 categories={categories}
+                src={src}
+                mode={mode}
+                eventId={eventId}
             />
         );
     } catch (e) {

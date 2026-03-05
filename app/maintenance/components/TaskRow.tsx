@@ -1,11 +1,24 @@
 import { cn } from "@/lib/utils";
+import { MaintenanceTask } from "@/types/maintenance";
+import { PropertyBase } from "@/types/properties";
 import LoadIcon from "@/utils/LoadIcon";
 import { getTaskLocationPath } from "@/utils/location-utils";
 import { Badge, Box, Home, MapPin, Package, ShieldCheck, User } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
-export function TaskRow({ task, TypeIcon, property, locationInfo,statusIcon }: any) {
+interface Props {
+    task: MaintenanceTask;
+    TypeIcon: any,
+    property?: PropertyBase;
+    locationInfo: {
+        label: string;
+        subLabel: string;
+        isItem: boolean;
+    };
+    statusIcon: any;
+    src?:string;
+}
+export function TaskRow({ task, TypeIcon, property, locationInfo,statusIcon,src }: Props) {
     const [path, setPath] = useState<string>("Cargando...");
 
     useEffect(() => {
@@ -19,7 +32,7 @@ export function TaskRow({ task, TypeIcon, property, locationInfo,statusIcon }: a
     return (
         <tr className="hover:bg-blue-50/50 transition-colors group cursor-pointer relative">
             <td className="px-6 py-4 relative">
-                <Link href={`/maintenance/task/${task.id}`} className="absolute inset-0 z-10"/>
+                <Link href={`/maintenance/task/${task.id}?src=${src}&mode=list`} className="absolute inset-0 z-10"/>
                 
                 <div className="flex items-center gap-3 relative z-20 pointer-events-none">
                     <div className="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center group-hover:bg-white transition-colors border border-transparent group-hover:border-slate-200 shadow-sm">

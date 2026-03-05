@@ -20,6 +20,7 @@ export interface CalendarProps {
   year: number;  // Año actual
   holidays?: Holiday[];
   hide_holidays?: boolean;
+  defaultEventId?:string
 }
 export interface Holiday {
   id: string;

@@ -1,11 +1,26 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { MaintenanceTask } from "@/types/maintenance";
+import { PropertyBase } from "@/types/properties";
 import LoadIcon from "@/utils/LoadIcon";
 import { Home, User, Package, MapPin, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
-export function TaskCard({ task, TypeIcon, property, locationInfo, statusIcon }: any) {
+interface Props {
+    task: MaintenanceTask;
+    TypeIcon: any,
+    property?: PropertyBase;
+    locationInfo: {
+        label: string;
+        subLabel: string;
+        isItem: boolean;
+    };
+    statusIcon?: any;
+    src?:string;
+}
+
+export function TaskCard({ task, TypeIcon, property, locationInfo, statusIcon,src }: Props) {
     // Mantenemos el color de prioridad para el acento lateral
     const priorityColor = 
         task.priority === 4 ? 'bg-red-500' : 
@@ -13,7 +28,7 @@ export function TaskCard({ task, TypeIcon, property, locationInfo, statusIcon }:
         task.priority === 2 ? 'bg-blue-500' : 'bg-slate-300';
 
     return (
-        <Link href={`/maintenance/task/${task.id}`} className="block group h-full">
+        <Link href={`/maintenance/task/${task.id}?src=${src}&mode=grid`} className="block group h-full">
             <Card className="relative overflow-hidden p-5 rounded-[2rem] border-slate-200 hover:shadow-2xl hover:border-blue-300 transition-all cursor-pointer h-full bg-white flex flex-col border-b-4">
                 
                 {/* Indicador de Prioridad Lateral */}
@@ -85,12 +100,12 @@ export function TaskCard({ task, TypeIcon, property, locationInfo, statusIcon }:
                 <div className="pt-4 border-t border-slate-50 flex justify-between items-center mt-auto">
                     <div className="flex items-center gap-2.5">
                         <div className="h-8 w-8 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] font-black border-2 border-white shadow-md">
-                            {task.assigned_member?.full_name?.charAt(0) || '-'}
+                            {task.assigned_member?.name?.charAt(0) || '-'}
                         </div>
                         <div className="flex flex-col">
                             <span className="text-[8px] text-slate-400 font-black uppercase leading-none mb-1 text-left">Asignado</span>
                             <span className="text-[11px] font-bold text-slate-700 leading-none">
-                                {task.assigned_member?.full_name?.split(' ')[0] || 'S/A'}
+                                {task.assigned_member?.name?.split(' ')[0] || 'S/A'}
                             </span>
                         </div>
                     </div>

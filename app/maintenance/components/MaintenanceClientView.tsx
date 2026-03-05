@@ -34,24 +34,36 @@ interface Props {
     modulePermission?: string;
     profile: any;                 // ✨ Añadido
     accessibleModules: AppModule[];
-    history?: boolean; 
     categories?: any[]; // Puedes tipar esto mejor según tu estructura de categorías
     currentProperty?: PropertyBase; // ✨ Para el contexto de la propiedad
     view?: string; // Para saber desde qué vista venimos (active, archived, preventive, me)
+    src?:string;
+    defaultMode?:'grid'|'list';
 }
 
-export function MaintenanceClientView({ initialTasks, profile, accessibleModules, userRole, properties, locations, inventoryItems, users, history=false, categories,currentProperty,view }: Props) {
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+export function MaintenanceClientView({ initialTasks, profile, accessibleModules, userRole, properties, locations, inventoryItems, users, categories,currentProperty,view,src,defaultMode="list" }: Props) {
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>(defaultMode);
     const [searchQuery, setSearchQuery] = useState('');
     const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [contextFilter, setContextFilter] = useState<'all' | 'property' | 'personal'>('all');
+    
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [showUrgentOnly, setShowUrgentOnly] = useState(false);
     const [showInsuranceOnly, setShowInsuranceOnly] = useState(false);
     
     const isPropertyContext = !!currentProperty;
 
+    const encodedBackPath = useMemo(() => {
+        if (typeof window === 'undefined') return '';
+
+        const url = new URL(window.location.href);
+
+        // 1. Limpiamos IDs temporales para evitar bucles
+        url.searchParams.delete('mode');;
+
+        return encodeURIComponent(url.pathname + url.search);
+    }, [viewMode, view, currentProperty]);
     // ✨ GESTIÓN DE EVENTOS DEL MENÚ
     useEffect(() => {
         const handleOpenTask = () => setIsNewTaskOpen(true);
@@ -142,20 +154,34 @@ export function MaintenanceClientView({ initialTasks, profile, accessibleModules
             isItem: false
         };
     };
-    
+    const getPageTitle = () => {
+        // Caso 1: Estamos dentro de una Propiedad (Contexto Local)
+        if (isPropertyContext && currentProperty) {
+            return view==='archived' 
+                ? `Histórico: ${currentProperty.name}` 
+                : view==='preventive' 
+                    ? `Periódico: ${currentProperty.name}` 
+                    : `Indicencias: ${currentProperty.name}`;
+        }
+        // Caso 2: Estamos en la Vista Global (Contexto General)
+        return view==='archived' 
+            ? "Histórico de Mantenimiento" 
+            : view==='preventive' 
+                ? "Mantenimiento Periódico":
+                "Tareas de Mantenimiento";
+    };
     return (
         <UnifiedAppSidebar
-            title={history? "Histórico de Mantenimiento" : "Tareas de Mantenimiento"}
+            title={getPageTitle()}
             profile={profile}
             modules={accessibleModules}
-            backLink={isPropertyContext?"/properties/"+currentProperty?.slug:""}
+            backLink={isPropertyContext?["/properties/"+currentProperty?.slug,"Volver a "+currentProperty?.name]:""}
             moduleMenu={
                 <MaintenanceMenu 
                     userRole={userRole}
                     mode='operative'
                     view={view as "active" | "preventive" | "archived" }
-                    isPropertyContext={isPropertyContext}
-                    backLink={isPropertyContext ? { href: "/properties/"+currentProperty?.slug, label: "Propiedades" } : undefined}
+                    currentProperty={currentProperty}
                 />
             }
             moduleSettings={
@@ -180,50 +206,51 @@ export function MaintenanceClientView({ initialTasks, profile, accessibleModules
 
                     <div className="flex items-center gap-2">
                         {/* 1. SELECTOR DE ÁMBITO (Propiedad/Personal) */}
-                        <Select 
-                            value={contextFilter} 
-                            onValueChange={(v: any) => setContextFilter(v)}
-                        >
-                            <SelectTrigger className="w-[200px] bg-white h-12 py-6 rounded-2xl shadow-sm border-slate-200 px-4">
-                                <div className="flex items-center gap-2 truncate text-[11px] font-bold uppercase tracking-tight">
-                                    <SelectValue placeholder="Ámbito" />
-                                </div>
-                            </SelectTrigger>
-                            <SelectContent className="rounded-2xl border-slate-200 shadow-xl max-h-[300px]">
-                                <SelectItem value="all" className="font-bold text-[11px] uppercase tracking-tighter text-slate-500">
-                                    <div className='flex item-center gap-2'>
-                                        <Globe size={12} className="text-slate-400" />
-                                        Ver todo
+                        {!isPropertyContext &&(
+                            <Select 
+                                value={contextFilter} 
+                                onValueChange={(v: any) => setContextFilter(v)}
+                            >
+                                <SelectTrigger className="w-[200px] bg-white h-12 py-6 rounded-2xl shadow-sm border-slate-200 px-4">
+                                    <div className="flex items-center gap-2 truncate text-[11px] font-bold uppercase tracking-tight">
+                                        <SelectValue placeholder="Ámbito" />
                                     </div>
-                                </SelectItem>
-                                <SelectItem value="personal" className="font-bold text-[11px] uppercase tracking-tighter">
-                                    <div className='flex item-center gap-2'>
-                                        <User size={12} className="text-slate-400" />
-                                        Personal
-                                    </div>
-                                </SelectItem>
-                                
-                                {/* Separador visual para las propiedades */}
-                                <div className="h-px bg-slate-100 my-1" />
-                                <div className="px-2 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                    Mis Propiedades
-                                </div>
-
-                                {properties?.map(prop => (
-                                    <SelectItem 
-                                        key={prop.id} 
-                                        value={prop.id} // Aquí usamos el ID de la propiedad para filtrar
-                                        className="font-bold text-[11px] uppercase tracking-tighter"
-                                    >
+                                </SelectTrigger>
+                                <SelectContent className="rounded-2xl border-slate-200 shadow-xl max-h-[300px]">
+                                    <SelectItem value="all" className="font-bold text-[11px] uppercase tracking-tighter text-slate-500">
                                         <div className='flex item-center gap-2'>
-                                            <Home size={12} className="text-slate-400" />
-                                            {prop.name}
+                                            <Globe size={12} className="text-slate-400" />
+                                            Ver todo
                                         </div>
                                     </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                                    <SelectItem value="personal" className="font-bold text-[11px] uppercase tracking-tighter">
+                                        <div className='flex item-center gap-2'>
+                                            <User size={12} className="text-slate-400" />
+                                            Personal
+                                        </div>
+                                    </SelectItem>
+                                    
+                                    {/* Separador visual para las propiedades */}
+                                    <div className="h-px bg-slate-100 my-1" />
+                                    <div className="px-2 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                        Mis Propiedades
+                                    </div>
 
+                                    {properties?.map(prop => (
+                                        <SelectItem 
+                                            key={prop.id} 
+                                            value={prop.id} // Aquí usamos el ID de la propiedad para filtrar
+                                            className="font-bold text-[11px] uppercase tracking-tighter"
+                                        >
+                                            <div className='flex item-center gap-2'>
+                                                <Home size={12} className="text-slate-400" />
+                                                {prop.name}
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
                         {/* 2. SELECTOR DE CATEGORÍA */}
                         <Select 
                             value={selectedCategory} 
@@ -327,6 +354,7 @@ export function MaintenanceClientView({ initialTasks, profile, accessibleModules
                                         TypeIcon={TypeIcon} 
                                         property={taskProperty} 
                                         locationInfo={locationInfo}
+                                        src={encodedBackPath}
                                     />
                                 );
                             })}
@@ -351,7 +379,7 @@ export function MaintenanceClientView({ initialTasks, profile, accessibleModules
                                         const taskProperty = properties.find(p => p.id === task.property_id);
                                         return (
                                             <TaskRow key={task.id} task={task} TypeIcon={TypeIcon} statusIcon={statusIcon[task.status]}
-                                                property={taskProperty} locationInfo={locationInfo}
+                                                property={taskProperty} locationInfo={locationInfo} src={encodedBackPath}
                                             />
                                         );
                                     })}
@@ -369,6 +397,7 @@ export function MaintenanceClientView({ initialTasks, profile, accessibleModules
                             properties={properties} 
                             locations={locations} 
                             inventoryItems={inventoryItems} 
+                            propertyId={currentProperty?.id}
                             users={users} 
                         />
                     </SheetContent>

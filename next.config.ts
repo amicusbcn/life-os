@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
         destination: '/maintenance/active',
         permanent: false, // Usamos false por si en el futuro decides cambiar la ruta por defecto
       },
+      {
+        source: '/properties/:slug/maintenance',
+        destination: '/properties/:slug/maintenance/active',
+        permanent: false,
+      },
     ];
   },
 };

@@ -1,22 +1,25 @@
 // app/maintenance/calendar/page.tsx
-import { getCalendarActions } from "../../../data";
-import { CalendarView } from "../../../components/CalendarView"; // Nuevo componente de vista
+import { getCalendarActions } from "@/app/maintenance/data";
+import { CalendarView } from "@/app/maintenance/components/CalendarView"; // Nuevo componente de vista
 import { getUserData } from "@/utils/security";
 import { notFound, redirect } from "next/navigation";
 import { CalendarEvent } from "@/types/calendar";
 import { getHolidays } from "@/app/core/data";
+import { getPropertyBySlug } from "@/app/properties/data";
+import { PropertyBase } from "@/types/properties";
 
 interface PageProps {
-  params: Promise<{ year: string; month: string }>;
+  params: Promise<{ slug:string;year: string; month: string }>;
   searchParams: Promise<{eventId:string}>;
 }
 
 export default async function MonthlyCalendarPage({ params,searchParams }: PageProps) {
   // 1. Resolvemos los parámetros de la URL
-  const { year, month } = await params;
+  const { slug,year, month } = await params;
   const { eventId } = await searchParams;
   const yearInt = parseInt(year);
   const monthInt = parseInt(month) - 1; 
+  const property = await getPropertyBySlug(slug);
 
   // Validación básica
   if (isNaN(yearInt) || isNaN(monthInt) || monthInt < 0 || monthInt > 11) {
@@ -32,7 +35,7 @@ export default async function MonthlyCalendarPage({ params,searchParams }: PageP
     if (!profile) redirect("/login");
     try {
         // 3. Carga de datos de mantenimiento
-        const actions = await getCalendarActions(monthInt, yearInt);
+        const actions = await getCalendarActions(monthInt, yearInt,property?.id);
 
         // 4. Mapeo al contrato UnifiedCalendar
         const calendarEvents: CalendarEvent[] = actions.map(log => ({
@@ -54,6 +57,7 @@ export default async function MonthlyCalendarPage({ params,searchParams }: PageP
                 month={monthInt}
                 year={yearInt}
                 holidays={holidays}
+                currentProperty={property as PropertyBase}
                 initialEventId={eventId}
             />
         );

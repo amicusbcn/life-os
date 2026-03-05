@@ -1,7 +1,7 @@
 // components/shared/calendar/Calendar.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState , useEffect} from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, startOfWeek, endOfWeek, addMonths, subMonths, getMonth, getDate, isSaturday, isSunday, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -18,11 +18,11 @@ export function Calendar({
   hide_holidays = false, 
   month, 
   year, 
-  renderDetail 
+  renderDetail,
+  defaultEventId 
 }: CalendarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  
   // Estado para el evento seleccionado (Sheet)
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
@@ -32,6 +32,24 @@ export function Calendar({
   const viewDate = (month !== undefined && year !== undefined) 
     ? new Date(year, month, 1) // Añadimos ,1 para forzar siempre el inicio del mes
     : new Date();
+
+  useEffect(() => {
+    console.log("🔍 Calendar: Buscando ID ->", defaultEventId);
+  console.log("📋 Calendar: Total eventos cargados ->", events.length);
+    if (defaultEventId && events.length > 0) {
+      // Buscamos el evento por ID (o por el ID de la tarea en el payload)
+      const eventToOpen = events.find(e => 
+        e.id === defaultEventId || e.payload?.id === defaultEventId
+      );
+
+      if (eventToOpen) {
+      console.log("✅ Evento encontrado!", eventToOpen.title);
+      setSelectedEvent(eventToOpen);
+    } else {
+      console.warn("❌ No se encontró ningún evento con ese ID en este mes.");
+    }
+    }
+  }, [defaultEventId, events]);
 
   const isHoliday = (day: Date) => {
     if (hide_holidays) return null;
@@ -123,7 +141,9 @@ export function Calendar({
                     key={event.id}
                     onClick={() => setSelectedEvent(event)}
                     className={cn(
-                      "w-full text-left p-1 rounded-md text-[9px] font-bold truncat cursor-pointer",
+                      "w-full text-left p-1 rounded-md text-[9px] font-bold truncate cursor-pointer transition-transform hover:scale-105",
+                      // ✨ Resaltado visual si es el evento seleccionado por URL
+                      selectedEvent?.id === event.id && "ring-2 ring-indigo-600 shadow-lg",
                       event.status === 'completed' ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"
                     )}
                   >
@@ -137,14 +157,17 @@ export function Calendar({
       </div>
 
       {/* DETALLE (SHEET) */}
-      <Sheet open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
-        <SheetContent className="p-6">
-          <SheetHeader>
-            <SheetTitle className="uppercase font-black tracking-tighter text-2xl">
-              Detalle del Evento
+      <Sheet open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>
+        <SheetContent className="p-0 overflow-y-auto sm:max-w-xl border-l-2 border-l-indigo-600">
+          <SheetHeader className="p-8 bg-slate-50 border-b">
+            <SheetTitle className="uppercase font-black tracking-tighter text-3xl italic text-slate-900">
+              Detalle de Actividad
             </SheetTitle>
           </SheetHeader>
-          {selectedEvent && renderDetail && renderDetail(selectedEvent)}
+          
+          <div className="p-8">
+            {selectedEvent && renderDetail && renderDetail(selectedEvent)}
+          </div>
         </SheetContent>
       </Sheet>
     </div>

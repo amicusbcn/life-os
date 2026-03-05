@@ -89,6 +89,9 @@ interface Props {
     members: PropertyMember[];
     accessibleModules: AppModule[];
     categories: any[]; 
+    src?:string;
+    mode?:string;
+    eventId?:string;
 }
 
 export function TaskDetailView({ 
@@ -99,7 +102,10 @@ export function TaskDetailView({
     profile, 
     accessibleModules, 
     members,
-    categories 
+    categories,
+    src,
+    mode,
+    eventId
 }: Props) {
     const [isHeaderOpen, setIsHeaderOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
@@ -149,13 +155,35 @@ export function TaskDetailView({
 
         return badges;
     };
+    const backLink = (() => {
+        // 1. Decodificamos la ruta base
+        let path = src ? decodeURIComponent(src) : "/maintenance/active";
+        
+        // 2. ¿Es una ruta de calendario?
+        const isCalendar = path.includes('/calendar/');
+        
+        // 3. Gestionamos los separadores de parámetros (? o &)
+        const separator = path.includes('?') ? '&' : '?';
 
+        if (isCalendar) {
+            // Inyectamos el taskId para que el calendario sepa qué abrir
+            return `${path}${separator}eventId=${eventId}`;
+        } 
+
+        // 4. Si es una lista, aseguramos el modo visual (grid/list)
+        if (mode) {
+            // Solo lo añadimos si no está ya presente en la URL de retorno
+            return path.includes('mode=') ? path : `${path}${separator}mode=${mode}`;
+        }
+
+        return path;
+    })();
     return (
         <UnifiedAppSidebar
             title={task.title}
             profile={profile}
             modules={accessibleModules}
-            backLink="/maintenance"
+            backLink={backLink}
             moduleMenu={<TaskSideMenu task={task} isAdmin={isAdmin} onArchive={handleArchive} />}
         >
             <div className="flex flex-col h-full bg-white lg:flex-row">
