@@ -6,17 +6,17 @@ import { SettingsMenu } from './settings/components/SettingsMenu'
 import { AppModule, UserProfile } from '@/types/users' 
 import { DashboardGrid } from '@/app/core/components/DashboardGrid' 
 import LoadIcon from '@/utils/LoadIcon'
-import { getUserData } from '@/utils/security'
+import { getAccessControl } from '@/utils/security'
 import ForcePasswordChangeDialog from './settings/users/components/ForcePasswordChangeDialog'
 
 export default async function Dashboard() {
-    const { profile, accessibleModules, userRole } = await getUserData()
+    const { profile, accessibleModules, security } = await getAccessControl()
     return (
         <UnifiedAppSidebar
             title="Life OS"
             profile={profile}
             modules={accessibleModules}
-            moduleMenu={userRole === 'admin' ? <SettingsMenu /> : null}
+            moduleMenu={security.isGlobalAdmin ? <SettingsMenu /> : null}
         >
             {/* El contenido de tu DashboardGrid ahora es el "children" */}
             <div className="max-w-5xl mx-auto">
@@ -25,7 +25,7 @@ export default async function Dashboard() {
                         <h2 className="text-2xl font-bold text-slate-700">Mis Aplicaciones</h2>
                         <p className="text-sm text-slate-500">Bienvenido de nuevo, {profile.full_name?.split(' ')[0]}</p>
                     </div>
-                    {userRole === 'admin' && (
+                    {security.isGlobalAdmin && (
                         <span className="px-3 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-full border border-amber-200 uppercase tracking-wider">
                             Modo Super Admin
                         </span>

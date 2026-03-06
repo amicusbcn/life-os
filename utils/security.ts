@@ -4,12 +4,123 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 import { UserProfile, AppModule, AppRole } from '@/types/users'
 import { cache } from 'react'
+import { is } from 'date-fns/locale';
 
 interface SecurityContext {
   table: string;      // Ej: 'property_members', 'trip_members', 'account_users'
   column: string;     // Ej: 'property_id', 'trip_id', 'account_id'
   id: string;         // El UUID de la entidad
 }
+
+/**
+ * Obtiene los datos del usuario, permisos de módulo y rol contextual en una entidad.
+ * * @param moduleKey - (Opcional) Identificador del módulo (ej: 'maintenance', 'inventory').
+ * @param context - (Opcional) Configuración para validar permisos en una entidad específica.
+ * * @example
+ * // 1. Uso básico (Solo login y perfil)
+ * const { profile } = await getAccessControl();
+ * * // 2. Uso con módulo (Valida acceso a la App y devuelve permisos)
+ * const { profile, security } = await getAccessControl('maintenance');
+ * console.log(security.moduleRole); // 'admin' | 'editor' | 'viewer'
+ * * // 3. Uso contextual completo (Valida rol en una Propiedad, Cuenta, etc.)
+ * const { profile, security } = await getAccessControl('maintenance', {
+ * table: 'property_members',
+ * column: 'property_id',
+ * id: 'uuid-de-la-propiedad'
+ * });
+ * console.log(profile.context_role); // 'owner', 'member', etc.
+ * console.log(security.canEdit);     // true/false
+ * * @returns {
+ *    profile: Datos del perfil (incluye module_role y context_role),
+ *    accessibleModules: Lista de módulos filtrada por permisos y estado activo,
+ *    security: {
+ *        isGlobalAdmin: boolean,
+ *        isModuleAdmin:boolean,
+ *        isContextOwner: boolean,
+ *        isContextAdmin:boolean,
+ *        isContextEditor:boolean,
+ *        canEdit: boolean
+ *      }
+ * *}
+ */
+
+interface ModulePermissionJoin {
+  role: string;
+  module_key: string;
+  module: AppModule; // El objeto del módulo
+}
+
+export const getAccessControl = cache(async (moduleKey?: string, context?: SecurityContext) => {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) redirect('/login')
+
+  // 1. CARGAMOS EL PERFIL
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+  if (!profile) redirect('/login')
+
+  const isGlobalAdmin = profile.role === 'admin'
+  
+  // 2. Resolvemos los módulos según el tipo de usuario
+  let accessibleModules = []
+  let currentModuleRole = undefined
+
+  if (isGlobalAdmin) {
+    // ADMIN: Consulta directa al catálogo de módulos activos
+    const { data } = await supabase.from('app_modules').select('*').eq('is_active', true).order('order')
+    accessibleModules = data || []
+    currentModuleRole = 'admin' 
+    // Si es admin global, su rol en cualquier módulo es admin
+  } else {
+    const { data } = await supabase
+      .from('app_permissions')
+      .select(`
+        role,
+        module_key,
+        module:app_modules!inner(*)
+      `)
+      .eq('user_id', user.id)
+      .eq('module.is_active', true);
+    const permissions = (data as unknown as ModulePermissionJoin[]) || [];
+    accessibleModules = (permissions || []).map(p => ({ ...p.module, user_role: p.role }))
+    
+    // Buscamos el rol del módulo específico si nos lo han pedido
+    if (moduleKey) {
+        currentModuleRole = accessibleModules.find(m => m.key === moduleKey)?.user_role
+    }
+  }
+
+  // 3. Rol Contextual (Propiedad, etc.)
+  let contextRole = isGlobalAdmin ? 'admin' : undefined
+  if (context && !isGlobalAdmin) {
+    const { data } = await supabase.from(context.table).select('role').eq(context.column, context.id).eq('user_id', user.id).maybeSingle()
+    contextRole = data?.role
+  }
+
+  // 4. Bloqueo de seguridad
+  if (moduleKey && !isGlobalAdmin && !currentModuleRole) {
+    redirect(`/?message=No tienes acceso al módulo: ${moduleKey}`)
+  }
+  return {
+    profile: { ...profile, module_role: currentModuleRole, context_role: contextRole },
+    accessibleModules,
+    security: {
+      isGlobalAdmin,
+      isModuleAdmin: currentModuleRole === 'admin',
+      isContextOwner: contextRole === 'owner',
+      isContextAdmin: contextRole === 'admin',
+      isContextEditor: contextRole === 'editor',
+      canEdit: isGlobalAdmin || ['owner', 'admin', 'editor'].includes(contextRole || '')
+    }
+  }
+})
+
+
+
+/****************DEPRECATED - BORRAR CUANDO HAYAMOS HECHO LA TRANSICION -------------------*/
+
+
 
 export const getUserData = cache(async (moduleKey?: string, context?: SecurityContext) => {
 /**
@@ -40,46 +151,44 @@ export const getUserData = cache(async (moduleKey?: string, context?: SecurityCo
 
   if (!user) redirect('/login')
 
-  // 1. Consultas Base (Igual que antes, NO ROMPE NADA)
+  // 1. CONSULTAS BASE: Ahora incluimos los permisos generales del usuario
   const queries: any[] = [
     supabase.from('profiles').select('*').eq('id', user.id).single(),
-    supabase.from('app_modules').select('*').eq('is_active', true).order('order')
+    supabase.from('app_modules').select('*').eq('is_active', true).order('order'),
+    supabase.from('app_permissions').select('module_key, role').eq('user_id', user.id) // <--- NUEVA
   ]
 
-  // 2. Permiso de Módulo (Nivel 2)
+  // 2. Permiso de Módulo Específico (Nivel 2) - Si se pide uno concreto
   if (moduleKey) {
     queries.push(
       supabase.from('app_permissions').select('role').eq('user_id', user.id).eq('module_key', moduleKey).maybeSingle()
     )
   }
 
-  // 3. Permiso Contextual Agnóstico (Nivel 3)
+  // 3. Permiso Contextual (Nivel 3)
   if (context) {
     queries.push(
-      supabase
-        .from(context.table)
-        .select('role')
-        .eq(context.column, context.id)
-        .eq('user_id', user.id)
-        .maybeSingle()
+      supabase.from(context.table).select('role').eq(context.column, context.id).eq('user_id', user.id).maybeSingle()
     )
   }
 
   const results = await Promise.all(queries)
+  
+  // MAPEO DE RESULTADOS POR ÍNDICE (Cuidado aquí)
   const profile = results[0].data
   const allModules = results[1].data || []
-  const modulePermRes = moduleKey ? results[2] : null
-  const contextPermRes = context ? (moduleKey ? results[3] : results[2]) : null
+  const userPermissions = results[2].data || [] // Lista de {module_key, role}
+  
+  // Los opcionales se desplazan porque añadimos results[2]
+  const modulePermRes = moduleKey ? results[3] : null
+  const contextPermRes = context ? (moduleKey ? results[4] : results[3]) : null
 
   if (!profile) redirect('/login')
 
   const isAdminGlobal = profile.role === 'admin'
   const moduleRole = isAdminGlobal ? 'admin' : modulePermRes?.data?.role
-  
-  // El rol contextual: si es admin global es 'admin', si no, lo que diga su tabla específica
   const contextRole = isAdminGlobal ? 'admin' : contextPermRes?.data?.role
 
-  // 4. Lógica de acceso al módulo (No cambia)
   if (moduleKey && !isAdminGlobal && !moduleRole) {
     redirect(`/?message=No tienes permiso para acceder al módulo: ${moduleKey}`)
   }
@@ -87,20 +196,18 @@ export const getUserData = cache(async (moduleKey?: string, context?: SecurityCo
   return {
     profile,
     isAdminGlobal,
-    moduleRole,    // admin, editor, viewer
-    contextRole,   // owner, admin, member, guest, etc (depende de la tabla)
+    moduleRole,
+    contextRole,
     userRole: profile.role,
-    // Helpers de permisos rápidos
     isOwner: contextRole === 'owner' || contextRole === 'admin' || isAdminGlobal,
     canEdit: isAdminGlobal || 
-           moduleRole === 'admin' || 
-           ['owner', 'admin', 'editor'].includes(contextRole || ''),
-      // --- PARCHE DE COMPATIBILIDAD (Para no romper tus páginas viejas) ---
-    modulePermission: isAdminGlobal ? 'admin' : modulePermRes?.data?.role, // Nombre antiguo
-    accessibleModules: allModules.filter((mod:any) => 
-      isAdminGlobal || (results[1].data?.some((p: any) => p.module_key === mod.key))
-    ) // Devolvemos la lista filtrada como hacía antes
-    // --------------------------------------------------------------------
+             moduleRole === 'admin' || 
+             ['owner', 'admin', 'editor'].includes(contextRole || ''),
+    
+    // --- FILTRADO CORREGIDO ---
+    accessibleModules: allModules.filter((mod: any) => 
+      isAdminGlobal || userPermissions.some((p: any) => p.module_key === mod.key)
+    )
   }
 })
 
