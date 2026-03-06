@@ -1,7 +1,7 @@
 // app/booking/page.tsx
 import { Suspense } from 'react';
 import { createClient } from '@/utils/supabase/server';
-import { getUserData } from '@/utils/security'; // <--- CAMBIADO A getUserData
+import { getAccessControl, getUserData } from '@/utils/security'; // <--- CAMBIADO A getUserData
 import { getBookingProperties, getMonthEvents, getActiveHandovers, getPropertyMembers, getAllBookingProfiles, getHolidays } from './data';
 import CalendarView from './components/calendar-view';
 import { ImpersonationProvider } from './components/impersonationContext';
@@ -19,12 +19,9 @@ export default async function BookingPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   // 1. Seguridad unificada
-  const { profile, accessibleModules, userRole, isAdminGlobal, modulePermission } = await getUserData('booking');
-
+  const {profile,accessibleModules,security}=await getAccessControl('booking');
   const params = await searchParams;
-  const isSuperAdmin = isAdminGlobal;
-  const isModuleAdmin = modulePermission === 'admin';
-  const showImpersonationBar = isSuperAdmin && params.debug === 'true';
+  const showImpersonationBar = security.isGlobalAdmin && params.debug === 'true';
 
   const dateParam = typeof params.date === 'string' ? params.date : null;
   let currentDate = new Date();
@@ -36,7 +33,7 @@ export default async function BookingPage({
   // 2. CARGA DE DATOS (Delegada a data.ts)
   const [properties, allProfiles, holidays] = await Promise.all([
     getBookingProperties(),
-    isModuleAdmin ? getAllBookingProfiles() : Promise.resolve([]),
+    security.isModuleAdmin ? getAllBookingProfiles() : Promise.resolve([]),
     getHolidays()
   ]);
 
@@ -69,8 +66,8 @@ export default async function BookingPage({
             moduleMenu={
                 <BookingMenu 
                     mode="operative"
-                    isSuperAdmin={isSuperAdmin}
-                    isModuleAdmin={isModuleAdmin}
+                    isSuperAdmin={security.isGlobalAdmin}
+                    isModuleAdmin={security.isModuleAdmin}
                     isPropertyOwner={isPropertyOwner}
                     isDebugActive={showImpersonationBar} 
                     currentProperty={selectedProperty} 
@@ -80,8 +77,8 @@ export default async function BookingPage({
             moduleSettings={
                 <BookingMenu 
                     mode="settings"
-                    isSuperAdmin={isSuperAdmin}
-                    isModuleAdmin={isModuleAdmin}
+                    isSuperAdmin={security.isGlobalAdmin}
+                    isModuleAdmin={security.isModuleAdmin}
                     isPropertyOwner={isPropertyOwner}
                     isDebugActive={showImpersonationBar} 
                     currentProperty={selectedProperty} 
@@ -91,7 +88,7 @@ export default async function BookingPage({
             {/* Gestión de Diálogos */}
             <Suspense fallback={null}>
                 <BookingDialogManager 
-                    isModuleAdmin={isModuleAdmin}
+                    isModuleAdmin={security.isModuleAdmin}
                     currentProperty={selectedProperty!}
                     members={propertyMembers}
                     allProfiles={allProfiles}
