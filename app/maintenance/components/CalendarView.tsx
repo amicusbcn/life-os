@@ -48,7 +48,7 @@ export function CalendarView({ events, profile, accessibleModules, isAdmin, mont
                         backLink={isPropertyContext?["/properties/"+currentProperty?.slug,"Volver a "+currentProperty?.name]:""}
                         moduleMenu={
                             <MaintenanceMenu 
-                                userRole={profile?.role}
+                                isModuleAdmin={isAdmin}
                                 mode='operative'
                                 view="calendar"
                                 currentProperty={currentProperty}
