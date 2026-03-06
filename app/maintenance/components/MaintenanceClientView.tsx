@@ -35,9 +35,9 @@ interface Props {
     profile: UserProfile;
     security: SecurityHelper;
     accessibleModules: AppModule[];
-    categories?: any[]; // Puedes tipar esto mejor según tu estructura de categorías
-    currentProperty?: PropertyBase; // ✨ Para el contexto de la propiedad
-    view?: string; // Para saber desde qué vista venimos (active, archived, preventive, me)
+    categories?: any[];
+    currentProperty?: PropertyBase; 
+    view?: string; 
     src?:string;
     defaultMode?:'grid'|'list';
 }

@@ -1,6 +1,6 @@
 // app/maintenance/task/[id]/page.tsx
 import { getMaintenanceCategories, getTaskWithTimeline } from '../../data';
-import { getUserData } from '@/utils/security';
+import { getAccessControl, getUserData } from '@/utils/security';
 import { TaskDetailView } from './TaskDetailView';
 import { notFound } from 'next/navigation';
 import { getPropertyMembers } from '@/app/properties/data';
@@ -21,13 +21,7 @@ export default async function TaskPage({ params,searchParams }: PageProps) {
 
         // 2. Ahora pedimos los datos de usuario con CONTEXTO
         // Al pasarle la tabla 'property_members', getUserData nos dirá si somos owner/admin en esa casa
-        const { 
-            profile, 
-            isAdminGlobal, 
-            modulePermission, 
-            contextRole,    // <--- El rol en la propiedad (owner, member...)
-            accessibleModules 
-        } = await getUserData('maintenance',task.property_id ? {
+        const {profile,accessibleModules, security} = await getAccessControl('maintenance',task.property_id ? {
                 table: 'property_members',
                 column: 'property_id',
                 id: task.property_id
@@ -37,9 +31,9 @@ export default async function TaskPage({ params,searchParams }: PageProps) {
         // 3. Calculamos el permiso de edición (Nivel 4: Ítem)
         const isCreator = task.created_by === profile.id;
         const isResponsible = task.assigned_to === profile.id || task.assigned_member?.user_id === profile.id;
-        const isHouseAdmin = contextRole === 'owner' || contextRole === 'admin';
+        const isHouseAdmin = security.isContextOwner || security.isContextAdmin;
         const isPersonalOwner = !task.property_id && task.created_by === profile.id;
-        const canEdit = isAdminGlobal || modulePermission === 'admin' || isHouseAdmin || isCreator || isResponsible || isPersonalOwner;
+        const canEdit = security.canEdit;
 
         // 4. Obtenemos los miembros para el selector del responsable
         const members = await getPropertyMembers(task.property_id);
@@ -50,7 +44,7 @@ export default async function TaskPage({ params,searchParams }: PageProps) {
                 initialTimeline={timeline}
                 members={members}
                 profile={profile}
-                isAdmin={isAdminGlobal || modulePermission === 'admin' || isHouseAdmin}
+                isAdmin={security.isContextAdmin||security.isContextEditor}
                 canEdit={canEdit} 
                 accessibleModules={accessibleModules}
                 categories={categories}
