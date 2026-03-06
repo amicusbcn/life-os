@@ -36,11 +36,6 @@ export default async function MaintenanceViewPage({ params,searchParams }: PageP
             profile={profile}
             accessibleModules={accessibleModules}
             security={security}
-
-            
-            userRole={profile.moduleRole}
-            isAdminGlobal={security.isGlobalAdmin}
-            modulePermission={profile.moduleRole}
             defaultMode={mode}
             view={view}
             users={[]} // Podrías cargar todos los perfiles si eres admin

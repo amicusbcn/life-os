@@ -29,9 +29,6 @@ interface Props {
     locations: PropertyLocation[];
     inventoryItems: InventoryItemBase[];
     users: any[];
-    userRole: string;
-    isAdminGlobal: boolean;
-    modulePermission?: string;
     profile: UserProfile;
     security: SecurityHelper;
     accessibleModules: AppModule[];
@@ -42,7 +39,7 @@ interface Props {
     defaultMode?:'grid'|'list';
 }
 
-export function MaintenanceClientView({ initialTasks, profile, accessibleModules, userRole, properties, locations, inventoryItems, users, categories,currentProperty,view,src,defaultMode="list" }: Props) {
+export function MaintenanceClientView({ initialTasks, profile, security,accessibleModules,  properties, locations, inventoryItems, users, categories,currentProperty,view,src,defaultMode="list" }: Props) {
     const [viewMode, setViewMode] = useState<'grid' | 'list'>(defaultMode);
     const [searchQuery, setSearchQuery] = useState('');
     const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
@@ -179,7 +176,7 @@ export function MaintenanceClientView({ initialTasks, profile, accessibleModules
             backLink={isPropertyContext?["/properties/"+currentProperty?.slug,"Volver a "+currentProperty?.name]:""}
             moduleMenu={
                 <MaintenanceMenu 
-                    userRole={userRole}
+                    isModuleAdmin={security.isModuleAdmin}
                     mode='operative'
                     view={view as "active" | "preventive" | "archived" }
                     currentProperty={currentProperty}

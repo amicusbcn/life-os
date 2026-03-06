@@ -1,6 +1,6 @@
 // app/maintenance/[view]/page.tsx
 import { getMaintenanceTasks, getAllInventoryItemsBase, getAllPropertiesBase, getAllLocations, getMaintenanceCategories } from '@/app/maintenance/data';
-import { getUserData } from '@/utils/security';
+import { getAccessControl, getUserData } from '@/utils/security';
 import { MaintenanceClientView } from '@/app/maintenance/components/MaintenanceClientView';
 import { getPropertyBySlug } from '@/app/properties/data';
 interface PageProps {
@@ -12,7 +12,7 @@ interface PageProps {
 export default async function MaintenanceViewPage({ params, searchParams}:  PageProps) {
     const { slug, view } = await params; 
     const { mode } = await searchParams;
-    const { profile, userRole, isAdminGlobal, modulePermission, accessibleModules } = await getUserData('maintenance');
+    const {profile,accessibleModules, security} = await getAccessControl('maintenance');
     const property = await getPropertyBySlug(slug);
     
     if (!property) {
@@ -41,10 +41,8 @@ export default async function MaintenanceViewPage({ params, searchParams}:  Page
             locations={locations}
             inventoryItems={items}
             profile={profile}
+            security={security}
             accessibleModules={accessibleModules}
-            userRole={userRole}
-            isAdminGlobal={isAdminGlobal}
-            modulePermission={modulePermission}
             view={view}
             src={slug}
             users={[]}

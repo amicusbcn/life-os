@@ -10,18 +10,17 @@ import { cn } from '@/lib/utils';
 
 interface MaintenanceMenuProps {
     mode: 'operative' | 'settings';
-    userRole?: string;
+    isModuleAdmin?: boolean;
     currentProperty?: PropertyBase;
     view?: 'active' | 'preventive' | 'calendar' | 'archived' | 'settings';
 }
 
 export function MaintenanceMenu({ 
     mode, 
-    userRole, 
+    isModuleAdmin, 
     currentProperty, 
     view = 'active'
 }: MaintenanceMenuProps) {
-    const canManage = userRole === 'admin' || userRole === 'superadmin';
     const isPropertyContext = !!currentProperty;
 
     // 1. Calculamos la base de la URL según el contexto
@@ -100,7 +99,7 @@ export function MaintenanceMenu({
     }
 
     // --- MODO SETTINGS ---
-    if (!canManage) return null;
+    if (!isModuleAdmin) return null;
 
     return (
         <SidebarMenu className="px-2">
