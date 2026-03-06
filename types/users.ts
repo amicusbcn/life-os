@@ -34,6 +34,17 @@ export interface UserProfile {
   created_at: string;
   app_role:AppRole;
   status:UserStatus;
+  module_role:AppRole;
+  conext_role:string;
+}
+
+export interface SecurityHelper {
+  isGlobalAdmin:boolean;
+  isModuleAdmin: boolean;
+  isContextOwner: boolean;
+  isContextAdmin: boolean;
+  isContextEditor: boolean;
+  canEdit: boolean;
 }
 export type ProfileBase = Pick<UserProfile, 'id' | 'full_name' | 'avatar_url'>;
 

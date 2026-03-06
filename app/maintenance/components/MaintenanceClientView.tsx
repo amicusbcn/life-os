@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Wrench, AlertTriangle, Lightbulb, OctagonX, LayoutGrid, List, Search, ShieldCheck, TriangleAlert, CirclePlay, SquarePause, CircleCheck, Home, Tag, Globe, User, Siren } from 'lucide-react';
 import { PropertyBase, PropertyLocation } from '@/types/properties';
 import { InventoryItemBase } from '@/types/inventory';
-import { AppModule } from '@/types/users';
+import { AppModule, SecurityHelper, UserProfile } from '@/types/users';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -30,9 +30,10 @@ interface Props {
     inventoryItems: InventoryItemBase[];
     users: any[];
     userRole: string;
-    isAdminGlobal: boolean;        // ✨ Asegúrate de que esto esté aquí
+    isAdminGlobal: boolean;
     modulePermission?: string;
-    profile: any;                 // ✨ Añadido
+    profile: UserProfile;
+    security: SecurityHelper;
     accessibleModules: AppModule[];
     categories?: any[]; // Puedes tipar esto mejor según tu estructura de categorías
     currentProperty?: PropertyBase; // ✨ Para el contexto de la propiedad

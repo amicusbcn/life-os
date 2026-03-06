@@ -1,7 +1,7 @@
 // app/maintenance/calendar/page.tsx
 import { getCalendarActions } from "../../../data";
 import { CalendarView } from "../../../components/CalendarView"; // Nuevo componente de vista
-import { getUserData } from "@/utils/security";
+import { getAccessControl } from "@/utils/security";
 import { notFound, redirect } from "next/navigation";
 import { CalendarEvent } from "@/types/calendar";
 import { getHolidays } from "@/app/core/data";
@@ -22,12 +22,7 @@ export default async function MonthlyCalendarPage({ params,searchParams }: PageP
   if (isNaN(yearInt) || isNaN(monthInt) || monthInt < 0 || monthInt > 11) {
     return notFound();
   }
-    const { 
-        profile, 
-        isAdminGlobal, 
-        modulePermission, 
-        accessibleModules 
-    } = await getUserData('maintenance');
+    const {profile,accessibleModules, security} = await getAccessControl('maintenance');
 
     if (!profile) redirect("/login");
     try {
@@ -50,7 +45,7 @@ export default async function MonthlyCalendarPage({ params,searchParams }: PageP
                 events={calendarEvents}
                 profile={profile}
                 accessibleModules={accessibleModules}
-                isAdmin={isAdminGlobal || modulePermission === 'admin'}
+                isAdmin={security.isModuleAdmin}
                 month={monthInt}
                 year={yearInt}
                 holidays={holidays}

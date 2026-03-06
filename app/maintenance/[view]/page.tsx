@@ -35,6 +35,9 @@ export default async function MaintenanceViewPage({ params,searchParams }: PageP
             inventoryItems={items}
             profile={profile}
             accessibleModules={accessibleModules}
+            security={security}
+
+            
             userRole={profile.moduleRole}
             isAdminGlobal={security.isGlobalAdmin}
             modulePermission={profile.moduleRole}
