@@ -1,6 +1,6 @@
 // app/maintenance/[view]/page.tsx
 import { getMaintenanceTasks, getAllInventoryItemsBase, getAllPropertiesBase, getAllLocations, getMaintenanceCategories } from '../data';
-import { getUserData } from '@/utils/security';
+import { getAccessControl} from '@/utils/security';
 import { MaintenanceClientView } from '../components/MaintenanceClientView';
 interface PageProps {
   params: Promise<{ view:string }>;
@@ -10,7 +10,7 @@ interface PageProps {
 export default async function MaintenanceViewPage({ params,searchParams }: PageProps) {
     const { view } = await params; 
     const { mode } = await searchParams;
-    const { profile, userRole, isAdminGlobal, modulePermission, accessibleModules } = await getUserData('maintenance');
+    const {profile,accessibleModules, security} = await getAccessControl('maintenance');
     const viewFilters: Record<string, any> = {
         active: { is_archived: false, is_recurring: false },
         archived: { is_archived: true },
@@ -35,9 +35,9 @@ export default async function MaintenanceViewPage({ params,searchParams }: PageP
             inventoryItems={items}
             profile={profile}
             accessibleModules={accessibleModules}
-            userRole={userRole}
-            isAdminGlobal={isAdminGlobal}
-            modulePermission={modulePermission}
+            userRole={profile.moduleRole}
+            isAdminGlobal={security.isGlobalAdmin}
+            modulePermission={profile.moduleRole}
             defaultMode={mode}
             view={view}
             users={[]} // Podrías cargar todos los perfiles si eres admin

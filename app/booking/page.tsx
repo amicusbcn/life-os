@@ -1,7 +1,6 @@
 // app/booking/page.tsx
 import { Suspense } from 'react';
-import { createClient } from '@/utils/supabase/server';
-import { getAccessControl, getUserData } from '@/utils/security'; // <--- CAMBIADO A getUserData
+import { getAccessControl } from '@/utils/security'; 
 import { getBookingProperties, getMonthEvents, getActiveHandovers, getPropertyMembers, getAllBookingProfiles, getHolidays } from './data';
 import CalendarView from './components/calendar-view';
 import { ImpersonationProvider } from './components/impersonationContext';
@@ -10,7 +9,7 @@ import { HandoverBoard } from './components/HandoverBoard';
 import { parse, isValid } from 'date-fns';
 import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar'; // <--- NUEVO LAYOUT
 import { BookingMenu } from './components/BookingMenu';
-import { BookingMember, BookingProfile } from '@/types/booking';
+import { BookingMember } from '@/types/booking';
 import { BookingDialogManager } from './components/BookingDialogManager';
 
 export default async function BookingPage({
