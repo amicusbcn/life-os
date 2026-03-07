@@ -12,8 +12,9 @@ interface PageProps {
 export default async function MaintenanceViewPage({ params, searchParams}:  PageProps) {
     const { slug, view } = await params; 
     const { mode } = await searchParams;
-    const {profile,accessibleModules, security} = await getAccessControl('maintenance');
     const property = await getPropertyBySlug(slug);
+    const {profile,accessibleModules, security} = await getAccessControl('maintenance',{table:"property_members",column:"property_id",id:property?.id||''});
+    
     
     if (!property) {
         throw new Error("Propiedad no encontrada");

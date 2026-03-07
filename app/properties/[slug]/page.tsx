@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
-import { getUserData } from '@/utils/security';
+import { getAccessControl, getUserData } from '@/utils/security';
 import { PropertyProvider } from '../context/PropertyContext'; // Importamos el contexto
 import { 
     getProperties, getPropertyBySlug, getPropertyLocations, 
@@ -20,10 +20,7 @@ export default async function PropertyDetailPage({ params }: PageProps) {
     const supabase = await createClient();
     
     // 1. Seguridad Global y Datos de Usuario
-    const { profile, accessibleModules } = await getUserData('properties');
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) return redirect('/login');
+    const { profile, accessibleModules,security } = await getAccessControl('properties');
 
     // 2. Datos de la Propiedad (Server Side)
     const property = await getPropertyBySlug(slug);
@@ -36,7 +33,7 @@ export default async function PropertyDetailPage({ params }: PageProps) {
         getPropertyContacts(property.id),
         getPropertyAlerts(property.id),
         getPropertyDocuments(property.id),
-        getProperties()
+        getProperties(profile.id)
     ]);
 
     // 4. Renderizado
@@ -45,7 +42,7 @@ export default async function PropertyDetailPage({ params }: PageProps) {
         <PropertyProvider 
             property={property}      
             members={members}        
-            currentUserId={user.id}  
+            currentUserId={profile.id}  
         >
             <PropertyDetailView 
                 property={property}

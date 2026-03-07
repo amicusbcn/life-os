@@ -396,3 +396,16 @@ export async function getDocumentUrl(filePath: string) {
     
     return data?.signedUrl;
 }
+export async function updateMemberCapability(memberId: string, moduleKey: string, level: string) {
+    const supabase = await createClient();
+    
+    // Llamamos a la función de la base de datos que hace el merge de forma segura
+    const { error } = await supabase.rpc('update_member_capability_atomic', {
+        p_member_id: memberId,
+        p_module_key: moduleKey,
+        p_level: level
+    });
+
+    if (error) throw new Error(error.message);
+    revalidatePath('/properties/[slug]/settings', 'page');
+}

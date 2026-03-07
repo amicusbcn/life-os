@@ -12,14 +12,41 @@ export async function getPropertyBySlug(slug: string): Promise<Property | null> 
   return data as Property;
 }
 
-export async function getProperties(): Promise<Property[]> {
+export async function getProperties(userId: string, isAdmin?: boolean): Promise<Property[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+
+  // 1. Definimos el tipo de relación: 
+  // !inner obliga a que exista un match (filtra para no-admins)
+  const memberRelation = isAdmin ? 'property_members' : 'property_members!inner';
+
+  const { data, error } = await supabase
     .from('properties')
-    .select('*')
+    .select(`
+      *,
+      members:${memberRelation} (
+        user_id,
+        role
+      )
+    `)
+    .eq('members.user_id', userId)
     .order('name');
-  
-  return (data || []) as Property[];
+
+  if (error) {
+    console.error("Error fetching properties:", error);
+    return [];
+  }
+
+  // 2. Aplanamos la estructura para el Frontend
+  return (data || []).map(prop => {
+    const membership = prop.members as any[];
+    const isMember = membership && membership.length > 0;
+
+    return {
+      ...prop,
+      is_member: isMember,
+      user_role: isMember ? membership[0].role : null
+    };
+  }) as Property[];
 }
 
 export async function getPropertyById(id: string): Promise<Property | null> {
@@ -50,8 +77,6 @@ import { PropertyMember } from '@/types/properties';
 export async function getPropertyMembers(propertyId: string): Promise<PropertyMember[]> {
   const supabase = await createClient();
 
-  // 1. Hacemos la consulta con JOIN
-  // Pedimos todo de 'property_members' Y los datos clave de 'profiles' usando user_id
   const { data, error } = await supabase
     .from('property_members')
     .select(`
@@ -69,8 +94,6 @@ export async function getPropertyMembers(propertyId: string): Promise<PropertyMe
     return [];
   }
 
-  // 2. Mapeamos (Aplanamos) los datos para que el Frontend no sufra
-  // Prioridad: Datos de Profile Real > Datos Locales (Fantasma)
   const members = data.map((m: any) => ({
     id: m.id,
     property_id: m.property_id,
@@ -78,9 +101,9 @@ export async function getPropertyMembers(propertyId: string): Promise<PropertyMe
     role: m.role,
     created_at: m.created_at,
     
-    // AQUÍ ESTÁ LA MAGIA:
-    // Si hay perfil (usuario real), usamos su nombre real.
-    // Si no (usuario fantasma/guest), usamos el nombre guardado en la tabla members.
+    // 🛡️ IMPORTANTE: Mantenemos las capabilities en el mapeo
+    capabilities: m.capabilities || {},
+
     name: m.profiles?.full_name || m.name || 'Sin Nombre',
     email: m.profiles?.email || m.email,
     avatar_url: m.profiles?.avatar_url || m.avatar_url

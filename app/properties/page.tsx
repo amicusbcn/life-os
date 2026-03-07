@@ -1,4 +1,4 @@
-import { getUserData } from '@/utils/security';
+import { getAccessControl } from '@/utils/security';
 import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar';
 import { getProperties } from './data';
 import { PropertiesMenu } from './components/PropertiesMenu';
@@ -7,8 +7,8 @@ import { Home, MapPin, Wifi } from 'lucide-react';
 import Link from 'next/link';
 
 export default async function PropertiesPage() {
-    const { profile, accessibleModules } = await getUserData('properties');
-    const properties = await getProperties();
+    const {profile, accessibleModules,security}=await getAccessControl('properties');
+    const properties = await getProperties(profile.id,security.isModuleAdmin);
     
     return (
         <UnifiedAppSidebar

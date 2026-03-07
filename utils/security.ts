@@ -6,11 +6,6 @@ import { UserProfile, AppModule, AppRole } from '@/types/users'
 import { cache } from 'react'
 import { is } from 'date-fns/locale';
 
-interface SecurityContext {
-  table: string;      // Ej: 'property_members', 'trip_members', 'account_users'
-  column: string;     // Ej: 'property_id', 'trip_id', 'account_id'
-  id: string;         // El UUID de la entidad
-}
 
 /**
  * Obtiene los datos del usuario, permisos de módulo y rol contextual en una entidad.
@@ -50,28 +45,32 @@ interface ModulePermissionJoin {
   module: AppModule; // El objeto del módulo
 }
 
+interface SecurityContext {
+  table: string;      // Ej: 'property_members', 'trip_members', 'account_users'
+  column: string;     // Ej: 'property_id', 'trip_id', 'account_id'
+  id: string;         // El UUID de la entidad
+}
+// /utils/security.ts
+
 export const getAccessControl = cache(async (moduleKey?: string, context?: SecurityContext) => {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) redirect('/login')
 
-  // 1. CARGAMOS EL PERFIL
+  // 1. PERFIL (Identidad base)
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
   if (!profile) redirect('/login')
 
   const isGlobalAdmin = profile.role === 'admin'
-  
-  // 2. Resolvemos los módulos según el tipo de usuario
+  // 2. MÓDULOS (Permisos globales por aplicación)
   let accessibleModules = []
   let currentModuleRole = undefined
 
   if (isGlobalAdmin) {
-    // ADMIN: Consulta directa al catálogo de módulos activos
     const { data } = await supabase.from('app_modules').select('*').eq('is_active', true).order('order')
     accessibleModules = data || []
     currentModuleRole = 'admin' 
-    // Si es admin global, su rol en cualquier módulo es admin
   } else {
     const { data } = await supabase
       .from('app_permissions')
@@ -82,36 +81,74 @@ export const getAccessControl = cache(async (moduleKey?: string, context?: Secur
       `)
       .eq('user_id', user.id)
       .eq('module.is_active', true);
-    const permissions = (data as unknown as ModulePermissionJoin[]) || [];
-    accessibleModules = (permissions || []).map(p => ({ ...p.module, user_role: p.role }))
     
-    // Buscamos el rol del módulo específico si nos lo han pedido
+    const permissions = (data as unknown as ModulePermissionJoin[]) || [];
+    accessibleModules = permissions.map(p => ({ ...p.module, user_role: p.role }))
+    
     if (moduleKey) {
         currentModuleRole = accessibleModules.find(m => m.key === moduleKey)?.user_role
     }
   }
-
-  // 3. Rol Contextual (Propiedad, etc.)
+  // 3. 🛡️ CONTEXTO RESILIENTE (Propiedades, Viajes, etc.)
   let contextRole = isGlobalAdmin ? 'admin' : undefined
+  let capabilities: Record<string, any> = {}
+
   if (context && !isGlobalAdmin) {
-    const { data } = await supabase.from(context.table).select('role').eq(context.column, context.id).eq('user_id', user.id).maybeSingle()
-    contextRole = data?.role
+    let contextData: { role: any; capabilities?: any } | null = null;
+    // INTENTO 1: Pedir todo (La versión moderna)
+    let { data, error } = await supabase
+      .from(context.table)
+      .select('role, capabilities') 
+      .eq(context.column, context.id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    
+    // Si falla (probablemente porque 'capabilities' no existe en esa tabla aún)
+    if (error) {
+      // INTENTO 2: Fallback a la versión antigua (Solo role)
+      const { data: fallbackData } = await supabase
+        .from(context.table)
+        .select('role') 
+        .eq(context.column, context.id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      
+      contextData = fallbackData as { role: any };
+    }else {
+      contextData = data;
+    }
+
+    contextRole = contextData?.role
+    capabilities = contextData?.capabilities || {}
+  }
+  // Lógica de "Mando": La capacidad específica del módulo pisa al rol general de la entidad
+  const effectiveContextRole = (moduleKey && capabilities[moduleKey]) 
+    ? capabilities[moduleKey] 
+    : contextRole;
+
+  // Ajustamos el canEdit para que si es 'blocked', sea FALSE siempre
+  const canEdit = !isGlobalAdmin && effectiveContextRole === 'blocked' 
+                  ? false 
+                  : (isGlobalAdmin || currentModuleRole === 'admin' || ['owner', 'admin', 'editor'].includes(effectiveContextRole || ''));
+
+  const hasAccess = 
+    isGlobalAdmin || 
+    currentModuleRole || // Tiene la App Global
+    effectiveContextRole; // Tiene un rol en la casa (y no está 'blocked')
+  if (moduleKey && !hasAccess) {
+     redirect(`/?message=No tienes acceso al módulo: ${moduleKey}`);
   }
 
-  // 4. Bloqueo de seguridad
-  if (moduleKey && !isGlobalAdmin && !currentModuleRole) {
-    redirect(`/?message=No tienes acceso al módulo: ${moduleKey}`)
-  }
   return {
-    profile: { ...profile, module_role: currentModuleRole, context_role: contextRole },
+    profile: { ...profile, module_role: currentModuleRole, context_role: effectiveContextRole,context_capabilities: capabilities },
     accessibleModules,
     security: {
       isGlobalAdmin,
-      isModuleAdmin: currentModuleRole === 'admin',
-      isContextOwner: contextRole === 'owner',
-      isContextAdmin: contextRole === 'admin',
-      isContextEditor: contextRole === 'editor',
-      canEdit: isGlobalAdmin || ['owner', 'admin', 'editor'].includes(contextRole || '')
+      isModuleAdmin: currentModuleRole === 'admin' || effectiveContextRole === 'admin',
+      isContextOwner: effectiveContextRole === 'owner',
+      isContextAdmin: effectiveContextRole === 'admin',
+      isContextEditor: effectiveContextRole === 'editor',
+      canEdit
     }
   }
 })

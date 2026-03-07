@@ -50,7 +50,7 @@ export interface PropertyMember {
   id: string;            // ID de la fila en property_members
   property_id: string;
   user_id?: string | null; // NULL si es fantasma
-  
+  capabilities:any;
   // Datos denormalizados o del fantasma
   name: string;
   email?: string | null;

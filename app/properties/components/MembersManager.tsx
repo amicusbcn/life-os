@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from '@/components/ui/badge';
 import { User, Ghost, Trash2, Plus, Shield, ShieldCheck, ShieldAlert } from 'lucide-react';
-
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { updateMemberCapability } from '../actions';
 export function MembersManager() {
   const { members, property, can, currentUser } = useProperty();
   
@@ -19,7 +20,7 @@ export function MembersManager() {
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState('guest');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+    
   // --- HANDLERS ---
   const handleAddMember = async () => {
     if (!newName) return;
@@ -50,6 +51,35 @@ export function MembersManager() {
         await removeMember(memberId, property.id);
     }
   };
+  const MODULE_NAMES: Record<string, string> = {
+        inventory: "Inventario",
+        finance: "Finanzas",
+        bookings: "Reservas",
+        maintenance: "Mantenimiento"
+    };
+  const handleUpdateCapability = async (memberId: string, moduleKey: string, level: string) => {
+        try {
+            // Llamada directa a la acción. 
+            // La lógica de "merge" o "delete" la hace el SQL.
+            await updateMemberCapability(memberId, moduleKey, level);
+            
+            // Aquí podrías añadir un toast.success si usas sonner
+        } catch (error) {
+            console.error("Error en el componente:", error);
+            // toast.error("Error al guardar los cambios");
+        }
+    };
+
+    const getCapabilityBadge = (level: string) => {
+        const styles: Record<string, string> = {
+            admin: "bg-emerald-100 text-emerald-700 border-emerald-200",
+            editor: "bg-amber-100 text-amber-700 border-amber-200",
+            viewer: "bg-sky-100 text-sky-700 border-sky-200",
+            blocked: "bg-rose-100 text-rose-700 border-rose-200 font-bold",
+        };
+
+    return styles[level] || "bg-slate-100 text-slate-500 border-slate-200";
+    };
 
   // Icono según Rol
   const getRoleBadge = (role: string) => {
@@ -117,41 +147,85 @@ export function MembersManager() {
       {/* 2. LISTADO DE MIEMBROS */}
       <div className="grid gap-4">
         {members.map((member) => (
-            <div key={member.id} className="flex items-center justify-between p-4 bg-white border rounded-lg shadow-sm">
-                <div className="flex items-center gap-4">
-                    {/* Avatar Inteligente: Muestra fantasma si no es usuario real */}
-                    <Avatar className="h-10 w-10 border">
-                        <AvatarImage src={member.avatar_url || ''} />
-                        <AvatarFallback className={member.user_id ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}>
-                            {member.user_id ? member.name.substring(0,2).toUpperCase() : <Ghost className="w-5 h-5"/>}
-                        </AvatarFallback>
-                    </Avatar>
-                    
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <span className="font-semibold text-slate-900">{member.name}</span>
-                            {getRoleBadge(member.role)}
-                        </div>
-                        <div className="text-sm text-slate-500 flex items-center gap-2">
-                            {member.email || "Usuario Local (Fantasma)"}
-                            {/* Indicador visual si soy yo */}
-                            {member.user_id === currentUser?.id && (
-                                <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">Tú</span>
-                            )}
+            <div key={member.id} className="flex flex-col p-4 bg-white border rounded-lg shadow-sm gap-4">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <Avatar>...</Avatar>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="font-semibold">{member.name}</span>
+                                {getRoleBadge(member.role)}
+                            </div>
+                            <div className="text-sm text-slate-500">{member.email}</div>
                         </div>
                     </div>
-                </div>
 
-                {/* Botón Borrar: Protegido y no te puedes borrar a ti mismo */}
-                {can('manage_members') && member.id !== currentUser?.id && (
-                    <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="text-slate-400 hover:text-red-600 hover:bg-red-50"
-                        onClick={() => handleRemoveMember(member.id)}
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </Button>
+                    {/* BOTONES DE ACCIÓN */}
+                    <div className="flex items-center gap-2">
+                        {/* 🛡️ NUEVO: GESTOR DE CAPABILITIES */}
+                        {can('manage_members') && (
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" size="sm" className="gap-2">
+                                        <Shield className="w-4 h-4" /> Módulos
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-64 p-4">
+                                    <div className="space-y-4">
+                                        <h4 className="font-medium text-sm border-b pb-2">Permisos por Módulo</h4>
+                                        
+                                        {Object.entries(property.active_modules || {})
+                                            .filter(([_, isActive]) => isActive) // Solo mostramos los que están a 'true'
+                                            .map(([moduleKey, _]) => (
+                                                <div key={moduleKey} className="space-y-2">
+                                                <label className="text-xs font-bold text-slate-500 uppercase">
+                                                    {MODULE_NAMES[moduleKey] || moduleKey}
+                                                </label>
+                                                <Select 
+                                                    defaultValue={member.capabilities?.[moduleKey] || 'none'}
+                                                    onValueChange={(val) => handleUpdateCapability(member.id, moduleKey, val)}
+                                                >
+                                                    <SelectTrigger className="h-8 text-xs">
+                                                    <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                    <SelectItem value="none">Heredado (Gris)</SelectItem>
+                                                    <SelectItem value="admin">Admin (Verde)</SelectItem>
+                                                    <SelectItem value="editor">Editor (Amarillo)</SelectItem>
+                                                    <SelectItem value="viewer">Lector (Azul)</SelectItem>
+                                                    <SelectItem value="blocked">Bloqueado (Rojo)</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                </div>
+                                            ))}
+
+                                            {/* Si no hay módulos activos, mostramos un aviso */}
+                                            {Object.values(property.active_modules || {}).every(v => !v) && (
+                                            <p className="text-xs text-slate-400 italic">No hay módulos activos en esta propiedad.</p>
+                                            )}
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                        )}
+                        
+                        {/* Botón Borrar (El que ya tenías) */}
+                        {can('manage_members') && member.id !== currentUser?.id && (
+                            <Button variant="ghost" size="icon" onClick={() => handleRemoveMember(member.id)}>
+                                <Trash2 className="w-4 h-4" />
+                            </Button>
+                        )}
+                    </div>
+                </div>
+                
+                {/* 📝 BADGES DE CAPABILITIES (Para verlo de un vistazo sin abrir el popover) */}
+                {member.capabilities && Object.keys(member.capabilities).length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t">
+                        {Object.entries(member.capabilities as Record<string, string>).map(([mod, level]) => (
+                            <Badge key={mod} variant="secondary" className={getCapabilityBadge(level)}>
+                                {mod}: {level}
+                            </Badge>
+                        ))}
+                    </div>
                 )}
             </div>
         ))}

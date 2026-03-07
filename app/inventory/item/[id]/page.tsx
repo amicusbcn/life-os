@@ -19,7 +19,7 @@ export default async function ItemFullPage({ params }: { params: Promise<{ id: s
     // 2. Primero cargamos el ítem, porque necesitamos su property_id para lo demás
     const [item, tasks,categories] = await Promise.all([
         getInventoryItemDetails(id),
-        getMaintenanceTasks({ inventoryItemId: id }),
+        getMaintenanceTasks({ item_id: id }),
         getInventoryCategories()
     ]);
     if (!item) notFound();

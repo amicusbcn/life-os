@@ -26,7 +26,7 @@ export default async function MonthlyCalendarPage({ params,searchParams }: PageP
     return notFound();
   }
     
-    const {profile,accessibleModules, security} = await getAccessControl('maintenance');
+    const {profile,accessibleModules, security} = await getAccessControl('maintenance',{table:"property_members",column:"property_id",id:property?.id||''});
     if (!profile) redirect("/login");
     try {
         // 3. Carga de datos de mantenimiento
