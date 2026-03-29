@@ -1,34 +1,51 @@
 'use server'
 
 import { createClient } from '@/utils/supabase/server';
-import { BookingEvent, BookingProfile, BookingProperty, BookingPropertyMember } from '@/types/booking';
-import { startOfMonth, endOfMonth } from 'date-fns';
+import { BookingEvent, BookingProfile, BookingProperty } from '@/types/booking';
+import { startOfMonth, endOfMonth, addMonths } from 'date-fns';
+import { parseBookingRange } from '@/utils/range-parser';
 
+/**
+ * 🏠 OBTENER PROPIEDADES (Desde la tabla central)
+ * Filtramos solo las que tienen el módulo de bookings activo
+ */
 export async function getBookingProperties() {
   const supabase = await createClient();
-  const { data } = await supabase.from('booking_properties').select(`
+  
+  const { data } = await supabase
+    .from('properties') // <--- Tabla Core
+    .select(`
       *,
-      members:booking_property_members(
+      members:property_members( 
         *, 
-        profile:booking_profiles(display_name, initials, color)
+        profile:profiles(full_name, avatar_url, color)
       )
-    `).order('sort_order', { ascending: true }) 
+    `)
+    // Filtro PostgREST para JSONB: que 'bookings' sea true
+    .eq('active_modules->>bookings', 'true') 
     .order('name', { ascending: true });
 
-  return (data || []) as BookingProperty[];
+  return (data || []) as any[]; // Aquí mapearías a tu tipo BookingProperty
 }
 
+/**
+ * 🔍 OBTENER PROPIEDAD POR SLUG
+ */
 export async function getPropertyBySlug(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
-    .from('booking_properties')
+    .from('properties') // <--- Tabla Core
     .select('*')
     .eq('slug', slug)
     .single();
   
-  return data as BookingProperty | null;
+  return data;
 }
 
+/**
+ * 📅 EVENTOS DEL MES
+ * Ahora apuntan a la tabla de propiedades central
+ */
 export async function getMonthEvents(propertyId: string, date: Date) {
   const supabase = await createClient();
   
@@ -38,11 +55,9 @@ export async function getMonthEvents(propertyId: string, date: Date) {
 
   const { data, error } = await supabase
     .from('booking_events')
-    .select(`*, user:booking_profiles(*)`)
-    .eq('property_id', propertyId)
+    .select(`*, user:profiles(*)`) // Usamos profiles central
+    .eq('property_id', propertyId) // Este ID ahora es el de 'properties'
     .overlaps('stay_range', rangeQuery)
-    // 🚨 AQUÍ SOLUCIONAMOS EL PUNTO 3:
-    // Solo traemos lo confirmado o maintenance. Lo 'released' o 'cancelled' lo ignoramos en la vista principal.
     .in('status', ['confirmed']); 
 
   if (error) {
@@ -53,7 +68,92 @@ export async function getMonthEvents(propertyId: string, date: Date) {
   return data as BookingEvent[];
 }
 
-// Obtener avisos pendientes de una casa
+/**
+ * 👥 MIEMBROS DE LA PROPIEDAD
+ * Usamos la tabla unificada property_members
+ */
+export async function getPropertyMembers(propertyId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('property_members') // <--- Cambiado
+    .select(`
+      *,
+      profile:profiles(*)
+    `)
+    .eq('property_id', propertyId);
+    
+  if (!data) return [];
+
+  // Ordenamos por el nombre del perfil central
+  return data.sort((a, b) => {
+      const nameA = a.profile?.full_name || ''; 
+      const nameB = b.profile?.full_name || '';
+      return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
+
+/**
+ * 🏖️ FESTIVOS (Usando la tabla unificada que vimos antes)
+ */
+export async function getHolidays() {
+  const supabase = await createClient();
+  // Nota: Aquí podrías usar el RPC 'get_calendar_holidays' que creamos antes
+  const { data, error } = await supabase
+    .from('app_holidays')
+    .select('*')
+    .order('holiday_date');
+
+  if (error || !data) {
+    console.error("Error fetching holidays:", error);
+    return [];
+  }
+  return data;
+}
+
+/**
+ * 🧱 BLOQUEOS EXISTENTES (Mantenimiento y Especiales)
+ */
+export async function getExistingBlocks(propertyId: string, startDate: Date) {
+  const supabase = await createClient();
+  const endDate = endOfMonth(addMonths(startDate, 12)); // Miramos un año vista
+
+  const { data: exemptions } = await supabase
+    .from('booking_exemptions')
+    .select('*')
+    .eq('property_id', propertyId)
+    .gte('start_date', startDate.toISOString());
+
+  const { data: rawMaintenance } = await supabase
+    .from('booking_events')
+    .select('notes, stay_range')
+    .eq('property_id', propertyId)
+    .eq('type', 'maintenance');
+
+  const maintenanceBlocks = (rawMaintenance || []).map(m => {
+      const { start, end } = parseBookingRange(m.stay_range);
+      return {
+        name: m.notes || 'Mantenimiento',
+        start_date: start,
+        end_date: end,
+        type: 'maintenance' as const
+      };
+  });
+
+  return [
+    ...(exemptions || []).map(e => ({
+      name: e.name,
+      start_date: new Date(e.start_date),
+      end_date: new Date(e.end_date),
+      type: e.type
+    })),
+    ...maintenanceBlocks
+  ];
+}
+
+/**
+ * 📦 ENTREGAS/AVISOS PENDIENTES (Handovers)
+ * Cambiamos el join de 'booking_profiles' a 'profiles'
+ */
 export async function getActiveHandovers(propertyId: string) {
   const supabase = await createClient();
   
@@ -61,10 +161,10 @@ export async function getActiveHandovers(propertyId: string) {
     .from('booking_handovers')
     .select(`
         *,
-        author:booking_profiles!author_id (display_name, initials, color)
+        author:profiles!author_id (full_name, avatar_url, color) 
     `)
     .eq('property_id', propertyId)
-    .is('resolved_at', null) // Solo los pendientes
+    .is('resolved_at', null)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -75,112 +175,31 @@ export async function getActiveHandovers(propertyId: string) {
   return data;
 }
 
-// En src/app/(app)/booking/data.ts
-export async function getPropertyMembers(propertyId: string) {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('booking_property_members')
-    .select(`
-      *,
-      profile:booking_profiles(*)
-    `)
-    .eq('property_id', propertyId)
-    .order('initials', { foreignTable: 'profile', ascending: true });
-    
-  if (!data) return [];
-
-  // 2. Ordenamos en Javascript
-  // Esto maneja mejor los nulos y asegura el orden correcto
-  const sortedMembers = data.sort((a, b) => {
-      // Accedemos al perfil anidado de forma segura
-      const initA = a.profile?.initials || ''; 
-      const initB = b.profile?.initials || '';
-
-      // localeCompare con 'numeric: true' ordena bien números ("2" irá antes que "10")
-      return initA.localeCompare(initB, undefined, { numeric: true, sensitivity: 'base' });
-  });
-   
-  return sortedMembers;
-}
-
-import { addYears, endOfYear } from 'date-fns';
-import { parseBookingRange } from '@/utils/range-parser';
-
-export async function getExistingBlocks(propertyId: string, startDate: Date) {
-  const supabase = await createClient();
-  const endDate = endOfYear(startDate); // Por defecto miramos hasta fin de año
-
-  // 1. Obtener Exenciones (Tipo 'special')
-  const { data: exemptions } = await supabase
-    .from('booking_exemptions')
-    .select('name, start_date, end_date, type')
-    .eq('property_id', propertyId)
-    .gte('start_date', startDate.toISOString())
-    .lte('end_date', endDate.toISOString());
-
-  // 2. Obtener Mantenimientos (Eventos tipo 'maintenance')
-  const { data: rawMaintenance } = await supabase
-    .from('booking_events')
-    .select('notes, stay_range')
-    .eq('property_id', propertyId)
-    .eq('type', 'maintenance')
-    .filter('stay_range', 'ov', `[${startDate.toISOString()}, ${endDate.toISOString()})`);
-
-  const maintenanceBlocks = (rawMaintenance || []).map(m => {
-      // Aquí es donde ocurría el error: parseamos el string manualmente
-      const { start, end } = parseBookingRange(m.stay_range);
-      
-      return {
-        name: m.notes || 'Mantenimiento',
-        start_date: start, // Ahora es un Date válido
-        end_date: end,     // Ahora es un Date válido
-        type: 'maintenance' as const
-      };
-  });
-  // Unificamos formato para el Wizard
-  const blocks = [
-    ...(exemptions || []).map(e => ({
-      name: e.name,
-      start_date: new Date(e.start_date),
-      end_date: new Date(e.end_date),
-      type: e.type as 'special' | 'maintenance' // Asumiendo que guardaste 'special' en DB
-    })),
-    ...maintenanceBlocks
-  ];
-
-  return blocks;
-}
-
+/**
+ * 👤 TODOS LOS PERFILES CON SUS PROPIEDADES
+ * Ahora buscamos en la tabla de 'profiles' central y vemos
+ * en qué 'property_members' están inscritos.
+ */
 export async function getAllBookingProfiles() {
   const supabase = await createClient();
   
   const { data, error } = await supabase
-    .from('booking_profiles')
+    .from('profiles') // <--- Tabla Core
     .select(`
       *,
-      booking_property_members (
-        property:booking_properties (id, name, color)
+      property_members (
+        property:properties (id, name, color)
       )
     `)
-    .eq('is_active', true);
+    .eq('is_active', true); // Asumiendo que mantienes este campo en profiles
 
   if (error || !data) {
-    console.error("Error fetching booking profiles:", error);
+    console.error("Error fetching unified profiles:", error);
     return [];
   }
 
-  // Ordenamos por display_name para consistencia en la UI
-  return (data as BookingProfile[]).sort((a, b) => 
-    (a.display_name || '').localeCompare(b.display_name || '', undefined, { sensitivity: 'base' })
+  // Ordenamos por nombre real
+  return data.sort((a, b) => 
+    (a.full_name || '').localeCompare(b.full_name || '', undefined, { sensitivity: 'base' })
   );
-}
-export async function getHolidays(){
-  const supabase = await createClient();
-  const { data, error } = await supabase.from('booking_holidays').select('*').order('date')
-  if (error || !data) {
-    console.error("Error fetching holidays:", error);
-    return [];
-  }
-  return data;
-
 }

@@ -120,3 +120,16 @@
     @apply bg-background text-foreground;
   }
 }
+
+.rdp-day_range_middle.rdp-day_disabled {
+  background-color: #e0e7ff !important; /* indigo-100 */
+  color: #4338ca !important; /* indigo-700 */
+  opacity: 1 !important; /* Que no se vean transparentes */
+}
+
+/* El día final (martes) cuando está seleccionado */
+.rdp-day_range_end.rdp-day_disabled {
+  background-color: #4338ca !important;
+  color: white !important;
+  opacity: 1 !important;
+}

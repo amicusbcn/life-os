@@ -36,6 +36,7 @@ export interface UserProfile {
   status:UserStatus;
   module_role:AppRole;
   conext_role:string;
+  color:string;
 }
 
 export interface SecurityHelper {

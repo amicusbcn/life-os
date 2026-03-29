@@ -38,7 +38,7 @@ export default async function MonthlyCalendarPage({ params,searchParams }: PageP
             status: log.is_completed ? 'completed' : 'pending',
             payload: { log, task: log.task }
         }));
-        const holidays = await getHolidays(monthInt, yearInt, profile.locality,profile.id);
+        const holidays = await getHolidays(yearInt,monthInt, profile.locality,profile.id);
 
         return (
             <CalendarView 

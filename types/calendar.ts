@@ -1,15 +1,25 @@
 // types/calendar.ts
-export type CalendarEventType = 'maintenance' | 'inventory' | 'finance' | 'health' | 'event';
+export type CalendarEventType = 'maintenance' | 'inventory' | 'finance' | 'health' | 'event' |
+  // tipos de BOOking
+  'rotation' | 'special' | 'blocked' | 'external' | 'request';
+export type CalendarEventStatus= 'pending' | 'completed' | 'urgent' | 'info' |
+  // estados de bookings
+  'confirmed' | 'released' | 'cancelled';
 
 export interface CalendarEvent {
   id: string;
-  date: Date;
+  date?: Date;
+  range?:{
+    start:Date;
+    end:Date;
+  }
   title: string;
   description?: string;
   type: CalendarEventType;
-  status: 'pending' | 'completed' | 'urgent' | 'info';
+  status: CalendarEventStatus;
   color?: string; // Color opcional para override
-  payload: any;   // El objeto original (ej: la tarea completa)
+  payload?: any;   // El objeto original (ej: la tarea completa)
+  isExemption?:boolean;
 }
 
 export interface CalendarProps {
@@ -20,7 +30,8 @@ export interface CalendarProps {
   year: number;  // Año actual
   holidays?: Holiday[];
   hide_holidays?: boolean;
-  defaultEventId?:string
+  defaultEventId?:string;
+  baseUrl:string
 }
 export interface Holiday {
   id: string;

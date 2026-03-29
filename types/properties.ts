@@ -26,6 +26,7 @@ export interface Property {
   active_modules?: PropertyModules
 
   created_at: string;
+  max_slots:number;
 
 }
 export type PropertySummary = Pick<Property, 'id' | 'name' | 'slug'>;

@@ -62,13 +62,14 @@ export function CalendarView({ events, profile, accessibleModules, isAdmin, mont
                     >
 
               <main className="flex-1 overflow-y-auto">
-                  <div className="px-4 lg:px-8 max-w-7xl mx-auto">
+                  <div className="px-4 lg:px-8 w-full mx-auto">
                       <Calendar 
                           month={month}
                           year={year}
                           events={events} 
                           holidays={holidays}
                           defaultEventId={initialEventId}
+                          baseUrl={isPropertyContext?'/properties/'+currentProperty?.slug+'/maintenance/calendar':'/maintenance/calendar'}
                           renderDetail={(event) => (
                               <ActivityDetail 
                                   payload={event.payload} 

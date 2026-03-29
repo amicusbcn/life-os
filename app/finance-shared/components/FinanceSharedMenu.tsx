@@ -25,12 +25,12 @@ interface MenuProps {
     groupId?: string
     data?: DashboardData
     currentUserId: string 
-    isAdminGlobal?: boolean
+    isAdmin?: boolean
     isDebugActive: boolean
     mode: 'operative' | 'settings'
 }
 
-export function FinanceSharedMenu({ groupId, data, currentUserId, isAdminGlobal, isDebugActive, mode }: MenuProps) {
+export function FinanceSharedMenu({ groupId, data, currentUserId, isAdmin, isDebugActive, mode }: MenuProps) {
     const searchParams = useSearchParams()
     const pathname = usePathname()
     const router = useRouter()
@@ -124,21 +124,21 @@ export function FinanceSharedMenu({ groupId, data, currentUserId, isAdminGlobal,
                 <SidebarMenuItem>
                     <SidebarMenuButton onClick={() => navigateTo('dashboard')} isActive={activeView === 'dashboard'}>
                         <LayoutDashboard className="h-4 w-4" />
-                        <span>Resumen Anual</span>
+                        <span>Resumen General</span>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
 
                 <SidebarMenuItem>
                     <SidebarMenuButton onClick={() => navigateTo('general')} isActive={activeView === 'general'}>
                         <List className="h-4 w-4" />
-                        <span>Movimientos</span>
+                        <span>Movimientos {currentYear}</span>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
 
                 <SidebarMenuItem>
                     <SidebarMenuButton onClick={() => navigateTo('mine')} isActive={activeView === 'mine'}>
                         <LayoutDashboard className="h-4 w-4" />
-                        <span>Mis Gastos</span>
+                        <span>Mis Movimientos  {currentYear} </span>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
 
@@ -193,7 +193,7 @@ export function FinanceSharedMenu({ groupId, data, currentUserId, isAdminGlobal,
                 </SidebarMenuItem>
             )}
 
-            {isAdminGlobal && (
+            {isAdmin && (
                 <SidebarMenuItem>
                     <SidebarMenuButton 
                         className="text-indigo-600 font-medium"

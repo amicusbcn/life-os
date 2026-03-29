@@ -1,7 +1,7 @@
 // app/finance-shared/page.tsx
 import { redirect } from 'next/navigation'
 import { getSharedGroups, getGroupDashboardData } from './data'
-import { getUserData } from '@/utils/security'
+import { getAccessControl, getUserData } from '@/utils/security'
 import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar'
 import { FinanceSharedView } from './components/FinanceSharedView'
 import { FinanceSharedMenu } from './components/FinanceSharedMenu'
@@ -17,10 +17,10 @@ interface Props {
 }
 
 export default async function FinanceSharedPage(props: Props) {
-    // 1. Datos globales de seguridad
-    const { profile, accessibleModules, userRole } = await getUserData();
     const searchParams = await props.searchParams;
-    const isAdmin = userRole === 'admin';
+    const groupIdParam = typeof searchParams.groupId === 'string' ? searchParams.groupId : '';
+    const { profile, accessibleModules, security } = await getAccessControl('finance-shared',{table:'finance_shared_members',column:'group_id',id:groupIdParam});
+    const isAdmin = security.isModuleAdmin||security.isContextAdmin;
     const view = searchParams.view || 'dashboard';
     const viewTitles: Record<string, string> = {
         dashboard: 'Resumen Anual',
@@ -33,7 +33,7 @@ export default async function FinanceSharedPage(props: Props) {
     const showImpersonationBar = isAdmin && searchParams.debug === 'true';
 
     const groups = await getSharedGroups();
-    const groupIdParam = typeof searchParams.groupId === 'string' ? searchParams.groupId : undefined;
+    
     const activeGroupId = groupIdParam || (groups.length > 0 ? groups[0].id : undefined)
     const selectedYear = typeof searchParams.year === 'string' ? parseInt(searchParams.year) : new Date().getFullYear();
     
@@ -97,6 +97,7 @@ export default async function FinanceSharedPage(props: Props) {
                         data={dashboardData} 
                         currentUserId={profile.id}
                         mode="operative"
+                        isAdmin={isAdmin}
                         isDebugActive={showImpersonationBar}
                     />
                 }
@@ -106,7 +107,7 @@ export default async function FinanceSharedPage(props: Props) {
                         groupId={activeGroupId} 
                         data={dashboardData} 
                         currentUserId={profile.id}
-                        isAdminGlobal={isAdmin}
+                        isAdmin={isAdmin}
                         isDebugActive={showImpersonationBar}
                         mode="settings"
                     />
