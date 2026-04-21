@@ -45,6 +45,16 @@ export default async function AccountTransactionsPage({
                     templates={templates} 
                     history={history} />
             }
+            moduleSettings={
+                <FinanceMenu 
+                    mode="settings"
+                    accounts={accounts} 
+                    categories={categories}
+                    rules={rules}
+                    templates={templates}
+                    history={history}
+                />
+            }
         >
             <div className="max-w-6xl mx-auto px-6 py-6 space-y-4">
                 
