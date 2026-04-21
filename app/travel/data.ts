@@ -32,7 +32,7 @@ export async function getTravelDashboardData(context: TravelContext) {
     .returns<TravelEmployer[]>()
 
   // 2. Obtener Viajes filtrados por contexto
-  const { data: rawTrips } = await supabase
+  let query=supabase
     .from('travel_trips')
     .select(`
       id, name, start_date, end_date, status, employer_id, report_id, context,
@@ -40,10 +40,12 @@ export async function getTravelDashboardData(context: TravelContext) {
       travel_reports ( id, name, status, code )
     `)
     .eq('context', context)
-    .neq('status', 'archived')
     .order('start_date', { ascending: false })
-    .returns<TripQueryResponse[]>()
-
+  if (context!='personal') {
+    query = query.neq('status', 'archived');
+  }
+  
+  const { data: rawTrips } = await query.returns<TripQueryResponse[]>();
   // 3. Obtener Gastos del contexto para calcular totales de viajes
   // Esto sustituye al filtrado manual que hacías en el cliente
   const { data: expenses } = await supabase

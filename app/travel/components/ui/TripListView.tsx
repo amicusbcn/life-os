@@ -106,12 +106,14 @@ export function TripListView({ trips, reports, employers, context }: TripListVie
   }
 
   // --- FILTRADO ---
-  const activeTrips = trips.filter(t => 
+  const activeTrips = isPersonal? trips.filter(t => 
+    ['planned', 'open'].includes(t.status)
+  ): trips.filter(t => 
     ['planned', 'open', 'completed'].includes(t.status)
   )
 
   const historyTrips = trips.filter(t => 
-    ['closed', 'reported'].includes(t.status) &&
+    ['closed', 'reported','archived'].includes(t.status) &&
     (t.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
      (t.employer_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()))
   )

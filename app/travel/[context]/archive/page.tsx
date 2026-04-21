@@ -31,7 +31,7 @@ export default async function TravelArchivePage({ params }: PageProps) {
       title={title}
       profile={profile}
       modules={accessibleModules}
-      backLink={`/travel/${context}`}
+      backLink={`/travel/${travelContext}`}
       moduleMenu={null}
     >
       <main className="p-4 md:p-8 space-y-8 max-w-4xl mx-auto">
