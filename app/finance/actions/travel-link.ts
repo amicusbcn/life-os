@@ -9,7 +9,8 @@ export async function getActiveTripsAction(context: 'work' | 'personal') {
     const { data, error } = await supabase
         .from('travel_trips')
         .select('id, name, start_date, end_date, context')
-        .eq('context', context) // ✨ Filtro vital
+        .eq('context', context)
+        .in('status', ['open', 'reported'])
         .order('start_date', { ascending: false });
 
     if (error) return { success: false, error: error.message };
