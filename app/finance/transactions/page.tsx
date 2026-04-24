@@ -13,9 +13,9 @@ import { cn } from '@/lib/utils'
 export default async function AccountTransactionsPage({ 
     searchParams 
 }: { 
-    searchParams: Promise<{ year?: string, month?: string }>
+    searchParams: Promise<{ year?: string }>
 }) {
-    const { year: queryYear, month: queryMonth } = await searchParams;
+    const { year: queryYear } = await searchParams;
 
     const currentYear = queryYear ? parseInt(queryYear) : new Date().getFullYear();
     const { profile, accessibleModules } = await getUserData('finance');

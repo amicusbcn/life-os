@@ -73,7 +73,7 @@ export function FinanceMenu({
                         )}
                     >
                         <Scale className="w-4 h-4" />
-                        <Link href="/finance/transactions">Detalle Anual</Link>
+                        <Link href="/finance/transactions/all">Detalle Anual</Link>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarSeparator />

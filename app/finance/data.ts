@@ -91,14 +91,18 @@ export async function getDashboardViewData() {
 
 /**
  * DATOS PARA LA VISTA DE TRANSACCIONES
- * Carga el bloque anual de una cuenta o de todas.
+ * Soporta una cuenta específica por slug o 'all' para el global anual.
  */
-export async function getTransactionViewData( year: number = 2026,accountSlug?: string) {
+export async function getTransactionViewData(
+    
+    year: number = new Date().getFullYear(),
+    accountSlug: string = 'all'
+) {
     const supabase = await createClient();
     const start = `${year}-01-01`;
     const end = `${year}-12-31`;
 
-    // Cargamos estructura base
+    // 1. Cargamos estructura base (Cuentas, Categorías, Reglas e Importador)
     const [accounts, categories, rules, importer] = await Promise.all([
         getAccounts(),
         getCategories(),
@@ -106,9 +110,12 @@ export async function getTransactionViewData( year: number = 2026,accountSlug?: 
         getImporterData()
     ]);
 
-    // Filtrado por cuenta
-    const account = accountSlug ? accounts.find(a => a.slug === accountSlug) : null;
+    // 2. Identificamos la cuenta. 
+    // Si el slug es 'all', account será null explícitamente.
+    const isAll = accountSlug === 'all';
+    const account = !isAll ? accounts.find(a => a.slug === accountSlug) : null;
 
+    // 3. Construimos la Query base
     let query = supabase
         .from('finance_transactions')
         .select(`
@@ -121,7 +128,9 @@ export async function getTransactionViewData( year: number = 2026,accountSlug?: 
         .lte('date', end)
         .order('date', { ascending: false });
 
-    if (account) {
+    // 4. Filtro condicional: 
+    // Solo aplicamos el eq('account_id') si NO estamos en modo 'all' Y tenemos una cuenta válida
+    if (!isAll && account) {
         query = query.eq('account_id', account.id);
     }
 
@@ -135,7 +144,8 @@ export async function getTransactionViewData( year: number = 2026,accountSlug?: 
         rules,
         templates: importer.templates,
         history: importer.history,
-        currentAccount: account,
+        currentAccount: account, // Será null si es 'all', perfecto para la lógica de la página
+        isAllMode: isAll,        // Flag útil para la UI
         year
     };
 }

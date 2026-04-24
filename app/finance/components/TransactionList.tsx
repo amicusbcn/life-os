@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import { FinanceTransaction, FinanceCategory, FinanceAccount } from '@/types/finance';
 import { TransactionRow } from './TransactionRow';
 import { TransactionNoteDialog } from './TransactionNoteDialog';
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { 
     Search, FilterX, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, 
-    Landmark, BookText, Eye, EyeOff, CalendarDays 
+    Landmark, BookText, Eye, EyeOff, CalendarDays, Wallet
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { updateTransactionCategoryAction, unlinkTransactionFromTravelAction } from '../actions';
@@ -29,7 +29,7 @@ interface TransactionListProps {
     transactions: FinanceTransaction[];
     categories: FinanceCategory[];
     accounts: FinanceAccount[]; 
-    accountFilter: string;
+    accountFilter: string; // Este es el ID de la cuenta actual o 'all'
     onCategoryChange?: (id: string, catId: string, concept: string) => void;
     isPrivate: boolean;
 }
@@ -39,18 +39,37 @@ export function TransactionList({
 }: TransactionListProps) {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const params = useParams();
+
+    // El slug de la cuenta viene de la URL: /transactions/[account]
+    const currentAccountSlug = (params.account as string) || 'all';
 
     // --- ESTADOS DE FILTRADO ---
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [currentPage, setCurrentPage] = useState(1);
-    const [monthFilter, setMonthFilter] = useState('all'); // Filtrado en cliente
+    const [monthFilter, setMonthFilter] = useState('all'); 
     const [showHiddenAccounts, setShowHiddenAccounts] = useState(false);
     const [showOriginalConcepts, setShowOriginalConcepts] = useState(false);
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
-    // Año desde la URL (porque requiere nueva carga de datos)
-    const currentYear = parseInt(searchParams.get('year') || '2026');
+    const currentYear = parseInt(searchParams.get('year') || new Date().getFullYear().toString());
+
+    // --- NAVEGACIÓN (CAMBIO DE URL) ---
+    
+    // Cambiar año manteniendo la cuenta actual
+    const changeYear = (delta: number) => {
+        const nextYear = currentYear + delta;
+        const query = new URLSearchParams(searchParams.toString());
+        query.set('year', nextYear.toString());
+        router.push(`/finance/transactions/${currentAccountSlug}?${query.toString()}`);
+    };
+
+    // Cambiar cuenta (Esto cambia el slug en la URL)
+    const handleAccountChange = (newSlug: string) => {
+        const query = new URLSearchParams(searchParams.toString());
+        router.push(`/finance/transactions/${newSlug}?${query.toString()}`);
+    };
 
     // --- ESTADOS PARA DIÁLOGOS ---
     const [selectedTx, setSelectedTx] = useState<FinanceTransaction | null>(null);
@@ -64,20 +83,12 @@ export function TransactionList({
     const [pendingUnlink, setPendingUnlink] = useState<{ transaction: FinanceTransaction, newCategoryId: string } | null>(null);
     const [magicRuleData, setMagicRuleData] = useState<{ concept: string; categoryId: string; categoryName: string; } | null>(null);
 
-    // Navegación de años (Router push)
-    const changeYear = (delta: number) => {
-        const params = new URLSearchParams(searchParams.toString());
-        params.set('year', (currentYear + delta).toString());
-        router.push(`?${params.toString()}`);
-    };
-
     const toggleRow = (id: string) => {
         const newRows = new Set(expandedRows);
         newRows.has(id) ? newRows.delete(id) : newRows.add(id);
         setExpandedRows(newRows);
     };
 
-    // --- MANEJO DE CATEGORÍAS ---
     const handleCategorySelection = async (transaction: FinanceTransaction, newCategoryId: string) => {
         const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
         const WORK_TRIP_CAT_ID = "ad17366f-06de-4f06-b88e-67aace8f4b21";
@@ -111,7 +122,6 @@ export function TransactionList({
             const account = accounts.find(a => a.id === t.account_id);
             if (!showHiddenAccounts && account?.is_active === false) return false;
 
-            // Filtro de Mes (Cliente)
             if (monthFilter !== 'all') {
                 const tDate = new Date(t.date);
                 const tMonth = (tDate.getMonth() + 1).toString().padStart(2, '0');
@@ -121,6 +131,8 @@ export function TransactionList({
             const matchesSearch = t.concept.toLowerCase().includes(searchTerm.toLowerCase()) || 
                                  (t.notes?.toLowerCase().includes(searchTerm.toLowerCase()));
             
+            // Aquí accountFilter ya viene pre-filtrado por el Server Component, 
+            // pero lo mantenemos por consistencia si Transactions[] incluyera más datos.
             const matchesAccount = accountFilter === 'all' || t.account_id === accountFilter;
 
             let matchesCategory = false;
@@ -160,8 +172,8 @@ export function TransactionList({
     return (
         <div className="flex flex-col bg-white">
             {/* FILA 1: NAVEGADOR DE AÑOS Y FLAGS */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50">
-                <div className="flex items-center gap-4">
+            <div className="flex flex-col md:flex-row items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50 gap-4">
+                <div className="flex items-center gap-4 w-full md:w-auto">
                     {/* Navegador de años automático */}
                     <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                         <Button variant="ghost" size="icon" className="h-9 w-9 rounded-none border-r hover:bg-slate-50" onClick={() => changeYear(-1)}>
@@ -176,6 +188,32 @@ export function TransactionList({
                         </Button>
                     </div>
                     
+                    {/* Selector de Cuenta (Slug Switcher) */}
+                    <div className="flex flex-col space-y-1 min-w-[180px]">
+                        <Select value={currentAccountSlug} onValueChange={handleAccountChange}>
+                            <SelectTrigger className="h-9 rounded-xl bg-white border-slate-200 font-bold text-[11px] uppercase shadow-sm">
+                                <div className="flex items-center gap-2">
+                                    <Wallet size={12} className="text-indigo-500" />
+                                    <SelectValue placeholder="Seleccionar Cuenta" />
+                                </div>
+                            </SelectTrigger>
+                            <SelectContent className="z-[130]">
+                                <SelectItem value="all" className="text-[11px] font-black uppercase italic">Consolidado Total</SelectItem>
+                                {accounts.filter(a => showHiddenAccounts || a.is_active).map(acc => (
+                                    <SelectItem key={acc.id} value={acc.slug} className="text-[11px] font-bold uppercase">
+                                        {acc.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <div className="hidden lg:block text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] italic mr-4">
+                        {filteredTransactions.length} Movimientos
+                    </div>
+                    
                     {/* Flags de visualización */}
                     <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
                         <TooltipProvider>
@@ -185,10 +223,10 @@ export function TransactionList({
                                         className={cn("h-8 px-3 text-[9px] font-black uppercase gap-2 rounded-lg transition-all", 
                                         showOriginalConcepts ? "bg-amber-100 text-amber-700 shadow-sm" : "text-slate-400")}>
                                         {showOriginalConcepts ? <Landmark size={14} /> : <BookText size={14} className="opacity-50" />}
-                                        {showOriginalConcepts ? "Concepto Banco" : "Notas Personales"}
+                                        {showOriginalConcepts ? "Banco" : "Notas"}
                                     </Button>
                                 </TooltipTrigger>
-                                <TooltipContent className="bg-slate-900 text-white text-[10px] font-bold">Alternar vista de conceptos</TooltipContent>
+                                <TooltipContent className="bg-slate-900 text-white text-[10px] font-bold tracking-widest uppercase">Vista Conceptos</TooltipContent>
                             </Tooltip>
 
                             <div className="w-[1px] h-4 bg-slate-200" />
@@ -199,23 +237,18 @@ export function TransactionList({
                                         className={cn("h-8 px-3 text-[9px] font-black uppercase gap-2 rounded-lg transition-all", 
                                         showHiddenAccounts ? "bg-emerald-100 text-emerald-700 shadow-sm" : "text-slate-400")}>
                                         {showHiddenAccounts ? <Eye size={14} /> : <EyeOff size={14} className="opacity-50" />}
-                                        {showHiddenAccounts ? "Viendo Ocultas" : "Cuentas Ocultas"}
+                                        {showHiddenAccounts ? "Ocultas" : "Inactivas"}
                                     </Button>
                                 </TooltipTrigger>
-                                <TooltipContent className="bg-slate-900 text-white text-[10px] font-bold">Mostrar/Ocultar cuentas inactivas</TooltipContent>
+                                <TooltipContent className="bg-slate-900 text-white text-[10px] font-bold tracking-widest uppercase">Cuentas Inactivas</TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
                     </div>
-                </div>
-
-                <div className="hidden md:block text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] italic">
-                    {filteredTransactions.length} Movimientos cargados
                 </div>
             </div>
 
             {/* FILA 2: FILTROS (INSTANTÁNEOS) */}
             <div className="p-4 grid grid-cols-1 md:grid-cols-12 gap-4 items-end border-b border-slate-50">
-                {/* Selector de Mes (FILTRADO CLIENTE) */}
                 <div className="md:col-span-2 space-y-1.5">
                     <label className="text-[9px] font-black uppercase text-slate-400 ml-1 flex items-center gap-1 italic">
                         <CalendarDays size={10} /> Periodo Mensual
@@ -243,7 +276,7 @@ export function TransactionList({
                             <SelectItem value="none" className="text-xs font-bold uppercase text-rose-500 italic">⚠️ Sin categorizar</SelectItem>
                             {categories.filter(c => !c.parent_id).map(parent => (
                                 <React.Fragment key={parent.id}>
-                                    <SelectItem value={parent.id} className="text-xs font-bold uppercase">{parent.name}</SelectItem>
+                                    <SelectItem value={parent.id} className="text-xs font-bold uppercase text-indigo-600">{parent.name}</SelectItem>
                                     {categories.filter(sub => sub.parent_id === parent.id).map(sub => (
                                         <SelectItem key={sub.id} value={sub.id} className="text-xs pl-6 opacity-70">— {sub.name}</SelectItem>
                                     ))}
@@ -272,7 +305,7 @@ export function TransactionList({
                         onClick={() => { setSearchTerm(''); setCategoryFilter('all'); setMonthFilter('all'); }} 
                         className="w-full h-10 text-slate-400 hover:text-rose-500 font-bold text-[10px] uppercase tracking-widest"
                     >
-                        <FilterX className="h-4 w-4 mr-2"/> Limpiar Filtros
+                        <FilterX className="h-4 w-4 mr-2"/> Limpiar
                     </Button>
                 </div>
             </div>
