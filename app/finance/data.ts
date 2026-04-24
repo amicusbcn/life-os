@@ -17,6 +17,7 @@ export async function getAccounts(): Promise<FinanceAccount[]> {
     const { data, error } = await supabase
         .from('finance_accounts')
         .select('*')
+        .order('account_type', { ascending: true })
         .order('name', { ascending: true });
 
     if (error) return [];
