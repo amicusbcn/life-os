@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react';
+import React, { useState } from 'react';
 import { TableRow, TableCell } from '@/components/ui/table';
 import { FinanceTransaction, FinanceCategory, FinanceAccount } from '@/types/finance';
 import { AccountAvatar } from './AccountAvatar';
