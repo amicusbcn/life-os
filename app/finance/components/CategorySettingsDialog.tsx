@@ -363,7 +363,7 @@ function NewRuleForm({ categories }: { categories: FinanceCategory[] }) {
     );
 }
 
-function NewCategoryForm({ categories, onSuccess }: { categories: any[], onSuccess: () => void }) {
+export function NewCategoryForm({ categories, onSuccess }: { categories: any[], onSuccess: () => void }) {
     const router = useRouter()
     const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()

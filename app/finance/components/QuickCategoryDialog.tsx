@@ -2,6 +2,7 @@
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PlusCircle } from "lucide-react"
+import { NewCategoryForm } from "./CategorySettingsDialog"
 
 interface QuickCategoryDialogProps {
     open: boolean;
