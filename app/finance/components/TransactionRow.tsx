@@ -8,11 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
-import { Plane, Link2, Boxes, ArrowRight, Split, ChevronsUpDown, MoreVertical, Pencil, Package, Check, Link2Off } from 'lucide-react';
+import { Plane, Link2, Boxes, ArrowRight, Split, ChevronsUpDown, MoreVertical, Pencil, Package, Check, Link2Off, PlusCircle } from 'lucide-react';
 import LoadIcon from '@/utils/LoadIcon';
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
 import { TransactionSplitDialog } from "./TransactionSplitDialog";
+import { QuickCategoryDialog } from './QuickCategoryDialog';
+
 
 interface Props {
     transaction: FinanceTransaction;
