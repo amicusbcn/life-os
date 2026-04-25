@@ -45,7 +45,8 @@ export const TransactionRow = ({
     const parentCat = cat?.parent_id ? categories.find((pc) => pc.id === cat.parent_id) : null;
     const displayColor = parentCat?.color || cat?.color || "#94a3b8";
     const account = accounts.find(a => a.id === t.account_id);
-
+    const [isQuickCatOpen, setIsQuickCatOpen] = useState(false);
+    
     return (
         <React.Fragment>
             <TableRow className="group hover:bg-slate-50/50">
@@ -104,8 +105,21 @@ export const TransactionRow = ({
                                     <Command className="bg-slate-900 text-white">
                                         <CommandInput placeholder="Buscar categoría..." className="text-white border-none focus:ring-0" />
                                         <CommandList className="max-h-[300px] overflow-y-auto">
-                                            <CommandEmpty className="py-4 text-center text-xs text-slate-500 font-bold uppercase">Sin resultados</CommandEmpty>
-                                            
+                                        <CommandEmpty className="py-4 text-center text-xs text-slate-500 font-bold uppercase">Sin resultados</CommandEmpty>
+                                        
+                                        {/* --- BOTÓN DE CREACIÓN RÁPIDA --- */}
+                                        <div className="p-2 border-b border-slate-800">
+                                            <Button 
+                                                variant="ghost" 
+                                                className="w-full justify-start text-[10px] font-black uppercase text-indigo-400 hover:bg-indigo-500/20 h-8 gap-2"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setIsQuickCatOpen(true);
+                                                }}
+                                            >
+                                                <PlusCircle className="h-3.5 w-3.5" /> Crear nueva categoría...
+                                            </Button>
+                                        </div>     
                                             {/* Acción para resetear a pendiente */}
                                             <CommandGroup>
                                                 <CommandItem 
@@ -201,6 +215,12 @@ export const TransactionRow = ({
                     </TableRow>
                 );
             })}
+            <QuickCategoryDialog 
+                open={isQuickCatOpen}
+                onOpenChange={setIsQuickCatOpen}
+                categories={categories}
+                onCreated={(newCatId) => onCategorySelect(t, newCatId)}
+            />
         </React.Fragment>
     );
 };
