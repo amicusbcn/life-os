@@ -363,7 +363,13 @@ function NewRuleForm({ categories }: { categories: FinanceCategory[] }) {
     );
 }
 
-export function NewCategoryForm({ categories, onSuccess }: { categories: any[], onSuccess: () => void }) {
+export function NewCategoryForm({ 
+    categories, 
+    onSuccess 
+}: { 
+    categories: any[], 
+    onSuccess: (id: string) => void // <--- CAMBIA ESTO
+}) {
     const router = useRouter()
     const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
@@ -372,7 +378,8 @@ export function NewCategoryForm({ categories, onSuccess }: { categories: any[], 
         if (res.success) {
             toast.success("Creada")
             router.refresh()
-            onSuccess()
+            const newId = res.data?.id || "" 
+            onSuccess(newId)
         }
     }
 
