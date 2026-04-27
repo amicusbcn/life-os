@@ -263,7 +263,6 @@ export async function getAnalyticsViewData(year: number = new Date().getFullYear
         templates: importer.templates,
         history: importer.history,
         year,
-        // Enviamos las transacciones crudas para que el cliente juegue con ellas
         rawTransactions: transactions || [] 
     };
 }

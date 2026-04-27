@@ -16,6 +16,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 // --- MOTOR DE PROCESAMIENTO ---
 // Procesa las transacciones filtradas para generar los datos de los gráficos
 const processData = (transactions: any[], categories: any[], year: number) => {
+    console.log("Procesando transacciones:", transactions.length); // <--- Mira esto en la consola del navegador (F12)
     const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
     const expenses = transactions.filter(t => t.amount < 0 && t.category_id !== TRANSFER_CAT_ID);
     const income = transactions.filter(t => t.amount > 0 && t.category_id !== TRANSFER_CAT_ID);
