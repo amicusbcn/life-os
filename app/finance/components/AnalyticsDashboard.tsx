@@ -5,10 +5,11 @@ import {
     Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend 
 } from 'recharts';
 import { Card } from '@/components/ui/card';
-import { TrendingDown, Wallet, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
+import { TrendingDown, Wallet, Zap, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { useMemo, useState } from 'react';
 
 export function AnalyticsDashboard({ data, year }: any) {
     const router = useRouter();
@@ -18,6 +19,28 @@ export function AnalyticsDashboard({ data, year }: any) {
         const query = new URLSearchParams(searchParams.toString());
         query.set('year', (year + delta).toString());
         router.push(`?${query.toString()}`);
+    };
+
+    const [activeParentId, setActiveParentId] = useState<string | null>(null);
+
+    const displayData = useMemo(() => {
+        if (!activeParentId) return data.categoryDistribution;
+        // Buscamos las subcategorías del padre seleccionado
+        // Nota: Necesitarás pasar el ID del padre en categoryDistribution
+        return data.subCategoryDistribution[activeParentId] || [];
+    }, [activeParentId, data]);
+
+    const handlePieClick = (entry: any) => {
+        if (!activeParentId) {
+            // Buscamos el ID real de la categoría padre por su nombre
+            // (O mejor si incluyes el ID en data.categoryDistribution)
+            setActiveParentId(entry.id); 
+        }
+    };
+
+    const formatCurrency = (value: any) => {
+        if (value === undefined || value === null) return "0 €";
+        return `${Number(value).toLocaleString('es-ES')} €`;
     };
 
     return (
@@ -96,6 +119,7 @@ export function AnalyticsDashboard({ data, year }: any) {
                                 <Tooltip 
                                     contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
                                     cursor={{fill: '#f8fafc'}}
+                                    formatter={formatCurrency}
                                 />
                                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: '20px', fontSize: '10px', fontWeight: 'bold' }} />
                                 <Bar 
@@ -123,36 +147,61 @@ export function AnalyticsDashboard({ data, year }: any) {
                 </Card>
 
                 {/* DISTRIBUCIÓN */}
-                <Card className="lg:col-span-4 p-8 rounded-[3rem] border-slate-100 shadow-sm flex flex-col items-center">
-                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-10 italic self-start">
-                        Distribución por Categoría
-                    </h4>
+                <Card className="lg:col-span-4 p-8 rounded-[3rem] shadow-sm flex flex-col items-center relative">
+                    <div className="flex justify-between w-full mb-6">
+                        <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 italic">
+                            {activeParentId ? `Desglose: ${activeParentId}` : "Distribución Gastos"}
+                        </h4>
+                        {activeParentId && (
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => setActiveParentId(null)}
+                                className="h-6 text-[10px] font-black uppercase text-indigo-500 gap-1"
+                            >
+                                <ArrowLeft size={12} /> Volver
+                            </Button>
+                        )}
+                    </div>
+
                     <div className="h-[300px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
-                                    data={data.categoryDistribution}
+                                    data={displayData}
                                     innerRadius={70}
                                     outerRadius={100}
-                                    paddingAngle={8}
+                                    paddingAngle={5}
                                     dataKey="value"
+                                    onClick={handlePieClick}
                                     isAnimationActive={true}
+                                    animationDuration={500}
+                                    className="cursor-pointer outline-none"
                                 >
-                                    {data.categoryDistribution.map((entry: any, index: number) => (
-                                        <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                                    {displayData.map((entry: any, index: number) => (
+                                        <Cell 
+                                            key={`cell-${index}`} 
+                                            fill={entry.color} 
+                                            stroke="none"
+                                            className="hover:opacity-80 transition-opacity"
+                                        />
                                     ))}
                                 </Pie>
-                                <Tooltip />
+                                <Tooltip 
+                                    contentStyle={{ borderRadius: '1rem', border: 'none', fontWeight: 'bold' }}
+                                    formatter={formatCurrency}
+                                />
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
-                    {/* MINI LEYENDA */}
-                    <div className="mt-4 w-full space-y-2">
-                        {data.categoryDistribution.slice(0, 4).map((cat: any) => (
+
+                    {/* Lista de leyendas que cambia según el nivel */}
+                    <div className="mt-4 w-full space-y-2 overflow-y-auto max-h-[120px] custom-scrollbar">
+                        {displayData.map((cat: any) => (
                             <div key={cat.name} className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <div className="h-2 w-2 rounded-full" style={{ backgroundColor: cat.color }} />
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase">{cat.name}</span>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase truncate max-w-[120px]">{cat.name}</span>
                                 </div>
                                 <span className="text-[10px] font-black text-slate-700">{cat.value.toLocaleString()} €</span>
                             </div>
