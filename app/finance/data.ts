@@ -156,6 +156,8 @@ export async function getTransactionViewData(
 
 // app/finance/data.ts
 
+// app/finance/data.ts
+
 export async function getAnalyticsViewData(year: number = new Date().getFullYear()) {
     const supabase = await createClient();
     const start = `${year}-01-01`;
@@ -181,81 +183,8 @@ export async function getAnalyticsViewData(year: number = new Date().getFullYear
 
     if (error) console.error("Error en Analytics:", error);
 
-    const safeTransactions = transactions || [];
-    const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
-    
-    const expenses = safeTransactions.filter(t => t.amount < 0 && t.category_id !== TRANSFER_CAT_ID);
-    const income = safeTransactions.filter(t => t.amount > 0 && t.category_id !== TRANSFER_CAT_ID);
-
-    const monthlyEvolution = Array.from({ length: 12 }, (_, i) => {
-        const monthLabel = new Intl.DateTimeFormat('es-ES', { month: 'short' }).format(new Date(year, i));
-        return { name: monthLabel.toUpperCase(), gastos: 0, ingresos: 0 };
-    });
-
-    // --- NUEVA ESTRUCTURA PARA DRILL-DOWN ---
-    const parentMap: Record<string, { id: string, name: string, value: number, color: string }> = {};
-    const subMap: Record<string, Record<string, { name: string, value: number, color: string }>> = {};
-
-    expenses.forEach(t => {
-        const absAmount = Math.abs(t.amount);
-        monthlyEvolution[new Date(t.date).getMonth()].gastos += absAmount;
-
-        const cat = categories.find(c => c.id === t.category_id);
-        const parent = cat?.parent_id ? categories.find(p => p.id === cat.parent_id) : cat;
-        
-        if (parent) {
-            // 1. Agrupar nivel Padre
-            if (!parentMap[parent.id]) {
-                parentMap[parent.id] = { 
-                    id: parent.id, 
-                    name: parent.name, 
-                    value: 0, 
-                    color: parent.color || "#94a3b8" 
-                };
-            }
-            parentMap[parent.id].value += absAmount;
-
-            // 2. Agrupar nivel Subcategoría (solo si la transacción tiene una subcategoría)
-            if (cat && cat.id !== parent.id) {
-                if (!subMap[parent.id]) subMap[parent.id] = {};
-                if (!subMap[parent.id][cat.id]) {
-                    subMap[parent.id][cat.id] = { 
-                        name: cat.name, 
-                        value: 0, 
-                        color: cat.color || parent.color || "#cbd5e1" 
-                    };
-                }
-                subMap[parent.id][cat.id].value += absAmount;
-            } else if (cat && cat.id === parent.id) {
-                // Caso: Transacción categorizada directamente al padre
-                if (!subMap[parent.id]) subMap[parent.id] = {};
-                const generalKey = `${parent.id}_gen`;
-                if (!subMap[parent.id][generalKey]) {
-                    subMap[parent.id][generalKey] = { 
-                        name: `${parent.name} (General)`, 
-                        value: 0, 
-                        color: parent.color || "#cbd5e1" 
-                    };
-                }
-                subMap[parent.id][generalKey].value += absAmount;
-            }
-        }
-    });
-
-    income.forEach(t => {
-        monthlyEvolution[new Date(t.date).getMonth()].ingresos += t.amount;
-    });
-
-    const totalSpent = expenses.reduce((acc, t) => acc + Math.abs(t.amount), 0);
-    const totalIncome = income.reduce((acc, t) => acc + t.amount, 0);
-    const savingsRate = totalIncome > 0 ? ((totalIncome - totalSpent) / totalIncome) * 100 : 0;
-
-    // Convertimos los mapas internos de subcategorías a arrays para Recharts
-    const subCategoryDistribution: Record<string, any[]> = {};
-    Object.keys(subMap).forEach(parentId => {
-        subCategoryDistribution[parentId] = Object.values(subMap[parentId]).sort((a, b) => b.value - a.value);
-    });
-
+    // No procesamos nada aquí (salvo que quieras valores iniciales por defecto),
+    // simplemente enviamos la materia prima al cliente.
     return {
         accounts,
         categories,
