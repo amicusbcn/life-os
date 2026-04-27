@@ -263,14 +263,8 @@ export async function getAnalyticsViewData(year: number = new Date().getFullYear
         templates: importer.templates,
         history: importer.history,
         year,
-        analyticsData: {
-            totalSpent,
-            totalIncome,
-            savingsRate,
-            monthlyEvolution,
-            categoryDistribution: Object.values(parentMap).sort((a, b) => b.value - a.value),
-            subCategoryDistribution // Enviamos el desglose
-        }
+        // Enviamos las transacciones crudas para que el cliente juegue con ellas
+        rawTransactions: transactions || [] 
     };
 }
 

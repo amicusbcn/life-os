@@ -26,7 +26,7 @@ export default async function AnalyticsPage({
         rules, 
         templates, 
         history,
-        analyticsData
+        rawTransactions
     } = data;
 
     return (
@@ -59,7 +59,7 @@ export default async function AnalyticsPage({
             <div className="max-w-7xl mx-auto p-6 space-y-6">
                 {/* Pasamos los datos procesados al cliente */}
                 <AnalyticsDashboard 
-                    data={analyticsData} 
+                    data={rawTransactions} 
                     year={currentYear} 
                 />
             </div>
