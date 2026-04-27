@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { FinanceAccount, FinanceCategory, FinanceRule } from '@/types/finance';
-import { FileUp, FolderTree, CreditCard, Settings2, Scale, NotebookTabs, LinkIcon } from 'lucide-react';
+import { FileUp, FolderTree, CreditCard, Settings2, Scale, NotebookTabs, LinkIcon, ChartPie, ZoomIn } from 'lucide-react';
 import { AccountSettingsDialog } from './AccountSettingsDialog';
 import { CategorySettingsDialog } from './CategorySettingsDialog';
 import { ImporterDialog } from './ImporterDialog';
@@ -72,7 +72,7 @@ export function FinanceMenu({
                         "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                         )}
                     >
-                        <Scale className="w-4 h-4" />
+                        <ZoomIn className="w-4 h-4" />
                         <Link href="/finance/transactions/all">Detalle Anual</Link>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -91,7 +91,7 @@ export function FinanceMenu({
                         "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                         )}
                     >
-                        <Scale className="w-4 h-4" />
+                        <ChartPie className="w-4 h-4" />
                         <Link href="/finance/analytics">Análisis de Gastos</Link>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
