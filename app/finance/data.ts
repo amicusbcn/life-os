@@ -152,37 +152,113 @@ export async function getTransactionViewData(
 }
 
 // Un ejemplo de cómo estructurar la respuesta para los gráficos
-export async function getAnalyticsData(year: number) {
-    const { transactions } = await getTransactionViewData( year,'all');
-    
-    // Procesar datos para un gráfico de evolución mensual
-    const monthlyData = Array.from({ length: 12 }, (_, i) => ({
-        month: i + 1,
-        income: 0,
-        expenses: 0
-    }));
+// app/finance/data.ts
 
-    transactions.forEach(t => {
-        const m = new Date(t.date).getMonth();
-        if (t.amount > 0) monthlyData[m].income += t.amount;
-        else monthlyData[m].expenses += Math.abs(t.amount);
+export async function getAnalyticsViewData(year: number = new Date().getFullYear()) {
+    const supabase = await createClient();
+    const start = `${year}-01-01`;
+    const end = `${year}-12-31`;
+
+    // 1. Cargamos estructura base (Sidebar, Menús y Metadatos)
+    const [accounts, categories, rules, importer] = await Promise.all([
+        getAccounts(),
+        getCategories(),
+        getRules(),
+        getImporterData()
+    ]);
+
+    // 2. Query de transacciones (Toda la data del año en una sola pasada)
+    const { data: transactions, error } = await supabase
+        .from('finance_transactions')
+        .select(`
+            *,
+            account:finance_accounts(*),
+            category:finance_categories(*, parent:parent_id(*)),
+            splits:finance_transaction_splits(*, category:finance_categories(*))
+        `)
+        .gte('date', start)
+        .lte('date', end);
+
+    if (error) console.error("Error en Analytics:", error);
+
+    const safeTransactions = transactions || [];
+
+    // --- PROCESAMIENTO DE DATOS ---
+    const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
+    
+    // Filtramos gastos e ingresos por separado (excluyendo transferencias)
+    const expenses = safeTransactions.filter(t => t.amount < 0 && t.category_id !== TRANSFER_CAT_ID);
+    const income = safeTransactions.filter(t => t.amount > 0 && t.category_id !== TRANSFER_CAT_ID);
+
+    // Evolución mensual (Inicializamos con 12 meses para asegurar que la gráfica no tenga huecos)
+    const monthlyEvolution = Array.from({ length: 12 }, (_, i) => {
+        const monthLabel = new Intl.DateTimeFormat('es-ES', { month: 'short' }).format(new Date(year, i));
+        return { 
+            name: monthLabel.toUpperCase(), 
+            gastos: 0, 
+            ingresos: 0 
+        };
     });
 
-    // Procesar datos por categoría
-    const categoryData = transactions
-        .filter(t => t.amount < 0)
-        .reduce((acc, t) => {
-            const catName = t.category?.name || 'S/C';
-            acc[catName] = (acc[catName] || 0) + Math.abs(t.amount);
-            return acc;
-        }, {} as Record<string, number>);
+    // Distribución por Categoría Padre
+    const categoryMap: Record<string, { name: string, value: number, color: string }> = {};
 
-    return { monthlyData, categoryData };
+    // Procesamos Gastos para Evolución y Distribución
+    expenses.forEach(t => {
+        const date = new Date(t.date);
+        const mIndex = date.getMonth();
+        const absAmount = Math.abs(t.amount);
+
+        // Sumamos al mes en la evolución
+        monthlyEvolution[mIndex].gastos += absAmount;
+
+        // Lógica de Categoría Padre para el Donut
+        const cat = categories.find(c => c.id === t.category_id);
+        const parent = cat?.parent_id ? categories.find(p => p.id === cat.parent_id) : cat;
+        const pName = parent?.name || "Sin categoría";
+        
+        if (!categoryMap[pName]) {
+            categoryMap[pName] = { 
+                name: pName, 
+                value: 0, 
+                color: parent?.color || "#94a3b8" 
+            };
+        }
+        categoryMap[pName].value += absAmount;
+    });
+
+    // Procesamos Ingresos solo para Evolución
+    income.forEach(t => {
+        const mIndex = new Date(t.date).getMonth();
+        monthlyEvolution[mIndex].ingresos += t.amount;
+    });
+
+    // Totales Globales
+    const totalSpent = expenses.reduce((acc, t) => acc + Math.abs(t.amount), 0);
+    const totalIncome = income.reduce((acc, t) => acc + t.amount, 0);
+    
+    // Tasa de ahorro: (Ingresos - Gastos) / Ingresos
+    const savingsRate = totalIncome > 0 ? ((totalIncome - totalSpent) / totalIncome) * 100 : 0;
+
+    return {
+        // Estructura para Sidebar/Menús
+        accounts,
+        categories,
+        rules,
+        templates: importer.templates,
+        history: importer.history,
+        year,
+
+        // Estructura procesada para los Dashboards
+        analyticsData: {
+            totalSpent,
+            totalIncome,
+            savingsRate,
+            monthlyEvolution,
+            categoryDistribution: Object.values(categoryMap).sort((a, b) => b.value - a.value)
+        }
+    };
 }
-
-// app/finance/data.ts
-
-// app/finance/data.ts
 
 export async function getExpenseAnalytics(year: number) {
     const { transactions, categories } = await getTransactionViewData( year,'all');

@@ -2,7 +2,7 @@
 import { getUserData } from '@/utils/security';
 import { UnifiedAppSidebar } from '@/components/layout/UnifiedAppSidebar';
 import { FinanceMenu } from '@/app/finance/components/FinanceMenu';
-import { getTransactionViewData, getExpenseAnalytics } from '@/app/finance/data';
+import { getTransactionViewData, getExpenseAnalytics, getAnalyticsViewData } from '@/app/finance/data';
 import { AnalyticsDashboard } from '../components/AnalyticsDashboard';
 
 export default async function AnalyticsPage({ 
@@ -16,13 +16,18 @@ export default async function AnalyticsPage({
     // 1. Datos de seguridad y perfil
     const { profile, accessibleModules } = await getUserData('finance');
 
-    // 2. Cargamos la estructura base necesaria para el FinanceMenu
-    // Usamos 'all' porque en analytics queremos la visión global
-    const baseData = await getTransactionViewData(currentYear);
-    const { accounts, categories, rules, templates, history } = baseData;
 
     // 3. Cargamos los datos específicos procesados para los gráficos
-    const analyticsData = await getExpenseAnalytics(currentYear);
+    const data = await getAnalyticsViewData(currentYear);
+    
+    const { 
+        accounts, 
+        categories, 
+        rules, 
+        templates, 
+        history,
+        analyticsData
+    } = data;
 
     return (
         <UnifiedAppSidebar
