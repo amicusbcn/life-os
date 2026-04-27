@@ -23,7 +23,7 @@ interface FinanceMenuProps {
     templates: any[];
     history: any[];
     mode: 'operative' | 'settings';
-    currentPanel?: 'dashboard' | 'transactions' 
+    currentPanel?: 'dashboard' | 'transactions' | 'analytics'; 
 }
 
 export function FinanceMenu({ 
@@ -74,6 +74,25 @@ export function FinanceMenu({
                     >
                         <Scale className="w-4 h-4" />
                         <Link href="/finance/transactions/all">Detalle Anual</Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                
+                <SidebarMenuItem>
+                    <SidebarMenuButton 
+                    isActive={currentPanel === 'analytics'}
+                    tooltip="Análisis de gastos"
+                    className={cn(
+                        "transition-all duration-200",
+                        // 1. ESTADO ACTIVO: Contraste total y bloqueo de hover
+                        "data-[active=true]:!bg-indigo-700 data-[active=true]:!text-indigo-50 data-[active=true]:font-bold",
+                        "data-[active=true]:hover:!bg-indigo-700 data-[active=true]:hover:!text-indigo-50", 
+                        
+                        // 2. ESTADO NORMAL: Texto slate y hover suave (solo si no está activo)
+                        "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                        )}
+                    >
+                        <Scale className="w-4 h-4" />
+                        <Link href="/finance/analytics">Análisis de Gastos</Link>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarSeparator />
