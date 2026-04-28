@@ -1,3 +1,13 @@
+'use client'
+
+import React, { useMemo } from 'react';
+import { 
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
+    ResponsiveContainer, BarChart, Bar, Cell 
+} from 'recharts';
+import { Card } from '@/components/ui/card';
+import { TrendingUp, ArrowUpRight, Wallet, PieChart } from 'lucide-react';
+
 // Lógica para procesar la evolución del patrimonio
 const processInvestmentHistory = (transactions: any[], year: number) => {
     const AJUSTE_VALOR_CAT_ID = "a0190e18-87c4-4c3a-ba01-31ae433c5ace"; // CAMBIA ESTO
@@ -34,16 +44,6 @@ const processInvestmentHistory = (transactions: any[], year: number) => {
 
     return Object.values(monthlyData);
 };
-
-'use client'
-
-import React, { useMemo } from 'react';
-import { 
-    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
-    ResponsiveContainer, BarChart, Bar, Cell 
-} from 'recharts';
-import { Card } from '@/components/ui/card';
-import { TrendingUp, ArrowUpRight, Wallet, PieChart } from 'lucide-react';
 
 export function InvestmentDashboard({ data }: any) {
     const history = useMemo(() => 
