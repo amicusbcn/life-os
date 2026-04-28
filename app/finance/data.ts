@@ -193,6 +193,52 @@ export async function getAnalyticsViewData(year: number = new Date().getFullYear
 
 // app/finance/data.ts
 
+export async function getExpenseAnalytics(year: number) {
+    const { transactions, categories } = await getTransactionViewData( year,'all');
+
+    // 1. Filtrado de gastos puros (Negativos y que no sean transferencias)
+    // El ID de transferencia es el que definimos antes
+    const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
+    const expenses = transactions.filter(t => t.amount < 0 && t.category_id !== TRANSFER_CAT_ID);
+
+    // 2. Evolución mensual (Barras)
+    const monthlyEvolution = Array.from({ length: 12 }, (_, i) => {
+        const monthLabel = new Intl.DateTimeFormat('es-ES', { month: 'short' }).format(new Date(year, i));
+        return { name: monthLabel.toUpperCase(), total: 0 };
+    });
+
+    // 3. Distribución por Categoría Padre (Donut)
+    const categoryDistribution: Record<string, { name: string, value: number, color: string }> = {};
+
+    expenses.forEach(t => {
+        const date = new Date(t.date);
+        const monthIndex = date.getMonth();
+
+        // Sumar al mes correspondiente
+        monthlyEvolution[monthIndex].total += Math.abs(t.amount);
+
+        // Agrupar por categoría padre
+        const cat = categories.find(c => c.id === t.category_id);
+        const parent = cat?.parent_id ? categories.find(p => p.id === cat.parent_id) : cat;
+        const parentName = parent?.name || "Sin categoría";
+        const parentColor = parent?.color || "#94a3b8";
+
+        if (!categoryDistribution[parentName]) {
+            categoryDistribution[parentName] = { 
+                name: parentName, 
+                value: 0, 
+                color: parentColor 
+            };
+        }
+        categoryDistribution[parentName].value += Math.abs(t.amount);
+    });
+
+    return {
+        totalSpent: expenses.reduce((acc, t) => acc + Math.abs(t.amount), 0),
+        monthlyEvolution,
+        categoryDistribution: Object.values(categoryDistribution).sort((a, b) => b.value - a.value)
+    };
+}
 // app/finance/data.ts
 
 export async function getInvestmentViewData(year: number = new Date().getFullYear()) {
