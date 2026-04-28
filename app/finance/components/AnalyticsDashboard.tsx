@@ -127,6 +127,13 @@ export function AnalyticsDashboard({ data, year }: any) {
         router.push(`?${query.toString()}`);
     };
 
+    
+    const getMonthName = (index: number) => {
+        // Creamos una fecha ficticia usando el año actual y el índice del mes (0-11)
+        const date = new Date(year, index, 1);
+        return new Intl.DateTimeFormat('es-ES', { month: 'long' }).format(date);
+    };
+    
     const displayData = useMemo(() => {
         let txs = [...(data.rawTransactions || [])];
         // Filtro previo por categoría padre si existe
@@ -207,6 +214,18 @@ export function AnalyticsDashboard({ data, year }: any) {
                         <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">
                             {selectedMonth === null ? "Evolución Anual" : `Detalle Diario`}
                         </h4>
+                        {/* SUBTÍTULO DINÁMICO BARRAS */}
+                        <p className="text-[11px] font-bold text-slate-600 mt-1 uppercase flex flex-wrap gap-1 items-center">
+                            <span>{selectedMonth !== null ? getMonthName(selectedMonth) : `Todo el ${year}`}</span>
+                            {(selectedCatId || selectedSubCatName) && (
+                                <>
+                                    <span className="opacity-30 mx-1">/</span>
+                                    <span className="text-indigo-500">
+                                        {selectedSubCatName || data.categories.find((c: any) => c.id === selectedCatId)?.name}
+                                    </span>
+                                </>
+                            )}
+                        </p>
                         {selectedMonth !== null && (
                             <Button variant="ghost" size="sm" onClick={() => { setSelectedMonth(null); setSelectedDay(null); }} className="h-6 px-2 text-[9px] font-black uppercase bg-slate-100 rounded-lg hover:bg-slate-200">
                                 <ArrowLeft size={10} className="mr-1"/> Volver al Año
@@ -248,8 +267,20 @@ export function AnalyticsDashboard({ data, year }: any) {
                     <div className="w-full flex justify-between items-start mb-6">
                         <div className="flex flex-col">
                             <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">
-                                {isDrillDown ? "Subcategorías" : "Categorías"}
+                                {isDrillDown ? "Subcategorías" : "Categorías Principales"}
                             </h4>
+                            {/* SUBTÍTULO DINÁMICO DONUT */}
+                            <p className="text-[11px] font-bold text-indigo-600 mt-1 uppercase flex flex-wrap gap-1 items-center">
+                                <span>{isDrillDown ? data.categories.find((c: any) => c.id === selectedCatId)?.name : "General"}</span>
+                                <span className="opacity-30 mx-1 text-slate-400">/</span>
+                                <span className="text-slate-600">
+                                    {selectedDay 
+                                        ? `${selectedDay} de ${getMonthName(selectedMonth!)}` 
+                                        : selectedMonth !== null 
+                                            ? getMonthName(selectedMonth) 
+                                            : `Anual ${year}`}
+                                </span>
+                            </p>
                         </div>
                         {isDrillDown && (
                             <Button variant="ghost" size="sm" onClick={() => { setIsDrillDown(false); setSelectedCatId(null); setSelectedSubCatName(null); }} className="h-6 px-2 text-[9px] font-black uppercase bg-slate-100 rounded-lg hover:bg-slate-200">
