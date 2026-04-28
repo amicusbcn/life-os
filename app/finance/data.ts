@@ -151,12 +151,7 @@ export async function getTransactionViewData(
     };
 }
 
-// Un ejemplo de cómo estructurar la respuesta para los gráficos
-// app/finance/data.ts
 
-// app/finance/data.ts
-
-// app/finance/data.ts
 
 export async function getAnalyticsViewData(year: number = new Date().getFullYear()) {
     const supabase = await createClient();
@@ -196,49 +191,54 @@ export async function getAnalyticsViewData(year: number = new Date().getFullYear
     };
 }
 
-export async function getExpenseAnalytics(year: number) {
-    const { transactions, categories } = await getTransactionViewData( year,'all');
+// app/finance/data.ts
 
-    // 1. Filtrado de gastos puros (Negativos y que no sean transferencias)
-    // El ID de transferencia es el que definimos antes
-    const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
-    const expenses = transactions.filter(t => t.amount < 0 && t.category_id !== TRANSFER_CAT_ID);
+// app/finance/data.ts
 
-    // 2. Evolución mensual (Barras)
-    const monthlyEvolution = Array.from({ length: 12 }, (_, i) => {
-        const monthLabel = new Intl.DateTimeFormat('es-ES', { month: 'short' }).format(new Date(year, i));
-        return { name: monthLabel.toUpperCase(), total: 0 };
-    });
+export async function getInvestmentViewData(year: number = new Date().getFullYear()) {
+    const supabase = await createClient();
 
-    // 3. Distribución por Categoría Padre (Donut)
-    const categoryDistribution: Record<string, { name: string, value: number, color: string }> = {};
+    // 1. Cargamos todos los datos de soporte (igual que en Analytics)
+    // Los necesitamos para que el Sidebar y los selectores del menú funcionen
+    const [accounts, categories, rules, importer] = await Promise.all([
+        getAccounts(),
+        getCategories(),
+        getRules(),
+        getImporterData()
+    ]);
 
-    expenses.forEach(t => {
-        const date = new Date(t.date);
-        const monthIndex = date.getMonth();
-        
-        // Sumar al mes correspondiente
-        monthlyEvolution[monthIndex].total += Math.abs(t.amount);
+    // 2. Filtramos solo las cuentas de tipo inversión
+    const investmentAccounts = accounts.filter(a => a.account_type === 'investment');
+    const investmentAccountIds = investmentAccounts.map(a => a.id);
 
-        // Agrupar por categoría padre
-        const cat = categories.find(c => c.id === t.category_id);
-        const parent = cat?.parent_id ? categories.find(p => p.id === cat.parent_id) : cat;
-        const parentName = parent?.name || "Sin categoría";
-        const parentColor = parent?.color || "#94a3b8";
+    // 3. Traemos el histórico completo de transacciones para estas cuentas
+    // Importante: En inversiones solemos necesitar TODO el histórico para calcular
+    // el capital invertido acumulado, no solo el año actual.
+    const { data: transactions, error } = await supabase
+        .from('finance_transactions')
+        .select(`
+            *,
+            account:finance_accounts(*),
+            category:finance_categories(*, parent:parent_id(*)),
+            splits:finance_transaction_splits(*, category:finance_categories(*))
+        `)
+        .in('account_id', investmentAccountIds)
+        .order('date', { ascending: true });
 
-        if (!categoryDistribution[parentName]) {
-            categoryDistribution[parentName] = { 
-                name: parentName, 
-                value: 0, 
-                color: parentColor 
-            };
-        }
-        categoryDistribution[parentName].value += Math.abs(t.amount);
-    });
+    if (error) console.error("Error en Investment Data:", error);
 
+    // 4. Devolvemos la estructura unificada
     return {
-        totalSpent: expenses.reduce((acc, t) => acc + Math.abs(t.amount), 0),
-        monthlyEvolution,
-        categoryDistribution: Object.values(categoryDistribution).sort((a, b) => b.value - a.value)
+        // Datos de contexto para el Sidebar/Menú
+        accounts, 
+        categories,
+        rules,
+        templates: importer.templates,
+        history: importer.history,
+        
+        // Datos específicos para el Dashboard de Inversión
+        investmentAccounts,
+        investmentTransactions: transactions || [],
+        year
     };
 }
