@@ -15,26 +15,57 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 // --- MOTOR DE PROCESAMIENTO ---
 // Procesa las transacciones filtradas para generar los datos de los gráficos
-const processData = (transactions: any[], categories: any[], year: number) => {
-    console.log("Procesando transacciones:", transactions.length); // <--- Mira esto en la consola del navegador (F12)
+// --- MOTOR DE PROCESAMIENTO CON DETALLE DIARIO ---
+const processData = (transactions: any[], categories: any[], year: number, selectedMonth: number | null) => {
     const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
+    
+    // 1. Filtros base
     const expenses = transactions.filter(t => t.amount < 0 && t.category_id !== TRANSFER_CAT_ID);
     const income = transactions.filter(t => t.amount > 0 && t.category_id !== TRANSFER_CAT_ID);
 
-    const monthlyEvolution = Array.from({ length: 12 }, (_, i) => ({
-        name: new Intl.DateTimeFormat('es-ES', { month: 'short' }).format(new Date(year, i)).toUpperCase(),
-        gastos: 0,
-        ingresos: 0
-    }));
+    // 2. Inicialización de la serie temporal (Evolución)
+    let evolutionData: any[] = [];
 
+    if (selectedMonth === null) {
+        // MODO ANUAL: 12 meses
+        evolutionData = Array.from({ length: 12 }, (_, i) => ({
+            name: new Intl.DateTimeFormat('es-ES', { month: 'short' }).format(new Date(year, i)).toUpperCase(),
+            gastos: 0,
+            ingresos: 0,
+            fullDate: null // No necesario en vista anual
+        }));
+    } else {
+        // MODO MENSUAL: Días del mes (calculamos cuántos días tiene ese mes concreto)
+        const daysInMonth = new Date(year, selectedMonth + 1, 0).getDate();
+        evolutionData = Array.from({ length: daysInMonth }, (_, i) => ({
+            name: (i + 1).toString(), // El día del mes: "1", "2", "3"...
+            gastos: 0,
+            ingresos: 0,
+            fullDate: new Date(year, selectedMonth, i + 1)
+        }));
+    }
+
+    // 3. Mapas para la distribución (Donut)
     const parentMap: Record<string, any> = {};
     const subMap: Record<string, any[]> = {};
 
+    // 4. Procesar Gastos
     expenses.forEach(t => {
+        const date = new Date(t.date);
         const absAmount = Math.abs(t.amount);
-        const mIndex = new Date(t.date).getMonth();
-        monthlyEvolution[mIndex].gastos += absAmount;
+        
+        // Lógica de evolución temporal
+        if (selectedMonth === null) {
+            evolutionData[date.getMonth()].gastos += absAmount;
+        } else {
+            // Solo sumamos si la transacción pertenece al mes seleccionado
+            if (date.getMonth() === selectedMonth) {
+                const dayIndex = date.getDate() - 1;
+                if (evolutionData[dayIndex]) evolutionData[dayIndex].gastos += absAmount;
+            }
+        }
 
+        // Lógica de categorías (Donut)
         const cat = categories.find(c => c.id === t.category_id);
         const parent = cat?.parent_id ? categories.find(p => p.id === cat.parent_id) : cat;
 
@@ -52,10 +83,20 @@ const processData = (transactions: any[], categories: any[], year: number) => {
         }
     });
 
+    // 5. Procesar Ingresos
     income.forEach(t => {
-        monthlyEvolution[new Date(t.date).getMonth()].ingresos += t.amount;
+        const date = new Date(t.date);
+        if (selectedMonth === null) {
+            evolutionData[date.getMonth()].ingresos += t.amount;
+        } else {
+            if (date.getMonth() === selectedMonth) {
+                const dayIndex = date.getDate() - 1;
+                if (evolutionData[dayIndex]) evolutionData[dayIndex].ingresos += t.amount;
+            }
+        }
     });
 
+    // 6. Totales y Tasa de Ahorro
     const totalSpent = expenses.reduce((acc, t) => acc + Math.abs(t.amount), 0);
     const totalIncome = income.reduce((acc, t) => acc + t.amount, 0);
 
@@ -63,7 +104,7 @@ const processData = (transactions: any[], categories: any[], year: number) => {
         totalSpent,
         totalIncome,
         savingsRate: totalIncome > 0 ? ((totalIncome - totalSpent) / totalIncome) * 100 : 0,
-        monthlyEvolution,
+        monthlyEvolution: evolutionData, // Contiene meses o días según el contexto
         categoryDistribution: Object.values(parentMap).sort((a, b) => b.value - a.value),
         subCategoryDistribution: subMap
     };
@@ -87,16 +128,21 @@ export function AnalyticsDashboard({ data, year }: any) {
 
     // --- FILTRADO CRUZADO ---
     const displayData = useMemo(() => {
-        let txs = [...(data.rawTransactions || [])];
-        if (selectedMonth !== null) txs = txs.filter(t => new Date(t.date).getMonth() === selectedMonth);
-        if (selectedCatId !== null) {
-            txs = txs.filter(t => {
-                const cat = data.categories.find((c: any) => c.id === t.category_id);
-                return t.category_id === selectedCatId || cat?.parent_id === selectedCatId;
-            });
-        }
-        return processData(txs, data.categories, year);
-    }, [selectedMonth, selectedCatId, data, year]);
+    let txs = [...(data.rawTransactions || [])];
+    
+    // IMPORTANTE: Aquí NO filtramos por mes todavía, 
+    // dejamos que processData decida qué transacciones usar
+    // para que la distribución por categorías también sea correcta.
+    
+    if (selectedCatId !== null) {
+        txs = txs.filter(t => {
+            const cat = data.categories.find((c: any) => c.id === t.category_id);
+            return t.category_id === selectedCatId || cat?.parent_id === selectedCatId;
+        });
+    }
+
+    return processData(txs, data.categories, year, selectedMonth); // <-- selectedMonth añadido aquí
+}, [selectedMonth, selectedCatId, data, year]);
 
     const formatCurrency = (v: any) => `${Number(v || 0).toLocaleString('es-ES')} €`;
 

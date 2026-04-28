@@ -29,7 +29,6 @@ export default async function AnalyticsPage({
         rawTransactions
     } = data;
 
-    console.log("Transacciones enviadas al cliente:", rawTransactions.length);
     return (
         <UnifiedAppSidebar
             title="Analítica de Gastos"
