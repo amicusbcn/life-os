@@ -14,58 +14,61 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation';
 
 // --- MOTOR DE PROCESAMIENTO ---
-// Procesa las transacciones filtradas para generar los datos de los gráficos
-// --- MOTOR DE PROCESAMIENTO CON DETALLE DIARIO ---
-const processData = (transactions: any[], categories: any[], year: number, selectedMonth: number | null) => {
+const processData = (transactions: any[], categories: any[], year: number, selectedMonth: number | null, selectedDay: number | null) => {
     const TRANSFER_CAT_ID = "10310a6a-5d3b-4e95-a19f-bfef8cd2dd1a";
     
-    // 1. Filtros base
-    const expenses = transactions.filter(t => t.amount < 0 && t.category_id !== TRANSFER_CAT_ID);
-    const income = transactions.filter(t => t.amount > 0 && t.category_id !== TRANSFER_CAT_ID);
+    // Filtrado para el Donut (afectado por Mes, Día y Categoría)
+    const filteredTxs = transactions.filter(t => {
+        const d = new Date(t.date);
+        const matchMonth = selectedMonth === null || d.getMonth() === selectedMonth;
+        const matchDay = selectedDay === null || d.getDate() === selectedDay;
+        return matchMonth && matchDay;
+    });
 
-    // 2. Inicialización de la serie temporal (Evolución)
+    const expensesForDonut = filteredTxs.filter(t => t.amount < 0 && t.category_id !== TRANSFER_CAT_ID);
+    const incomeForDonut = filteredTxs.filter(t => t.amount > 0 && t.category_id !== TRANSFER_CAT_ID);
+
+    // --- LÓGICA DE EVOLUCIÓN (Gráfico de Barras) ---
     let evolutionData: any[] = [];
-
     if (selectedMonth === null) {
-        // MODO ANUAL: 12 meses
         evolutionData = Array.from({ length: 12 }, (_, i) => ({
             name: new Intl.DateTimeFormat('es-ES', { month: 'short' }).format(new Date(year, i)).toUpperCase(),
-            gastos: 0,
-            ingresos: 0,
-            fullDate: null // No necesario en vista anual
+            gastos: 0, ingresos: 0
         }));
     } else {
-        // MODO MENSUAL: Días del mes (calculamos cuántos días tiene ese mes concreto)
         const daysInMonth = new Date(year, selectedMonth + 1, 0).getDate();
         evolutionData = Array.from({ length: daysInMonth }, (_, i) => ({
-            name: (i + 1).toString(), // El día del mes: "1", "2", "3"...
-            gastos: 0,
-            ingresos: 0,
-            fullDate: new Date(year, selectedMonth, i + 1)
+            name: (i + 1).toString(),
+            gastos: 0, ingresos: 0
         }));
     }
 
-    // 3. Mapas para la distribución (Donut)
+    // Llenamos la evolución con todas las txs (sin filtrar por día para que el gráfico no se vacíe)
+    transactions.forEach(t => {
+        const d = new Date(t.date);
+        const amt = Math.abs(t.amount);
+        const isExpense = t.amount < 0 && t.category_id !== TRANSFER_CAT_ID;
+        const isIncome = t.amount > 0 && t.category_id !== TRANSFER_CAT_ID;
+
+        if (selectedMonth === null) {
+            if (isExpense) evolutionData[d.getMonth()].gastos += amt;
+            if (isIncome) evolutionData[d.getMonth()].ingresos += amt;
+        } else if (d.getMonth() === selectedMonth) {
+            if (isExpense) evolutionData[d.getDate() - 1].gastos += amt;
+            if (isIncome) evolutionData[d.getDate() - 1].ingresos += amt;
+        }
+    });
+
+    // Totales para KPIs
+    const totalSpent = expensesForDonut.reduce((acc, t) => acc + Math.abs(t.amount), 0);
+    const totalIncome = incomeForDonut.reduce((acc, t) => acc + t.amount, 0);
+
+    // --- LÓGICA DE CATEGORÍAS (Donut) ---
     const parentMap: Record<string, any> = {};
     const subMap: Record<string, any[]> = {};
 
-    // 4. Procesar Gastos
-    expenses.forEach(t => {
-        const date = new Date(t.date);
+    expensesForDonut.forEach(t => {
         const absAmount = Math.abs(t.amount);
-        
-        // Lógica de evolución temporal
-        if (selectedMonth === null) {
-            evolutionData[date.getMonth()].gastos += absAmount;
-        } else {
-            // Solo sumamos si la transacción pertenece al mes seleccionado
-            if (date.getMonth() === selectedMonth) {
-                const dayIndex = date.getDate() - 1;
-                if (evolutionData[dayIndex]) evolutionData[dayIndex].gastos += absAmount;
-            }
-        }
-
-        // Lógica de categorías (Donut)
         const cat = categories.find(c => c.id === t.category_id);
         const parent = cat?.parent_id ? categories.find(p => p.id === cat.parent_id) : cat;
 
@@ -74,7 +77,7 @@ const processData = (transactions: any[], categories: any[], year: number, selec
                 parentMap[parent.id] = { id: parent.id, name: parent.name, value: 0, color: parent.color || "#94a3b8" };
             }
             parentMap[parent.id].value += absAmount;
-
+            
             if (!subMap[parent.id]) subMap[parent.id] = [];
             const subName = cat?.id === parent.id ? `${parent.name} (Gral.)` : (cat?.name || "S/C");
             const existingSub = subMap[parent.id].find(s => s.name === subName);
@@ -83,28 +86,11 @@ const processData = (transactions: any[], categories: any[], year: number, selec
         }
     });
 
-    // 5. Procesar Ingresos
-    income.forEach(t => {
-        const date = new Date(t.date);
-        if (selectedMonth === null) {
-            evolutionData[date.getMonth()].ingresos += t.amount;
-        } else {
-            if (date.getMonth() === selectedMonth) {
-                const dayIndex = date.getDate() - 1;
-                if (evolutionData[dayIndex]) evolutionData[dayIndex].ingresos += t.amount;
-            }
-        }
-    });
-
-    // 6. Totales y Tasa de Ahorro
-    const totalSpent = expenses.reduce((acc, t) => acc + Math.abs(t.amount), 0);
-    const totalIncome = income.reduce((acc, t) => acc + t.amount, 0);
-
     return {
         totalSpent,
         totalIncome,
         savingsRate: totalIncome > 0 ? ((totalIncome - totalSpent) / totalIncome) * 100 : 0,
-        monthlyEvolution: evolutionData, // Contiene meses o días según el contexto
+        monthlyEvolution: evolutionData,
         categoryDistribution: Object.values(parentMap).sort((a, b) => b.value - a.value),
         subCategoryDistribution: subMap
     };
@@ -114,35 +100,27 @@ export function AnalyticsDashboard({ data, year }: any) {
     const router = useRouter();
     const searchParams = useSearchParams();
 
-    // Estados de filtrado interactivo
     const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+    const [selectedDay, setSelectedDay] = useState<number | null>(null);
     const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
     const [isDrillDown, setIsDrillDown] = useState(false);
 
-    // Navegación de año
     const changeYear = (delta: number) => {
         const query = new URLSearchParams(searchParams.toString());
         query.set('year', (year + delta).toString());
         router.push(`?${query.toString()}`);
     };
 
-    // --- FILTRADO CRUZADO ---
     const displayData = useMemo(() => {
-    let txs = [...(data.rawTransactions || [])];
-    
-    // IMPORTANTE: Aquí NO filtramos por mes todavía, 
-    // dejamos que processData decida qué transacciones usar
-    // para que la distribución por categorías también sea correcta.
-    
-    if (selectedCatId !== null) {
-        txs = txs.filter(t => {
-            const cat = data.categories.find((c: any) => c.id === t.category_id);
-            return t.category_id === selectedCatId || cat?.parent_id === selectedCatId;
-        });
-    }
-
-    return processData(txs, data.categories, year, selectedMonth); // <-- selectedMonth añadido aquí
-}, [selectedMonth, selectedCatId, data, year]);
+        let txs = [...(data.rawTransactions || [])];
+        if (selectedCatId !== null) {
+            txs = txs.filter(t => {
+                const cat = data.categories.find((c: any) => c.id === t.category_id);
+                return t.category_id === selectedCatId || cat?.parent_id === selectedCatId;
+            });
+        }
+        return processData(txs, data.categories, year, selectedMonth, selectedDay);
+    }, [selectedMonth, selectedDay, selectedCatId, data, year]);
 
     const formatCurrency = (v: any) => `${Number(v || 0).toLocaleString('es-ES')} €`;
 
@@ -152,7 +130,8 @@ export function AnalyticsDashboard({ data, year }: any) {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h2 className="text-3xl font-black italic tracking-tighter text-slate-800 uppercase leading-none">
-                        {selectedMonth !== null ? `Balance ${displayData.monthlyEvolution[selectedMonth].name}` : `Análisis Anual ${year}`}
+                        {selectedDay !== null ? `Día ${selectedDay} de ${displayData.monthlyEvolution[0]?.name || ''}` : 
+                         selectedMonth !== null ? `Balance ${displayData.monthlyEvolution[0]?.name || ''}` : `Análisis Anual ${year}`}
                     </h2>
                     <div className="flex gap-2 mt-3">
                         {selectedCatId && (
@@ -160,19 +139,19 @@ export function AnalyticsDashboard({ data, year }: any) {
                                 <Target size={10} /> {data.categories.find((c: any) => c.id === selectedCatId)?.name}
                             </span>
                         )}
-                        {selectedMonth !== null && (
+                        {(selectedMonth !== null || selectedDay !== null) && (
                             <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-black rounded uppercase border border-slate-200">
-                                Mes de {displayData.monthlyEvolution[selectedMonth].name}
+                                {selectedDay ? `Día ${selectedDay}` : 'Vista Mensual'}
                             </span>
                         )}
                     </div>
                 </div>
                 
                 <div className="flex items-center gap-3">
-                    {(selectedMonth !== null || selectedCatId !== null) && (
+                    {(selectedMonth !== null || selectedCatId !== null || selectedDay !== null) && (
                         <Button 
                             variant="ghost" 
-                            onClick={() => { setSelectedMonth(null); setSelectedCatId(null); setIsDrillDown(false); }}
+                            onClick={() => { setSelectedMonth(null); setSelectedDay(null); setSelectedCatId(null); setIsDrillDown(false); }}
                             className="h-10 px-4 rounded-2xl text-[10px] font-black uppercase text-rose-500 hover:bg-rose-50 gap-2 border border-transparent hover:border-rose-200"
                         >
                             <FilterX size={14} /> Limpiar Filtros
@@ -197,7 +176,7 @@ export function AnalyticsDashboard({ data, year }: any) {
                     <h3 className="text-3xl font-black italic tracking-tighter text-slate-800">{formatCurrency(displayData.totalIncome)}</h3>
                 </Card>
                 <Card className="p-6 bg-white rounded-[2.5rem] border-slate-100 shadow-xl">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Tasa Ahorro</p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Ahorro %</p>
                     <h3 className={cn("text-3xl font-black italic tracking-tighter", displayData.savingsRate > 0 ? "text-emerald-500" : "text-rose-500")}>
                         {displayData.savingsRate.toFixed(1)}%
                     </h3>
@@ -205,16 +184,21 @@ export function AnalyticsDashboard({ data, year }: any) {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                {/* GRÁFICO EVOLUCIÓN */}
+                {/* GRÁFICO DE BARRAS */}
                 <Card className="lg:col-span-8 p-8 rounded-[3rem] border-slate-100 shadow-sm">
                     <div className="h-[400px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <ComposedChart 
                                 data={displayData.monthlyEvolution}
-                                onClick={(state) => {
+                                onClick={(state: any) => {
                                     const index = state?.activeTooltipIndex !== undefined ? Number(state.activeTooltipIndex) : null;
-                                    if (index !== null) {
-                                        setSelectedMonth(index === selectedMonth ? null : index);
+                                    if (index === null) return;
+                                    
+                                    if (selectedMonth === null) {
+                                        setSelectedMonth(index);
+                                    } else {
+                                        const day = index + 1;
+                                        setSelectedDay(selectedDay === day ? null : day);
                                     }
                                 }}
                             >
@@ -222,25 +206,39 @@ export function AnalyticsDashboard({ data, year }: any) {
                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: '900', fill: '#94a3b8'}} />
                                 <YAxis hide />
                                 <Tooltip formatter={formatCurrency} cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '1rem', border:'none', boxShadow:'0 10px 25px -3px rgba(0,0,0,0.1)'}} />
-                                <Bar dataKey="gastos" name="Gastos" barSize={selectedCatId ? 60 : 35} radius={[6, 6, 0, 0]} isAnimationActive={true}>
-                                    {displayData.monthlyEvolution.map((entry, index) => (
-                                        <Cell 
-                                            key={`cell-${index}`} 
-                                            fill={selectedMonth === index ? '#4f46e5' : '#818cf8'} 
-                                            fillOpacity={selectedMonth === null || selectedMonth === index ? 1 : 0.3}
-                                            className="cursor-pointer transition-all duration-300"
-                                        />
-                                    ))}
+                                <Bar dataKey="gastos" name="Gastos" barSize={selectedMonth !== null ? 12 : 35} radius={[6, 6, 0, 0]} isAnimationActive={true}>
+                                    {displayData.monthlyEvolution.map((entry: any, index: number) => {
+                                        let isHighlighted = false;
+                                        let color = "#818cf8";
+                                        
+                                        if (selectedMonth === null) {
+                                            isHighlighted = true;
+                                        } else if (selectedDay === null) {
+                                            isHighlighted = true;
+                                        } else {
+                                            isHighlighted = (index + 1) === selectedDay;
+                                            if (isHighlighted) color = "#f43f5e";
+                                        }
+
+                                        return (
+                                            <Cell 
+                                                key={`cell-${index}`} 
+                                                fill={color} 
+                                                fillOpacity={isHighlighted ? 1 : 0.3}
+                                                className="cursor-pointer transition-all duration-300"
+                                            />
+                                        );
+                                    })}
                                 </Bar>
                                 {!selectedCatId && (
-                                    <Line type="monotone" dataKey="ingresos" name="Ingresos" stroke="#10b981" strokeWidth={3} dot={{r:3, fill:'#10b981', strokeWidth:2, stroke:'#fff'}} isAnimationActive={true} />
+                                    <Line type="stepAfter" dataKey="ingresos" name="Ingresos" stroke="#10b981" strokeWidth={3} dot={false} isAnimationActive={true} />
                                 )}
                             </ComposedChart>
                         </ResponsiveContainer>
                     </div>
                 </Card>
 
-                {/* GRÁFICO DONUT CON DRILL-DOWN */}
+                {/* DONUT */}
                 <Card className="lg:col-span-4 p-8 rounded-[3rem] border-slate-100 shadow-sm flex flex-col items-center relative">
                     <div className="w-full flex justify-between items-start mb-6">
                         <div className="flex flex-col">
@@ -262,19 +260,19 @@ export function AnalyticsDashboard({ data, year }: any) {
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
-                                    data={isDrillDown ? displayData.subCategoryDistribution[selectedCatId!] : displayData.categoryDistribution}
+                                    data={isDrillDown ? (displayData.subCategoryDistribution[selectedCatId!] || []) : displayData.categoryDistribution}
                                     innerRadius={70} outerRadius={100} paddingAngle={5} dataKey="value" stroke="none"
                                     isAnimationActive={true}
-                                    onClick={(entry) => {
+                                    onClick={(entry: any) => {
                                         const dataPayload = entry.payload;
                                         if (!isDrillDown && dataPayload?.id) {
                                             setSelectedCatId(dataPayload.id);
                                             setIsDrillDown(true);
                                         }
                                     }}
-                                    className="cursor-pointer outline-none"
+                                    className="outline-none cursor-pointer"
                                 >
-                                    {(isDrillDown ? displayData.subCategoryDistribution[selectedCatId!] : displayData.categoryDistribution).map((entry: any, index: number) => (
+                                    {(isDrillDown ? (displayData.subCategoryDistribution[selectedCatId!] || []) : displayData.categoryDistribution).map((entry: any, index: number) => (
                                         <Cell 
                                             key={`cell-${index}`} 
                                             fill={entry.color} 
@@ -288,7 +286,7 @@ export function AnalyticsDashboard({ data, year }: any) {
                     </div>
 
                     <div className="mt-6 w-full space-y-1.5 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
-                        {(isDrillDown ? displayData.subCategoryDistribution[selectedCatId!] : displayData.categoryDistribution).map((cat: any) => (
+                        {(isDrillDown ? (displayData.subCategoryDistribution[selectedCatId!] || []) : displayData.categoryDistribution).map((cat: any) => (
                             <div 
                                 key={cat.name} 
                                 className="flex items-center justify-between group cursor-pointer p-1 rounded-lg hover:bg-slate-50 transition-colors"
