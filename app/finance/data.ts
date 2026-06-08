@@ -127,7 +127,8 @@ export async function getTransactionViewData(
         `)
         .gte('date', start)
         .lte('date', end)
-        .order('date', { ascending: false });
+        .order('date', { ascending: false })
+        .order('import_sequence', { ascending: false });
 
     // 4. Filtro condicional: 
     // Solo aplicamos el eq('account_id') si NO estamos en modo 'all' Y tenemos una cuenta válida
@@ -174,7 +175,9 @@ export async function getAnalyticsViewData(year: number = new Date().getFullYear
             splits:finance_transaction_splits(*, category:finance_categories(*))
         `)
         .gte('date', start)
-        .lte('date', end);
+        .lte('date', end)
+        .order('date', { ascending: true })
+        .order('import_sequence', { ascending: false });;
 
     if (error) console.error("Error en Analytics:", error);
 
@@ -269,7 +272,8 @@ export async function getInvestmentViewData(year: number = new Date().getFullYea
             splits:finance_transaction_splits(*, category:finance_categories(*))
         `)
         .in('account_id', investmentAccountIds)
-        .order('date', { ascending: true });
+        .order('date', { ascending: true })
+        .order('import_sequence', { ascending: false });
 
     if (error) console.error("Error en Investment Data:", error);
 

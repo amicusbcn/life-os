@@ -1,14 +1,10 @@
 'use server'
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
-import {ActionResponse } from '@/types/common'
-
-
-
-
-import { ImporterTemplate, ParsedTransaction } from '@/types/finance'; // Asegúrate de importar ParsedTransaction
-import * as csv from 'csv-parser'; // Importar la librería
-import { Readable } from 'stream'; // Requerido para manejar el archivo en Node.js
+import { ActionResponse } from '@/types/common'
+import { ImporterTemplate, ParsedTransaction } from '@/types/finance'; 
+import * as csv from 'csv-parser'; 
+import { Readable } from 'stream'; 
 
 export async function importCsvTransactionsAction(
     formData: FormData,
@@ -94,7 +90,7 @@ export async function importCsvTransactionsAction(
 
         if (importerError || !importerRecord) return { success: false, error: 'Error al inicializar histórico.' };
 
-        // 4. PROCESAMIENTO CSV (Tu lógica robusta de limpieza)
+        // 4. PROCESAMIENTO CSV
         const buffer = await file.arrayBuffer();
         const fileContent = Buffer.from(buffer).toString('utf8');
         const allLines = fileContent.split(/\r?\n|\r/g);
@@ -112,6 +108,9 @@ export async function importCsvTransactionsAction(
 
         const cleanedStreamContent = cleanedLines.join('\n');
         const transactions: any[] = [];
+        
+        // REGLA DE NEGOCIO: Llevamos un contador incremental interno para guardar el orden físico exacto del CSV
+        let sequenceCounter = 0; 
 
         try {
             const parser = csv.default({
@@ -123,7 +122,12 @@ export async function importCsvTransactionsAction(
                 const mappedRow = mapCsvRow(row, mapping, account_id, user_id);
                 if (mappedRow) {
                     if (invertAmountManual) mappedRow.amount *= -1;
-                    transactions.push(mappedRow);
+                    
+                    // Inyectamos la posición nativa de la fila antes de empujarla al array
+                    transactions.push({
+                        ...mappedRow,
+                        import_sequence: sequenceCounter++ 
+                    });
                 }
             }).on('error', (error: Error) => {
                 throw new Error(`Error al parsear: ${error.message}`);
@@ -185,69 +189,59 @@ export async function importCsvTransactionsAction(
 
 
 function mapCsvRow(
-  row: { [key: string]: string },
-  mapping: ImporterTemplate['mapping'],
-  account_id: string,
-  user_id: string,
+    row: { [key: string]: string },
+    mapping: ImporterTemplate['mapping'],
+    account_id: string,
+    user_id: string,
 ): ParsedTransaction | null {
   
-  const { operation_date, concept, amount, sign_column, bank_balance } = mapping;
+    const { operation_date, concept, amount, sign_column, bank_balance } = mapping;
 
-  // 1. Obtener valores crudos
-  const rawDate = row[operation_date]?.trim();
-  const rawConcept = row[concept]?.trim();
-  const rawAmountStr = row[amount]?.trim() || "";
-  const rawSign = sign_column ? row[sign_column]?.trim() : null;
-  const rawBalanceStr = bank_balance ? row[bank_balance]?.trim() : null;
+    const rawDate = row[operation_date]?.trim();
+    const rawConcept = row[concept]?.trim();
+    const rawAmountStr = row[amount]?.trim() || "";
+    const rawSign = sign_column ? row[sign_column]?.trim() : null;
+    const rawBalanceStr = bank_balance ? row[bank_balance]?.trim() : null;
 
-  // --- CORRECCIÓN CLAVE PARA FORMATO ESPAÑOL ---
-  // Ejemplo: "1.910,45" -> "1910.45"
-  const sanitize = (val: string) => val.replace(/\./g, '').replace(',', '.');
+    const sanitize = (val: string) => val.replace(/\./g, '').replace(',', '.');
   
-  const numericAmount = parseFloat(sanitize(rawAmountStr));
-  const numericBalance = rawBalanceStr ? parseFloat(sanitize(rawBalanceStr)) : null;
-  // --------------------------------------------
+    const numericAmount = parseFloat(sanitize(rawAmountStr));
+    const numericBalance = rawBalanceStr ? parseFloat(sanitize(rawBalanceStr)) : null;
 
-  if (!rawDate || isNaN(numericAmount) || !rawConcept) return null;
+    if (!rawDate || isNaN(numericAmount) || !rawConcept) return null;
   
-  let finalAmount: number;
+    let finalAmount: number;
 
-  // 2. Manejar el signo
-  if (sign_column && rawSign) {
-    // Si hay columna de signo (D/C, +/-), forzamos la polaridad
-    if (rawSign.toLowerCase().includes('d') || rawSign.includes('-')) {
-        finalAmount = -Math.abs(numericAmount); 
+    if (sign_column && rawSign) {
+        if (rawSign.toLowerCase().includes('d') || rawSign.includes('-')) {
+            finalAmount = -Math.abs(numericAmount); 
+        } else {
+            finalAmount = Math.abs(numericAmount); 
+        }
     } else {
-        finalAmount = Math.abs(numericAmount); 
+        finalAmount = numericAmount;
     }
-  } else {
-    // Si no hay columna de signo, confiamos en el signo que ya traiga el número parseado
-    finalAmount = numericAmount;
-  }
   
-  // 3. Formatear fecha a ISO (yyyy-mm-dd) para la base de datos
-  let dateForDb = rawDate;
-  const dateParts = rawDate.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+    let dateForDb = rawDate;
+    const dateParts = rawDate.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
   
-  if (dateParts) {
-    const [, day, month, year] = dateParts;
-    dateForDb = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
+    if (dateParts) {
+        const [, day, month, year] = dateParts;
+        dateForDb = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
 
-  // 4. Devolver la transacción parseada
-  return {
-    date: dateForDb,
-    amount: finalAmount,
-    concept: rawConcept,
-    bank_balance: numericBalance,
-    importer_notes: `Importado de CSV: ${rawDate}`,
-  };
+    return {
+        date: dateForDb,
+        amount: finalAmount,
+        concept: rawConcept,
+        bank_balance: numericBalance,
+        importer_notes: `Importado de CSV: ${rawDate}`,
+    };
 }
 
 export async function processImportAction(transactions: any[], accountId: string, userId: string) {
     const supabase = await createClient();
     
-    // 1. Obtener la transacción más antigua que ya existe
     const { data: oldestTx } = await supabase
         .from('finance_transactions')
         .select('date')
@@ -259,16 +253,20 @@ export async function processImportAction(transactions: any[], accountId: string
     let initialBalanceAdjustment = 0;
     const finalTransactions = [];
 
-    for (const tx of transactions) {
-        // Si la transacción que importo es ANTERIOR a la más antigua que ya tengo
+    // REGLA DE NEGOCIO: Al procesar arrays inyectados manualmente desde fuera, inyectamos también la secuencia ordenada
+    for (let i = 0; i < transactions.length; i++) {
+        const tx = transactions[i];
         if (oldestTx && new Date(tx.date) < new Date(oldestTx.date)) {
-            // Es histórico: acumulamos para ajustar el saldo inicial
             initialBalanceAdjustment += tx.amount;
         }
-        finalTransactions.push({ ...tx, account_id: accountId, user_id: userId });
+        finalTransactions.push({ 
+            ...tx, 
+            account_id: accountId, 
+            user_id: userId,
+            import_sequence: i // Guardamos posición ordinal
+        });
     }
 
-    // 2. Si hay ajustes históricos, actualizamos el saldo inicial de la cuenta
     if (initialBalanceAdjustment !== 0) {
         const { data: account } = await supabase
             .from('finance_accounts')
@@ -284,11 +282,8 @@ export async function processImportAction(transactions: any[], accountId: string
         }
     }
 
-    // 3. Insertar movimientos
     return await supabase.from('finance_transactions').insert(finalTransactions);
 }
-
-// app/finance/actions.ts
 
 export async function validateAndImportAction(
     transactions: any[], 
@@ -298,7 +293,6 @@ export async function validateAndImportAction(
 ) {
     const supabase = await createClient();
 
-    // 1. Si es modo HISTÓRICO, calculamos el sumatorio para el saldo inicial
     if (mode === 'historic') {
         const totalAmount = transactions.reduce((acc, t) => acc + t.amount, 0);
         
@@ -309,7 +303,6 @@ export async function validateAndImportAction(
             .single();
 
         if (account) {
-            // Ajustamos el saldo inicial para que la línea de tiempo sea coherente
             await supabase
                 .from('finance_accounts')
                 .update({ initial_balance: account.initial_balance + totalAmount })
@@ -317,10 +310,17 @@ export async function validateAndImportAction(
         }
     }
 
-    // 2. Insertamos los movimientos (bank_balance incluido)
+    // REGLA DE NEGOCIO: Aseguramos el orden secuencial intradiario mapeando el índice de la colección
+    const finalTxs = transactions.map((t, idx) => ({ 
+        ...t, 
+        account_id: accountId, 
+        user_id: userId,
+        import_sequence: idx // Guardamos el orden relativo
+    }));
+
     const { error } = await supabase
         .from('finance_transactions')
-        .insert(transactions.map(t => ({ ...t, account_id: accountId, user_id: userId })));
+        .insert(finalTxs);
 
     if (error) return { success: false, error: error.message };
 
