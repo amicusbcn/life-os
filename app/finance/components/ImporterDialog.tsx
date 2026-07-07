@@ -32,7 +32,7 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
     const [importMode, setImportMode] = useState<'new' | 'historic'>('new');
     const [saveAsTemplate, setSaveAsTemplate] = useState(false);
     const [newTemplateName, setNewTemplateName] = useState('');
-    
+    const [fileOrder, setFileOrder] = useState<'newest_first' | 'oldest_first'>('newest_first');
     const [detectedCount, setDetectedCount] = useState(0);
     const [csvCheckBalance, setCsvCheckBalance] = useState<number | null>(null);
     const [invertAmount, setInvertAmount] = useState(false);
@@ -124,6 +124,40 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
             setCsvLines(dataRows);
             setDetectedCount(dataRows.length);
 
+            // 💡 AUTO-DETECCIÓN CRONOLÓGICA REAL POR FECHA
+            if (dataRows.length >= 2) {
+                const dateIdx = foundHeaders.findIndex(h => {
+                    const header = h.toLowerCase();
+                    return header.includes('fec') || header.includes('date') || header.includes('operación');
+                });
+
+                if (dateIdx !== -1) {
+                    // Función rápida para convertir DD/MM/YYYY en objeto Date ejecutable
+                    const parseRowDate = (dateStr: string) => {
+                        if (!dateStr) return null;
+                        const parts = dateStr.trim().split('/');
+                        if (parts.length !== 3) return null;
+                        return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                    };
+
+                    const firstDateObj = parseRowDate(dataRows[0][dateIdx]);
+                    const lastDateObj = parseRowDate(dataRows[dataRows.length - 1][dateIdx]);
+
+                    if (firstDateObj && lastDateObj && !isNaN(firstDateObj.getTime()) && !isNaN(lastDateObj.getTime())) {
+                        // Si la fecha de arriba es estrictamente mayor (más nueva) que la de abajo
+                        if (firstDateObj.getTime() > lastDateObj.getTime()) {
+                            setFileOrder('newest_first');
+                        } 
+                        // Si la fecha de abajo es mayor (más nueva) que la de arriba
+                        else if (firstDateObj.getTime() < lastDateObj.getTime()) {
+                            setFileOrder('oldest_first');
+                        }
+                        // NOTA: Si las fechas de la primera y última fila son idénticas (porque todo el CSV ocurre el mismo día),
+                        // el sistema no puede adivinarlo solo con las fechas, así que por defecto deja 'newest_first'
+                        // y el usuario podrá ajustarlo si ve el desfase en la pantalla.
+                    }
+                }
+            }
             const initialMap: Record<string, string> = {};
             ALL_FIELDS.forEach(f => {
                 const key = f.key.toLowerCase();
@@ -210,9 +244,18 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
             if (!isNaN(currentDate.getTime())) {
                 if (!minDateObj || currentDate < minDateObj) {
                     minDateObj = currentDate;
-                    // Cálculo de integridad
                     const res = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
                     balanceToCompare = res;
+                } else if (currentDate.getTime() === minDateObj.getTime()) {
+                    // Si las fechas empatan (mismo día):
+                    // 1. Si el extracto tiene lo más nuevo arriba, la fila que está MÁS ABAJO es la primera que ocurrió (la más antigua).
+                    //    Por tanto, como el bucle va hacia abajo, dejamos que la última fila del fondo machaque el valor.
+                    if (fileOrder === 'newest_first') {
+                        const res = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
+                        balanceToCompare = res;
+                    }
+                    // 2. Si el extracto tiene lo más antiguo arriba, la fila que está MÁS ARRIBA es la que manda.
+                    //    Como el bucle ya leyó la primera fila del día al principio, NO hacemos nada para no pisarla.
                 }
             }
         });
