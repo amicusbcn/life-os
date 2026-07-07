@@ -18,6 +18,8 @@ export async function importCsvTransactionsAction(
         const saveAsTemplate = formData.get('saveAsTemplate') === 'true';
         const newTemplateName = formData.get('newTemplateName') as string;
         let templateId = formData.get('templateId') as string | null;
+        const importMode = formData.get('importMode') as 'new' | 'historic';
+        const fileOrder = formData.get('fileOrder') as 'newest_first' | 'oldest_first' || 'newest_first';
 
         if (!file) return { success: false, error: 'No se ha subido ningún archivo.' };
 
@@ -30,7 +32,7 @@ export async function importCsvTransactionsAction(
         // 1. OBTENER CUENTA
         const { data: account, error: accountError } = await supabase
             .from('finance_accounts')
-            .select('id, account_type')
+            .select('id, account_type, current_balance')
             .eq('id', account_id)
             .single();
 
@@ -139,6 +141,15 @@ export async function importCsvTransactionsAction(
             return { success: false, error: `Error procesando CSV: ${(e as Error).message}` };
         }
 
+        // 💡 INVERSIÓN SENSATA DE LA SECUENCIA SEGÚN EL ORDEN DE LAS FECHAS
+        // Si lo más nuevo está arriba en el archivo, invertimos la secuencia para que la base de datos ordene bien el tiempo
+        if (fileOrder === 'newest_first') {
+            const total = transactions.length;
+            transactions.forEach((t, index) => {
+                t.import_sequence = total - 1 - index;
+            });
+        }
+
         // 5. AUTO-CATEGORIZACIÓN Y ASIGNACIÓN DE IMPORTER_ID
         const { data: rules } = await supabase.from('finance_rules').select('pattern, category_id');
         let autoCategorizedCount = 0;
@@ -168,6 +179,32 @@ export async function importCsvTransactionsAction(
             return { success: false, error: `Error al guardar: ${insertError.message}` };
         }
 
+        // 💡 ACTUALIZACIÓN DEL SALDO DE LA CUENTA SEGÚN TUS DOS PREMISAS MÁXIMAS
+        if (importMode === 'new' && finalTransactions.length > 0) {
+            // Buscamos la transacción con la secuencia más alta (la última cronológicamente)
+            const sortedBySeq = [...finalTransactions].sort((a, b) => b.import_sequence - a.import_sequence);
+            const lastCronTx = sortedBySeq[0];
+
+            if (lastCronTx && lastCronTx.bank_balance !== null && lastCronTx.bank_balance !== undefined) {
+                // ESCENARIO A (Cuenta Corriente): El saldo definitivo del banco manda por decreto
+                await supabase
+                    .from('finance_accounts')
+                    .update({ current_balance: lastCronTx.bank_balance })
+                    .eq('id', account_id);
+            } else {
+                // ESCENARIO B (Tarjetas/Sin Saldo): Hacemos el sumatorio incremental sobre el saldo de la app
+                const netoImportacion = finalTransactions.reduce((sum, t) => sum + t.amount, 0);
+                const nuevoSaldoCalculado = (account.current_balance || 0) + netoImportacion;
+
+                await supabase
+                    .from('finance_accounts')
+                    .update({ current_balance: nuevoSaldoCalculado })
+                    .eq('id', account_id);
+            }
+        }
+        // Nota: Si importMode es 'historic', no tocamos el current_balance para proteger tu saldo real de hoy.
+
+        // Actualizamos las líneas del importador padre
         await supabase
             .from('finance_importers')
             .update({ row_count: finalTransactions.length })

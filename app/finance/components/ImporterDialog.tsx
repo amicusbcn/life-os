@@ -188,7 +188,11 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
         // Si no hay template, usamos los que el usuario marcó manualmente en el diálogo
         const dateIdx = s ? s.column_map.date : headers.indexOf(mapping['operation_date']);
         const balIdx = headers.indexOf(mapping['bank_balance']); // El saldo suele ser manual siempre
-        
+        if (balIdx === -1 || mapping['bank_balance'] === undefined || mapping['bank_balance'] === '') {
+            setCsvCheckBalance(null); // Usamos null como chivato de "Sin Saldo"
+            setStep('preview');
+            return;
+        }
         // IMPORTANTE: Si hay doble columna en template, ignoramos el amIdx manual
         const amIdx = headers.indexOf(mapping['amount']);
         const chargeIdx = s?.has_two_columns ? s.column_map.charge : -1;
@@ -399,29 +403,55 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
 
                         {step === 'preview' && (
                             <div className="space-y-4">
-                                <div className={`p-5 rounded-2xl border-2 transition-all ${isBalanceOk ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
-                                    <div className="flex justify-between items-start mb-4">
+                                {/* 💡 ESCENARIO A: EL ARCHIVO NO TIENE COLUMNA DE SALDO (Tarjetas de crédito, etc.) */}
+                                {csvCheckBalance === null ? (
+                                    <div className="p-5 rounded-2xl border-2 border-amber-100 bg-amber-50 flex items-start gap-3">
+                                        <FileText className="w-6 h-6 text-amber-500 mt-0.5 flex-shrink-0" />
                                         <div className="space-y-1">
-                                            <p className="text-[10px] font-black uppercase text-slate-400">Validación de Saldo</p>
-                                            <p className={`text-sm font-bold ${isBalanceOk ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                                {isBalanceOk ? '✅ Los saldos encajan' : '⚠️ Desfase detectado'}
+                                            <p className="text-[10px] font-black uppercase text-amber-600">Control de Extracto</p>
+                                            <p className="text-sm font-bold text-amber-800">💳 Extracto sin saldos intermedios</p>
+                                            <p className="text-[11px] text-amber-700/80 leading-snug pt-1">
+                                                Este archivo no incluye una columna de saldo de control. Se importarán los <strong>{detectedCount} movimientos</strong> y se calcularán de forma incremental sobre tu cuenta de la App.
                                             </p>
                                         </div>
-                                        {isBalanceOk ? <CheckCircle2 className="text-emerald-500 w-8 h-8" /> : <AlertTriangle className="text-amber-500 w-8 h-8" />}
                                     </div>
-
-                                    <div className="space-y-2 pt-2 border-t border-black/5">
-                                        <div className="flex justify-between text-[11px]">
-                                            <span className="text-slate-500">Saldo actual en App:</span>
-                                            <span className="font-mono font-bold">{selectedAccount?.current_balance.toLocaleString(undefined, {minimumFractionDigits: 2})} €</span>
+                                ) : (
+                                    /* 💡 ESCENARIO B: EL ARCHIVO SÍ TIENE SALDO (Cuentas corrientes con validación estricta) */
+                                    <div className={`p-5 rounded-2xl border-2 transition-all ${isBalanceOk ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="space-y-1">
+                                                <p className="text-[10px] font-black uppercase text-slate-400">
+                                                    Alineamiento de Línea de Tiempo ({importMode === 'new' ? 'Presente' : 'Histórico'})
+                                                </p>
+                                                <p className={`text-sm font-bold ${isBalanceOk ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                                    {isBalanceOk ? '✅ Los saldos encajan' : '⚠️ Desfase detectado'}
+                                                </p>
+                                            </div>
+                                            {isBalanceOk ? <CheckCircle2 className="text-emerald-500 w-8 h-8" /> : <AlertTriangle className="text-amber-500 w-8 h-8" />}
                                         </div>
-                                        <div className="flex justify-between text-[11px]">
-                                            <span className="text-slate-500">Saldo previo según Banco:</span>
-                                            <span className="font-mono font-bold">{csvCheckBalance?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 'N/A'} €</span>
+
+                                        <div className="space-y-2 pt-2 border-t border-black/5">
+                                            <div className="flex justify-between text-[11px]">
+                                                <span className="text-slate-500">
+                                                    {importMode === 'new' ? 'Último saldo en App hoy:' : 'Saldo más antiguo en App:'}
+                                                </span>
+                                                <span className="font-mono font-bold">
+                                                    {selectedAccount?.current_balance.toLocaleString(undefined, {minimumFractionDigits: 2})} €
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between text-[11px]">
+                                                <span className="text-slate-500">
+                                                    {importMode === 'new' ? 'Saldo esperado según Banco (Fin archivo):' : 'Saldo calculado inicial (Inicio archivo):'}
+                                                </span>
+                                                <span className="font-mono font-bold text-indigo-600">
+                                                    {csvCheckBalance.toLocaleString(undefined, {minimumFractionDigits: 2})} €
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                )}
 
+                                {/* CÓMO PROCESAR LOS DATOS (Tu desplegable original) */}
                                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                                     <label className="text-[10px] font-black uppercase text-slate-400 mb-2 block italic">¿Cómo quieres procesar esto?</label>
                                     <Select value={importMode} onValueChange={(v: any) => setImportMode(v)}>
@@ -433,6 +463,7 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
                                     </Select>
                                 </div>
 
+                                {/* BOTONES DE ACCIÓN */}
                                 <div className="flex gap-3 pt-2">
                                     <Button variant="outline" className="flex-1 h-12 font-bold" onClick={() => setStep('mapping')}>Atrás</Button>
                                     <Button className="flex-[2] h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-black" onClick={executeImport}>
