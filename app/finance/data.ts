@@ -292,3 +292,52 @@ export async function getInvestmentViewData(year: number = new Date().getFullYea
         year
     };
 }
+
+export async function getAccountFileLimitsAction(accountId: string): Promise<{
+    success: boolean;
+    newestDate?: string;
+    oldestDate?: string;
+    error?: string;
+}> {
+    try {
+        const supabase = await createClient();
+
+        // 1. Obtener la transacción MÁS RECIENTE de la app para esta cuenta
+        const { data: recentData, error: err1 } = await supabase
+            .from('finance_transactions')
+            .select('date')
+            .eq('account_id', accountId)
+            .order('date', { ascending: false })
+            .order('import_sequence', { ascending: false })
+            .limit(1);
+
+        // 2. Obtener la transacción MÁS ANTIGUA de la app para esta cuenta
+        const { data: oldestData, error: err2 } = await supabase
+            .from('finance_transactions')
+            .select('date')
+            .eq('account_id', accountId)
+            .order('date', { ascending: true })
+            .order('import_sequence', { ascending: true })
+            .limit(1);
+
+        if (err1 || err2) {
+            return { success: false, error: 'Error al consultar extremos en la BD.' };
+        }
+
+        // Función interna para formatear YYYY-MM-DD a DD/MM/YYYY
+        const formatDate = (dbDate?: string) => {
+            if (!dbDate) return 'Sin movimientos';
+            const [y, m, d] = dbDate.split('-');
+            return `${d}/${m}/${y}`;
+        };
+
+        return {
+            success: true,
+            newestDate: formatDate(recentData?.[0]?.date),
+            oldestDate: formatDate(oldestData?.[0]?.date),
+        };
+
+    } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : 'Error interno' };
+    }
+}

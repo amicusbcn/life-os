@@ -10,6 +10,7 @@ import { FinanceAccount } from '@/types/finance';
 import { importCsvTransactionsAction } from '../actions'; 
 import { toast } from 'sonner';
 import { CheckCircle2, AlertTriangle, FileText, ArrowRight, RotateCcw } from 'lucide-react';
+import { getAccountFileLimitsAction } from '../data';
 
 const ALL_FIELDS = [
     { key: 'operation_date', label: 'Fecha de Operación' },
@@ -35,6 +36,12 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
     const [fileOrder, setFileOrder] = useState<'newest_first' | 'oldest_first'>('newest_first');
     const [detectedCount, setDetectedCount] = useState(0);
     const [csvCheckBalance, setCsvCheckBalance] = useState<number | null>(null);
+    const [csvNewestDate, setCsvNewestDate] = useState<string>('');
+    const [csvOldestDate, setCsvOldestDate] = useState<string>('');
+
+    // Extremos de lo que ya tenemos guardado en la App (Base de datos)
+    const [appNewestDate, setAppNewestDate] = useState<string>('');
+    const [appOldestDate, setAppOldestDate] = useState<string>('');
     const [invertAmount, setInvertAmount] = useState(false);
     const [isCreditCard, setIsCreditCard] = useState(false);
     const [templateId, setTemplateId] = useState<string | null>(null);
@@ -178,21 +185,15 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
         reader.readAsText(uploadedFile);
     };
 
-    const preparePreview = () => {
+    const preparePreview = async () => {
         // 1. Buscamos si la cuenta tiene un template asociado
         const account = accounts.find(a => a.id === selectedAccountId);
         const template = templates?.find(t => t.id === account?.importer_id);
         const s = template?.settings;
 
-        // 2. Definimos los índices. Priorizamos los del template (que son numéricos directos)
-        // Si no hay template, usamos los que el usuario marcó manualmente en el diálogo
         const dateIdx = s ? s.column_map.date : headers.indexOf(mapping['operation_date']);
         const balIdx = headers.indexOf(mapping['bank_balance']); // El saldo suele ser manual siempre
-        if (balIdx === -1 || mapping['bank_balance'] === undefined || mapping['bank_balance'] === '') {
-            setCsvCheckBalance(null); // Usamos null como chivato de "Sin Saldo"
-            setStep('preview');
-            return;
-        }
+        
         // IMPORTANTE: Si hay doble columna en template, ignoramos el amIdx manual
         const amIdx = headers.indexOf(mapping['amount']);
         const chargeIdx = s?.has_two_columns ? s.column_map.charge : -1;
@@ -218,53 +219,77 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
             return parseFloat(clean) || 0;
         };
 
-        csvLines.forEach((columns) => {
-            const rawDate = columns[dateIdx];
-            const rawBal = columns[balIdx];
-            
-            // 3. LÓGICA DE IMPORTE SEGÚN TIPO DE PLANTILLA
-            let amNum = 0;
-            if (s?.has_two_columns) {
-                const charge = parseSpanishFloat(columns[chargeIdx]); // Gasto
-                const credit = parseSpanishFloat(columns[creditIdx]); // Ingreso/Abono
-                // En una tarjeta, el cargo resta y el abono suma.
-                amNum = credit - charge;
-            } else {
-                amNum = parseSpanishFloat(columns[amIdx]);
-            }
+        if (csvLines.length === 0) return;
 
-            // 4. Inversión de signo (del template o manual del diálogo)
-            if (invertAmount || s?.invert_sign) {
-                amNum = amNum * -1;
-            }
+        // 1. Extraer los extremos del CSV de forma segura según el orden físico
+        const firstRowDate = csvLines[0][dateIdx]?.trim();
+        const lastRowDate = csvLines[csvLines.length - 1][dateIdx]?.trim();
 
-            let balNum = parseSpanishFloat(rawBal);
+        if (fileOrder === 'newest_first') {
+            setCsvNewestDate(firstRowDate || '');
+            setCsvOldestDate(lastRowDate || '');
+        } else {
+            setCsvNewestDate(lastRowDate || '');
+            setCsvOldestDate(firstRowDate || '');
+        }
 
-            // Procesamiento de fecha (formato DD/MM/YYYY)
-            if (!rawDate) return;
-            const parts = rawDate.split('/');
-            const currentDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+        const hasBalanceColumn = !(balIdx === -1 || mapping['bank_balance'] === undefined || mapping['bank_balance'] === '' || mapping['bank_balance'] === 'none');
+        
+        if (hasBalanceColumn) {
+            csvLines.forEach((columns) => {
+                const rawDate = columns[dateIdx];
+                const rawBal = columns[balIdx];
+                
+                let amNum = 0;
+                if (s?.has_two_columns) {
+                    const charge = parseSpanishFloat(columns[chargeIdx]); 
+                    const credit = parseSpanishFloat(columns[creditIdx]); 
+                    amNum = credit - charge;
+                } else {
+                    amNum = parseSpanishFloat(columns[amIdx]);
+                }
 
-            if (!isNaN(currentDate.getTime())) {
-                if (!minDateObj || currentDate < minDateObj) {
-                    minDateObj = currentDate;
-                    const res = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
-                    balanceToCompare = res;
-                } else if (currentDate.getTime() === minDateObj.getTime()) {
-                    // Si las fechas empatan (mismo día):
-                    // 1. Si el extracto tiene lo más nuevo arriba, la fila que está MÁS ABAJO es la primera que ocurrió (la más antigua).
-                    //    Por tanto, como el bucle va hacia abajo, dejamos que la última fila del fondo machaque el valor.
-                    if (fileOrder === 'newest_first') {
+                if (invertAmount || s?.invert_sign) {
+                    amNum = amNum * -1;
+                }
+
+                let balNum = parseSpanishFloat(rawBal);
+
+                if (!rawDate) return;
+                const parts = rawDate.split('/');
+                const currentDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+
+                if (!isNaN(currentDate.getTime())) {
+                    if (!minDateObj || currentDate < minDateObj) {
+                        minDateObj = currentDate;
                         const res = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
                         balanceToCompare = res;
+                    } else if (currentDate.getTime() === minDateObj.getTime()) {
+                        if (fileOrder === 'newest_first') {
+                            const res = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
+                            balanceToCompare = res;
+                        }
                     }
-                    // 2. Si el extracto tiene lo más antiguo arriba, la fila que está MÁS ARRIBA es la que manda.
-                    //    Como el bucle ya leyó la primera fila del día al principio, NO hacemos nada para no pisarla.
                 }
-            }
-        });
+            });
+            setCsvCheckBalance(balanceToCompare);
+        } else {
+            // Si no tiene columna de saldo (Tarjetas), forzamos null de forma segura
+            setCsvCheckBalance(null);
+        }
 
-        setCsvCheckBalance(balanceToCompare);
+        try {
+            const res = await getAccountFileLimitsAction(selectedAccountId);
+            if (res.success) {
+                setAppNewestDate(res.newestDate || 'Sin movimientos');
+                setAppOldestDate(res.oldestDate || 'Sin movimientos');
+            } else {
+                toast.error(res.error || 'Error al cargar límites de la app');
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error('Error al conectar con el servidor');
+        }
         setStep('preview');
     };
 
@@ -286,7 +311,7 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
             toast.error(result.error, { id: toastId });
         }
     };
-
+    
     const selectedAccount = accounts.find(a => a.id === selectedAccountId);
     // Comparación con margen de error de 1 céntimo
     const isBalanceOk = csvCheckBalance === null || Math.abs((selectedAccount?.current_balance || 0) - csvCheckBalance) < 0.01;
