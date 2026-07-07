@@ -173,6 +173,9 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
         const parseSpanishFloat = (str: string) => {
             if (!str) return 0;
             let n = str.trim();
+            if (n.includes('.') && !n.includes(',')) {
+                return parseFloat(n) || 0;
+            }
             const clean = n.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
             return parseFloat(clean) || 0;
         };
