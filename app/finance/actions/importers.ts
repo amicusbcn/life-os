@@ -203,7 +203,16 @@ function mapCsvRow(
     const rawSign = sign_column ? row[sign_column]?.trim() : null;
     const rawBalanceStr = bank_balance ? row[bank_balance]?.trim() : null;
 
-    const sanitize = (val: string) => val.replace(/\./g, '').replace(',', '.');
+    const sanitize = (val: string) => {
+        if (!val) return "0";
+        let n = val.trim();
+        // Si ya viene limpio con puntos decimales americanos (ej: 2000.00) y no hay comas, lo dejamos pasar
+        if (n.includes('.') && !n.includes(',')) {
+            return n;
+        }
+        // Si viene con formato tradicional español (ej: 2.000,00 o -60,50)
+        return n.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+    };
   
     const numericAmount = parseFloat(sanitize(rawAmountStr));
     const numericBalance = rawBalanceStr ? parseFloat(sanitize(rawBalanceStr)) : null;
