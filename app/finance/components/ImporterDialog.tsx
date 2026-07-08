@@ -293,14 +293,15 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
         setStep('preview');
     };
 
-    const executeImport = async () => {
+    const executeImport = async (mode: 'new' | 'historic') => {
         const toastId = toast.loading("Sincronizando con la base de datos...");
         const formData = new FormData();
         formData.append('file', file!);
         formData.append('accountId', selectedAccountId);
-        formData.append('importMode', importMode);
+        formData.append('importMode', mode); // 💡 Aquí viaja el modo automático que calculamos
         formData.append('invertAmount', String(invertAmount));
         formData.append('templateId', templateId || '');
+        formData.append('fileOrder', fileOrder); // Enviamos el orden también
 
         const result = await importCsvTransactionsAction(formData, { name: file!.name, delimiter, mapping } as any);
         if (result.success) {
@@ -315,7 +316,23 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
     const selectedAccount = accounts.find(a => a.id === selectedAccountId);
     // Comparación con margen de error de 1 céntimo
     const isBalanceOk = csvCheckBalance === null || Math.abs((selectedAccount?.current_balance || 0) - csvCheckBalance) < 0.01;
+            const parseNormalizedDate = (dStr: string) => {
+            if (!dStr || dStr === 'Sin movimientos') return null;
+            const [d, m, y] = dStr.split('/');
+            return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+        };
 
+        const dateFA = parseNormalizedDate(appNewestDate);
+        const dateFa = parseNormalizedDate(appOldestDate);
+        const dateFI = parseNormalizedDate(csvNewestDate);
+        const dateFi = parseNormalizedDate(csvOldestDate);
+
+        // 💡 TU REGLA DE ORO AUTOMÁTICA:
+        // Si no hay movimientos en la app, por defecto es 'new'. Si FA < fi, es 'new'. Si no, es 'historic'.
+        const calculatedMode = (!dateFA || !dateFi || dateFA < dateFi) ? 'new' : 'historic';
+
+        // Bandera para detectar si se mete en medio
+        const isHistoricalOverlap = calculatedMode === 'historic' && dateFI && dateFa && dateFI >= dateFa;
     return (
         <>
             {trigger}
@@ -428,99 +445,86 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
 
                         {step === 'preview' && (
                             <div className="space-y-4">
-                                {/* 💡 ESCENARIO A: EL ARCHIVO NO TIENE COLUMNA DE SALDO (Tarjetas de crédito, etc.) */}
-                                {csvCheckBalance === null ? (
-                                    <div className="p-5 rounded-2xl border-2 border-amber-100 bg-amber-50 flex items-start gap-3">
-                                        <FileText className="w-6 h-6 text-amber-500 mt-0.5 flex-shrink-0" />
-                                        <div className="space-y-1">
-                                            <p className="text-[10px] font-black uppercase text-amber-600">Control de Extracto</p>
-                                            <p className="text-sm font-bold text-amber-800">💳 Extracto sin saldos intermedios</p>
-                                            <p className="text-[11px] text-amber-700/80 leading-snug pt-1">
-                                                Este archivo no incluye una columna de saldo de control. Se importarán los <strong>{detectedCount} movimientos</strong> y se calcularán de forma incremental sobre tu cuenta de la App.
-                                            </p>
+                                {/* PANEL INTELIGENTE DE DIAGNÓSTICO (Sustituye a la validación antigua) */}
+                                <div className={`p-5 rounded-2xl border-2 transition-all ${
+                                    calculatedMode === 'new' 
+                                        ? isBalanceOk ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'
+                                        : isHistoricalOverlap ? 'bg-red-50 border-red-100' : 'bg-indigo-50 border-indigo-100'
+                                }`}>
+                                    <div className="space-y-1 mb-4">
+                                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Análisis de Línea de Tiempo</p>
+                                        <h4 className="text-sm font-black text-slate-800 uppercase italic">
+                                            {calculatedMode === 'new' ? '🚀 Modo: Movimientos Nuevos' : '📜 Modo: Datos Históricos'}
+                                        </h4>
+                                    </div>
+
+                                    {/* TABLA DE FECHAS */}
+                                    <div className="space-y-2 text-[11px] pb-3 border-b border-black/5">
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">📅 Último movimiento en App (FA):</span>
+                                            <span className="font-mono font-bold text-slate-700">{appNewestDate}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">📥 Primer movimiento del archivo (fi):</span>
+                                            <span className="font-mono font-bold text-indigo-600">{csvOldestDate}</span>
                                         </div>
                                     </div>
-                                ) : (
-                                    /* 💡 ESCENARIO B: EL ARCHIVO SÍ TIENE SALDO (Cuentas corrientes con validación estricta) */
-                                    /* CARTA DE ALINEAMIENTO CRONOLÓGICO Y SALDOS */
-        <div className={`p-5 rounded-2xl border-2 transition-all ${csvCheckBalance === null || csvCheckBalance === selectedAccount?.current_balance ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
-            <div className="flex justify-between items-start mb-3">
-                <div className="space-y-0.5">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                        Alineamiento de Línea de Tiempo ({importMode === 'new' ? 'Presente' : 'Histórico'})
-                    </p>
-                    <p className={`text-sm font-bold ${csvCheckBalance === null || csvCheckBalance === selectedAccount?.current_balance ? 'text-emerald-700' : 'text-amber-700'}`}>
-                        {csvCheckBalance === null 
-                            ? 'ℹ️ Información de fechas' 
-                            : csvCheckBalance === selectedAccount?.current_balance 
-                                ? '✅ Los saldos encajan' 
-                                : '⚠️ Desfase de saldo detectado'}
-                    </p>
-                </div>
-            </div>
 
-            {/* TABLA DE EXTRACTOS DE FECHAS DE LA APP Y DEL CSV */}
-            <div className="space-y-2 pt-3 border-t border-black/5 text-[11px]">
-                {/* 1. Datos del estado actual de la Base de Datos */}
-                <div className="flex justify-between items-center">
-                    <span className="text-slate-500 flex items-center gap-1">
-                        📅 {importMode === 'new' ? 'Último movimiento en App hoy:' : 'Movimiento más antiguo en App:'}
-                    </span>
-                    <span className="font-mono font-bold text-slate-700 bg-slate-200/60 px-2 py-0.5 rounded">
-                        {importMode === 'new' ? appNewestDate : appOldestDate}
-                    </span>
-                </div>
-                
-                {/* 2. Datos de lo que viene dentro del archivo CSV */}
-                <div className="flex justify-between items-center pb-2 border-b border-dashed border-slate-200">
-                    <span className="text-slate-500 flex items-center gap-1">
-                        📥 {importMode === 'new' ? 'Primer movimiento del archivo:' : 'Último movimiento del archivo:'}
-                    </span>
-                    <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                        {importMode === 'new' ? csvOldestDate : csvNewestDate}
-                    </span>
-                </div>
+                                    {/* EXPLICACIONES PRO-ACTIVAS "A PRUEBA DE TONTOS" */}
+                                    <div className="text-[11px] pt-3 leading-snug space-y-2">
+                                        {calculatedMode === 'new' && (
+                                            <>
+                                                <p className="text-slate-600">
+                                                    El sistema ha detectado que este archivo continúa la línea de tiempo de tu cuenta.
+                                                </p>
+                                                {!isBalanceOk && csvCheckBalance !== null && (
+                                                    <p className="text-amber-700 font-medium bg-amber-100/50 p-2.5 rounded-lg border border-amber-200">
+                                                        ⚠️ <strong>Desfase de saldo detectado:</strong> Se tendrá en cuenta el saldo importado del banco por decreto. Esto suele significar que **te faltan movimientos intermedios por importar** entre el {appNewestDate} y el {csvOldestDate}.
+                                                    </p>
+                                                )}
+                                            </>
+                                        )}
 
-                {/* 3. Datos de los saldos (Solo si la cuenta tiene columna de saldo) */}
-                {csvCheckBalance !== null && (
-                    <>
-                        <div className="flex justify-between pt-1">
-                            <span className="text-slate-500">Saldo actual en App:</span>
-                            <span className="font-mono font-semibold text-slate-600">
-                                {selectedAccount?.current_balance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
-                            </span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-slate-500">
-                                {importMode === 'new' ? 'Saldo esperado según Banco (Fin archivo):' : 'Saldo inicial calculado (Inicio archivo):'}
-                            </span>
-                            <span className="font-mono font-bold text-indigo-600">
-                                {csvCheckBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
-                            </span>
-                        </div>
-                    </>
-                )}
-            </div>
-        </div>
-                                )}
+                                        {calculatedMode === 'historic' && isHistoricalOverlap && (
+                                            <div className="text-red-700 font-medium bg-red-100/50 p-2.5 rounded-lg border border-red-200 space-y-1">
+                                                <p>⚠️ <strong>PELIGRO DE SOLAPE:</strong> El archivo termina el {csvNewestDate} (FI) y tu app ya tiene datos desde el {appOldestDate} (fa).</p>
+                                                <p className="text-[10px] text-red-600/80">Estás metiendo datos "en medio" de un periodo existente. Podrían duplicarse transacciones si ya las importaste antes. El saldo actual hoy no se modificará.</p>
+                                            </div>
+                                        )}
 
-                                {/* CÓMO PROCESAR LOS DATOS (Tu desplegable original) */}
-                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 mb-2 block italic">¿Cómo quieres procesar esto?</label>
-                                    <Select value={importMode} onValueChange={(v: any) => setImportMode(v)}>
-                                        <SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="new">🚀 Como movimientos nuevos</SelectItem>
-                                            <SelectItem value="historic">📜 Como datos históricos</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                        {calculatedMode === 'historic' && !isHistoricalOverlap && (
+                                            <p className="text-indigo-700 font-medium bg-indigo-100/50 p-2.5 rounded-lg border border-indigo-200">
+                                                ℹ️ <strong>Histórico Limpio:</strong> Vas a importar datos antiguos previos al {appOldestDate}. El saldo de tu cuenta de hoy se mantendrá intacto y seguro, y se ajustará automáticamente el saldo inicial de la cuenta en el pasado.
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
+
+                                {/* RECUADRO INFORMATIVO DE SALDOS (Solo si aplica) */}
+                                {csvCheckBalance !== null && calculatedMode === 'new' && (
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] space-y-1">
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Saldo actual en App:</span>
+                                            <span className="font-mono">{selectedAccount?.current_balance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Saldo final según Banco:</span>
+                                            <span className="font-mono font-bold text-indigo-600">{csvCheckBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* BOTONES DE ACCIÓN */}
                                 <div className="flex gap-3 pt-2">
                                     <Button variant="outline" className="flex-1 h-12 font-bold" onClick={() => setStep('mapping')}>Atrás</Button>
-                                    <Button className="flex-[2] h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-black" onClick={executeImport}>
-                                        CONFIRMAR E IMPORTAR
+                                    <Button 
+                                        className={`flex-[2] h-12 text-white font-black ${isHistoricalOverlap ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`} 
+                                        onClick={() => {
+                                            // Pasamos el modo calculado dinámicamente en el momento de hacer click
+                                            executeImport(calculatedMode); 
+                                        }}
+                                    >
+                                        {isHistoricalOverlap ? 'ENTENDIDO, IMPORTAR CON RIESGO' : 'CONFIRMAR E IMPORTAR'}
                                     </Button>
                                 </div>
                             </div>
