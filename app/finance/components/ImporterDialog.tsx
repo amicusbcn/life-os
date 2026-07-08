@@ -502,14 +502,20 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
 
                                 {/* RECUADRO INFORMATIVO DE SALDOS (Solo si aplica) */}
                                 {csvCheckBalance !== null && calculatedMode === 'new' && (
-                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] space-y-1">
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] space-y-1 mt-2">
                                         <div className="flex justify-between">
-                                            <span className="text-slate-500">Saldo actual en App:</span>
-                                            <span className="font-mono">{selectedAccount?.current_balance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                            {/* El saldo actual que hay hoy en la base de datos (con el que cerró la app) */}
+                                            <span className="text-slate-500">💰 Saldo actual en App (Cierre):</span>
+                                            <span className="font-mono font-semibold text-slate-600">
+                                                {selectedAccount?.current_balance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
+                                            </span>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-500">Saldo final según Banco:</span>
-                                            <span className="font-mono font-bold text-indigo-600">{csvCheckBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                        <div className="flex justify-between pt-1 border-t border-dashed border-slate-200/60">
+                                            {/* El saldo matemático justo antes del primer movimiento del CSV (Apertura) */}
+                                            <span className="text-slate-500">📥 Saldo de Apertura del archivo (Inicio):</span>
+                                            <span className="font-mono font-bold text-indigo-600">
+                                                {csvCheckBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
+                                            </span>
                                         </div>
                                     </div>
                                 )}
