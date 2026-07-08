@@ -2,7 +2,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { ActionResponse } from '@/types/common'
-import {  FinanceImporter, ImporterTemplate, ParsedTransaction } from '@/types/finance'; 
+import {  FinanceImporter, ParsedTransaction } from '@/types/finance'; 
 import * as csv from 'csv-parser'; 
 import { Readable } from 'stream'; 
 
@@ -302,69 +302,6 @@ export async function getAccountFileLimitsAction(accountId: string): Promise<{
     }
 }
 
-
-
-
-
-function mapCsvRow(
-    row: { [key: string]: string },
-    mapping: ImporterTemplate['mapping'],
-    account_id: string,
-    user_id: string,
-): ParsedTransaction | null {
-  
-    const { operation_date, concept, amount, sign_column, bank_balance } = mapping;
-
-    const rawDate = row[operation_date]?.trim();
-    const rawConcept = row[concept]?.trim();
-    const rawAmountStr = row[amount]?.trim() || "";
-    const rawSign = sign_column ? row[sign_column]?.trim() : null;
-    const rawBalanceStr = bank_balance ? row[bank_balance]?.trim() : null;
-
-    const sanitize = (val: string) => {
-        if (!val) return "0";
-        let n = val.trim();
-        // Si ya viene limpio con puntos decimales americanos (ej: 2000.00) y no hay comas, lo dejamos pasar
-        if (n.includes('.') && !n.includes(',')) {
-            return n;
-        }
-        // Si viene con formato tradicional español (ej: 2.000,00 o -60,50)
-        return n.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-    };
-  
-    const numericAmount = parseFloat(sanitize(rawAmountStr));
-    const numericBalance = rawBalanceStr ? parseFloat(sanitize(rawBalanceStr)) : null;
-
-    if (!rawDate || isNaN(numericAmount) || !rawConcept) return null;
-  
-    let finalAmount: number;
-
-    if (sign_column && rawSign) {
-        if (rawSign.toLowerCase().includes('d') || rawSign.includes('-')) {
-            finalAmount = -Math.abs(numericAmount); 
-        } else {
-            finalAmount = Math.abs(numericAmount); 
-        }
-    } else {
-        finalAmount = numericAmount;
-    }
-  
-    let dateForDb = rawDate;
-    const dateParts = rawDate.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
-  
-    if (dateParts) {
-        const [, day, month, year] = dateParts;
-        dateForDb = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-    }
-
-    return {
-        date: dateForDb,
-        amount: finalAmount,
-        concept: rawConcept,
-        bank_balance: numericBalance,
-        importer_notes: `Importado de CSV: ${rawDate}`,
-    };
-}
 
 export async function processImportAction(transactions: any[], accountId: string, userId: string) {
     const supabase = await createClient();
