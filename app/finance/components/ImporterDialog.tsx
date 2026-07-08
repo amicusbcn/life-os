@@ -442,38 +442,66 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
                                     </div>
                                 ) : (
                                     /* 💡 ESCENARIO B: EL ARCHIVO SÍ TIENE SALDO (Cuentas corrientes con validación estricta) */
-                                    <div className={`p-5 rounded-2xl border-2 transition-all ${isBalanceOk ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div className="space-y-1">
-                                                <p className="text-[10px] font-black uppercase text-slate-400">
-                                                    Alineamiento de Línea de Tiempo ({importMode === 'new' ? 'Presente' : 'Histórico'})
-                                                </p>
-                                                <p className={`text-sm font-bold ${isBalanceOk ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                                    {isBalanceOk ? '✅ Los saldos encajan' : '⚠️ Desfase detectado'}
-                                                </p>
-                                            </div>
-                                            {isBalanceOk ? <CheckCircle2 className="text-emerald-500 w-8 h-8" /> : <AlertTriangle className="text-amber-500 w-8 h-8" />}
-                                        </div>
+                                    /* CARTA DE ALINEAMIENTO CRONOLÓGICO Y SALDOS */
+        <div className={`p-5 rounded-2xl border-2 transition-all ${csvCheckBalance === null || csvCheckBalance === selectedAccount?.current_balance ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+            <div className="flex justify-between items-start mb-3">
+                <div className="space-y-0.5">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        Alineamiento de Línea de Tiempo ({importMode === 'new' ? 'Presente' : 'Histórico'})
+                    </p>
+                    <p className={`text-sm font-bold ${csvCheckBalance === null || csvCheckBalance === selectedAccount?.current_balance ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {csvCheckBalance === null 
+                            ? 'ℹ️ Información de fechas' 
+                            : csvCheckBalance === selectedAccount?.current_balance 
+                                ? '✅ Los saldos encajan' 
+                                : '⚠️ Desfase de saldo detectado'}
+                    </p>
+                </div>
+            </div>
 
-                                        <div className="space-y-2 pt-2 border-t border-black/5">
-                                            <div className="flex justify-between text-[11px]">
-                                                <span className="text-slate-500">
-                                                    {importMode === 'new' ? 'Último saldo en App hoy:' : 'Saldo más antiguo en App:'}
-                                                </span>
-                                                <span className="font-mono font-bold">
-                                                    {selectedAccount?.current_balance.toLocaleString(undefined, {minimumFractionDigits: 2})} €
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between text-[11px]">
-                                                <span className="text-slate-500">
-                                                    {importMode === 'new' ? 'Saldo esperado según Banco (Fin archivo):' : 'Saldo calculado inicial (Inicio archivo):'}
-                                                </span>
-                                                <span className="font-mono font-bold text-indigo-600">
-                                                    {csvCheckBalance.toLocaleString(undefined, {minimumFractionDigits: 2})} €
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
+            {/* TABLA DE EXTRACTOS DE FECHAS DE LA APP Y DEL CSV */}
+            <div className="space-y-2 pt-3 border-t border-black/5 text-[11px]">
+                {/* 1. Datos del estado actual de la Base de Datos */}
+                <div className="flex justify-between items-center">
+                    <span className="text-slate-500 flex items-center gap-1">
+                        📅 {importMode === 'new' ? 'Último movimiento en App hoy:' : 'Movimiento más antiguo en App:'}
+                    </span>
+                    <span className="font-mono font-bold text-slate-700 bg-slate-200/60 px-2 py-0.5 rounded">
+                        {importMode === 'new' ? appNewestDate : appOldestDate}
+                    </span>
+                </div>
+                
+                {/* 2. Datos de lo que viene dentro del archivo CSV */}
+                <div className="flex justify-between items-center pb-2 border-b border-dashed border-slate-200">
+                    <span className="text-slate-500 flex items-center gap-1">
+                        📥 {importMode === 'new' ? 'Primer movimiento del archivo:' : 'Último movimiento del archivo:'}
+                    </span>
+                    <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                        {importMode === 'new' ? csvOldestDate : csvNewestDate}
+                    </span>
+                </div>
+
+                {/* 3. Datos de los saldos (Solo si la cuenta tiene columna de saldo) */}
+                {csvCheckBalance !== null && (
+                    <>
+                        <div className="flex justify-between pt-1">
+                            <span className="text-slate-500">Saldo actual en App:</span>
+                            <span className="font-mono font-semibold text-slate-600">
+                                {selectedAccount?.current_balance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
+                            </span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">
+                                {importMode === 'new' ? 'Saldo esperado según Banco (Fin archivo):' : 'Saldo inicial calculado (Inicio archivo):'}
+                            </span>
+                            <span className="font-mono font-bold text-indigo-600">
+                                {csvCheckBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
+                            </span>
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
                                 )}
 
                                 {/* CÓMO PROCESAR LOS DATOS (Tu desplegable original) */}
