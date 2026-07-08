@@ -171,44 +171,22 @@ export async function importCsvTransactionsAction(
                 };
             });
 
-        // 6. INSERCIÓN FINAL Y ACTUALIZACIÓN
+        // 6. INSERCIÓN FINAL EN SUPABASE
         const { error: insertError } = await supabase.from('finance_transactions').insert(finalTransactions);
-        
+
         if (insertError) {
             await supabase.from('finance_importers').delete().eq('id', importerRecord.id);
             return { success: false, error: `Error al guardar: ${insertError.message}` };
         }
 
-        // 💡 ACTUALIZACIÓN DEL SALDO DE LA CUENTA SEGÚN TUS DOS PREMISAS MÁXIMAS
-        if (importMode === 'new' && finalTransactions.length > 0) {
-            // Buscamos la transacción con la secuencia más alta (la última cronológicamente)
-            const sortedBySeq = [...finalTransactions].sort((a, b) => b.import_sequence - a.import_sequence);
-            const lastCronTx = sortedBySeq[0];
-
-            if (lastCronTx && lastCronTx.bank_balance !== null && lastCronTx.bank_balance !== undefined) {
-                // ESCENARIO A (Cuenta Corriente): El saldo definitivo del banco manda por decreto
-                await supabase
-                    .from('finance_accounts')
-                    .update({ current_balance: lastCronTx.bank_balance })
-                    .eq('id', account_id);
-            } else {
-                // ESCENARIO B (Tarjetas/Sin Saldo): Hacemos el sumatorio incremental sobre el saldo de la app
-                const netoImportacion = finalTransactions.reduce((sum, t) => sum + t.amount, 0);
-                const nuevoSaldoCalculado = (account.current_balance || 0) + netoImportacion;
-
-                await supabase
-                    .from('finance_accounts')
-                    .update({ current_balance: nuevoSaldoCalculado })
-                    .eq('id', account_id);
-            }
-        }
-        // Nota: Si importMode es 'historic', no tocamos el current_balance para proteger tu saldo real de hoy.
-
-        // Actualizamos las líneas del importador padre
+        // Actualizamos las líneas procesadas en el registro padre del histórico
         await supabase
             .from('finance_importers')
             .update({ row_count: finalTransactions.length })
             .eq('id', importerRecord.id);
+
+        // 💡 ¡Y YA ESTÁ! No actualizamos saldos iniciales ni actuales en finance_accounts.
+        // La verdad queda escrita únicamente en las transacciones que acabas de insertar.
 
         const { revalidatePath } = await import('next/cache');
         revalidatePath('/finance');

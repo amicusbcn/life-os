@@ -14,18 +14,82 @@ import {
 
 export async function getAccounts(): Promise<FinanceAccount[]> {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    
+    // 1. Traemos las cuentas tal y como haces tú
+    const { data: accounts, error } = await supabase
         .from('finance_accounts')
         .select('*')
         .order('account_type', { ascending: true })
         .order('name', { ascending: true });
 
-    if (error) return [];
-    return data.map(item => ({
-        ...item,
-        initial_balance: parseFloat(item.initial_balance.toString()),
-        current_balance: parseFloat((item.current_balance || 0).toString()),
-    }));
+    if (error || !accounts) return [];
+
+    // 2. 💡 JUGADA MAESTRA: Traemos el último movimiento de cada cuenta en una sola query
+    // Usamos .order() y Supabase nos dará las transacciones ordenadas cronológicamente.
+    // Al traerlas, podremos quedarnos con la foto más reciente y la más antigua de cada cuenta.
+    const { data: allTransactions } = await supabase
+        .from('finance_transactions')
+        .select('account_id, amount, bank_balance, date, import_sequence')
+        .order('date', { ascending: true })
+        .order('import_sequence', { ascending: true });
+
+    // Agrupamos las transacciones por cuenta para trabajar con ellas en memoria de forma súper rápida
+    const txByAccount: Record<string, NonNullable<typeof allTransactions>> = {};
+
+    if (allTransactions) {
+        allTransactions.forEach(tx => {
+            // Blindaje de ID nulo
+            if (!tx.account_id) return;
+
+            // Si no existe la clave, inicializamos el array de forma segura
+            if (!txByAccount[tx.account_id]) {
+                txByAccount[tx.account_id] = [];
+            }
+            
+            // Ahora TypeScript sabe con total certeza que esto es un array del tipo correcto
+            txByAccount[tx.account_id].push(tx);
+        });
+    }
+
+    // 3. Mapeamos las cuentas calculando los saldos dinámicamente
+    return accounts.map(item => {
+        const accountTx = txByAccount[item.id] || [];
+        
+        let calculatedCurrentBalance = 0;
+        let calculatedInitialBalance = 0;
+
+        // Si es una cuenta bancaria con movimientos reales (tiene columna bank_balance en transacciones)
+        if (accountTx.length > 0) {
+            // El movimiento MÁS RECIENTE es el último del array (gracias al orden ascending: true)
+            const latestTx = accountTx[accountTx.length - 1];
+            
+            // El movimiento MÁS ANTIGUO es el primero del array
+            const oldestTx = accountTx[0];
+
+            if (latestTx && latestTx.bank_balance !== null && latestTx.bank_balance !== undefined) {
+                // ESCENARIO A (Banco): El saldo actual es la última foto del banco
+                calculatedCurrentBalance = latestTx.bank_balance;
+                
+                // El saldo inicial antes de que existiera el primer movimiento de la app es: Saldo - Importe
+                calculatedInitialBalance = (Math.round(oldestTx.bank_balance * 100) - Math.round(oldestTx.amount * 100)) / 100;
+            } else {
+                // ESCENARIO B (Cuenta Auxiliar/Manual sin bank_balance): 
+                // El saldo actual es simplemente el sumatorio acumulativo de todos sus importes
+                calculatedCurrentBalance = accountTx.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                calculatedInitialBalance = 0; // Las auxiliares manuales suelen arrancar de 0
+            }
+        } else {
+            // Si la cuenta está completamente vacía y no tiene transacciones todavía
+            calculatedCurrentBalance = parseFloat((item.current_balance || 0).toString());
+            calculatedInitialBalance = parseFloat((item.initial_balance || 0).toString());
+        }
+
+        return {
+            ...item,
+            initial_balance: calculatedInitialBalance,
+            current_balance: calculatedCurrentBalance,
+        };
+    });
 }
 
 export async function getCategories(): Promise<FinanceCategory[]> {

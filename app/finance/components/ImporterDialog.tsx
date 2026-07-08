@@ -500,25 +500,85 @@ export function ImporterDialog({ accounts,templates, children }: PropsWithChildr
                                     </div>
                                 </div>
 
-                                {/* RECUADRO INFORMATIVO DE SALDOS (Solo si aplica) */}
-                                {csvCheckBalance !== null && calculatedMode === 'new' && (
-                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] space-y-1 mt-2">
-                                        <div className="flex justify-between">
-                                            {/* El saldo actual que hay hoy en la base de datos (con el que cerró la app) */}
-                                            <span className="text-slate-500">💰 Saldo actual en App (Cierre):</span>
-                                            <span className="font-mono font-semibold text-slate-600">
-                                                {selectedAccount?.current_balance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between pt-1 border-t border-dashed border-slate-200/60">
-                                            {/* El saldo matemático justo antes del primer movimiento del CSV (Apertura) */}
-                                            <span className="text-slate-500">📥 Saldo de Apertura del archivo (Inicio):</span>
-                                            <span className="font-mono font-bold text-indigo-600">
-                                                {csvCheckBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
-                                            </span>
-                                        </div>
+                                {/* TABLA DE EXTRACTOS DE FECHAS Y SALDOS (Reactiva y dinámica) */}
+                                <div className="space-y-2 pt-3 border-t border-black/5 text-[11px]">
+                                    
+                                    {/* SECCIÓN 1: CRONOLOGÍA (FECHAS) */}
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-slate-500">
+                                            {calculatedMode === 'new' ? '📅 Último movimiento en App (FA):' : '📅 Movimiento más antiguo en App (fa):'}
+                                        </span>
+                                        <span className="font-mono font-bold text-slate-700 bg-slate-200/60 px-2 py-0.5 rounded">
+                                            {calculatedMode === 'new' ? appNewestDate : appOldestDate}
+                                        </span>
                                     </div>
-                                )}
+                                    
+                                    <div className="flex justify-between items-center pb-2 border-b border-dashed border-slate-200">
+                                        <span className="text-slate-500">
+                                            {calculatedMode === 'new' ? '📥 Primer movimiento del archivo (fi):' : '📥 Último movimiento del archivo (FI):'}
+                                        </span>
+                                        <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                            {calculatedMode === 'new' ? csvOldestDate : csvNewestDate}
+                                        </span>
+                                    </div>
+
+                                    {/* SECCIÓN 2: CONTROL DE SALDOS DE CONTINUIDAD (Solo si el CSV tiene saldo) */}
+                                    {csvCheckBalance !== null && (
+                                        <div className="pt-1 space-y-1 bg-slate-50/50 p-2 rounded-xl mt-1">
+                                            {calculatedMode === 'new' ? (
+                                                <>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-slate-500">💰 Saldo actual hoy en App (Cierre):</span>
+                                                        <span className="font-mono text-slate-600">
+                                                            {selectedAccount?.current_balance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between font-medium">
+                                                        <span className="text-slate-500">📥 Saldo de Apertura del archivo (Inicio):</span>
+                                                        <span className="font-mono text-indigo-600">
+                                                            {csvCheckBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
+                                                        </span>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-slate-500">🏛️ Saldo Inicial actual en App (Apertura actual):</span>
+                                                        <span className="font-mono text-slate-600">
+                                                            {selectedAccount?.initial_balance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between font-medium">
+                                                        <span className="text-slate-500">📥 Saldo de Cierre del archivo histórico (Fin):</span>
+                                                        <span className="font-mono text-indigo-600">
+                                                            {/* 💡 En histórico, queremos verificar el saldo al final del extracto antiguo */}
+                                                            {(() => {
+                                                                // 1. Buscamos el índice mapeado para el saldo
+                                                                const balIdx = headers.indexOf(mapping['bank_balance']);
+                                                                if (balIdx === -1) return '0,00';
+                                                                
+                                                                // 2. Extraemos la fila cronológicamente más reciente (FI) 
+                                                                // Si lo más nuevo está arriba, es el primer registro ([0]). Si está abajo, es el último.
+                                                                const targetRow = fileOrder === 'newest_first' ? csvLines[0] : csvLines[csvLines.length - 1];
+                                                                if (!targetRow) return '0,00';
+                                                                
+                                                                // 💡 CORRECCIÓN: Como targetRow ya es un array de columnas/celdas, 
+                                                                // leemos directamente la columna del saldo sin hacer .split()
+                                                                const rawBal = targetRow[balIdx];
+                                                                if (!rawBal) return '0,00';
+                                                                
+                                                                // 3. Formateamos el número para la pantalla usando tu lógica limpia
+                                                                let n = rawBal.trim();
+                                                                const clean = n.includes('.') && !n.includes(',') ? n : n.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+                                                                return (parseFloat(clean) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
+                                                            })()} €
+                                                        </span>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
 
                                 {/* BOTONES DE ACCIÓN */}
                                 <div className="flex gap-3 pt-2">
