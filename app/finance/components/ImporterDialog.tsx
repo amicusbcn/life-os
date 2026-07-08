@@ -10,7 +10,7 @@ import { FinanceAccount } from '@/types/finance';
 import { importCsvTransactionsAction } from '../actions'; 
 import { toast } from 'sonner';
 import { CheckCircle2, AlertTriangle, FileText, ArrowRight, RotateCcw } from 'lucide-react';
-import { getAccountFileLimitsAction } from '../data';
+import { getAccountFileLimitsAction } from '../actions/importers';
 
 const ALL_FIELDS = [
     { key: 'operation_date', label: 'Fecha de Operación' },
