@@ -7,7 +7,7 @@ import { FileUp, FolderTree, CreditCard, Settings2, Scale, NotebookTabs, LinkIco
 import { AccountSettingsDialog } from './AccountSettingsDialog';
 import { CategorySettingsDialog } from './CategorySettingsDialog';
 import { ImporterDialog } from './ImporterDialog';
-import { ImporterTemplatesDialog } from './ImporterTemplatesDialog';
+import { ImporterHistory } from './ImporterHistory';
 import { 
     SidebarMenuItem, 
     SidebarMenuButton, 
@@ -117,7 +117,7 @@ export function FinanceMenu({
 
 
                 <SidebarMenuItem>
-                    <ImporterDialog accounts={accounts} templates={templates}>
+                    <ImporterDialog accounts={accounts}>
                         <SidebarMenuButton tooltip="Principal">
                             <FileUp className="h-4 w-4" />
                             <span>Importar CSV</span>
@@ -126,12 +126,12 @@ export function FinanceMenu({
                 </SidebarMenuItem>
 
                 <SidebarMenuItem>
-                    <ImporterTemplatesDialog initialTemplates={templates} history={history}>
-                        <SidebarMenuButton tooltip="Plantillas de Importación">
+                    <ImporterHistory history={history}>
+                        <SidebarMenuButton tooltip="Histórico de Importación">
                             <Settings2 className="h-4 w-4" />
-                            <span>Plantillas Importación</span>
+                            <span>Histórico de Importación</span>
                         </SidebarMenuButton>
-                    </ImporterTemplatesDialog>
+                    </ImporterHistory>
                 </SidebarMenuItem>
             </>
         );
@@ -141,7 +141,7 @@ export function FinanceMenu({
     return (
         <>
             <SidebarMenuItem>
-                <AccountSettingsDialog initialAccounts={accounts} templates={templates}>
+                <AccountSettingsDialog initialAccounts={accounts}>
                     <SidebarMenuButton tooltip="Gestionar Cuentas">
                         <CreditCard className="h-4 w-4" />
                         <span>Gestionar Cuentas</span>

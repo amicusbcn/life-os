@@ -26,7 +26,6 @@ export interface FinanceDashboardData {
     categories: FinanceCategory[];
     transactions: FinanceTransaction[];
     rules: FinanceRule[];
-    templates: any[]; // Plantillas de importación
     history: any[];   // Log de importaciones
 }
 
@@ -83,23 +82,6 @@ export interface FinanceTransactionSplit {
 
 // src/types/finance.ts (Añadir a los tipos existentes)
 
-/**
- * Define el mapeo de columnas para la importación de archivos CSV de un banco.
- */
-export type ImporterTemplate = {
-  id: string; // UUID de la plantilla
-  user_id: string;
-  name: string; // Nombre de la plantilla (ej: "Plantilla Banco X")
-  delimiter: string; // Separador de columnas (ej: ',', ';', '\t')
-  // Mapeo: {campo_del_sistema: nombre_columna_en_csv}
-  mapping: {
-    operation_date: string; // Nombre del encabezado CSV para la fecha
-    concept: string; // Nombre del encabezado CSV para el concepto
-    amount: string; // Nombre del encabezado CSV para el importe
-    sign_column?: string; // Nombre del encabezado CSV si el signo está en columna separada
-    bank_balance?: string;
-  };
-};
  export type ParsedTransaction = {
   date: string;
   amount: number;

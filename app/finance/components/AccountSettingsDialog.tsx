@@ -48,7 +48,7 @@ const slugify = (text: string) => {
             .toUpperCase();
     };
 // --- FILA DE CUENTA ---
-function AccountRow({ account, templates }: { account: FinanceAccount, templates: any[] }) {
+function AccountRow({ account}: { account: FinanceAccount }) {
     const [isEditing, setIsEditing] = useState(false)
     const [loading, setLoading] = useState(false)
     const router = useRouter()
@@ -143,7 +143,6 @@ function AccountRow({ account, templates }: { account: FinanceAccount, templates
             {isEditing && (
                 <div className="mt-4 border-t pt-4">
                     <AccountFormFields 
-                        templates={templates}
                         data={state}
                         onChange={(f: string, v: any) => {
                             if (f === 'slug') setIsSlugCustom(true);
@@ -158,7 +157,7 @@ function AccountRow({ account, templates }: { account: FinanceAccount, templates
 
 
 // --- FORMULARIO NUEVA CUENTA ---
-function NewAccountForm({ templates, onSuccess }: { templates: any[], onSuccess: () => void }) {
+function NewAccountForm({ onSuccess }: {  onSuccess: () => void }) {
     const [pending, setPending] = useState(false);
     const [isSlugCustom, setIsSlugCustom] = useState(false);
     const [state, setState] = useState({
@@ -188,7 +187,6 @@ function NewAccountForm({ templates, onSuccess }: { templates: any[], onSuccess:
     return (
         <div className="space-y-4">
             <AccountFormFields 
-                templates={templates}
                 data={state}
                 onChange={(f: string, v: any) => {
                     if (f === 'slug') setIsSlugCustom(true);
@@ -205,11 +203,9 @@ function NewAccountForm({ templates, onSuccess }: { templates: any[], onSuccess:
 // --- DIÁLOGO PRINCIPAL ---
 export function AccountSettingsDialog({ 
     initialAccounts, 
-    templates, // ✨ Asegúrate de que esto está aquí
     children 
 }: { 
     initialAccounts: FinanceAccount[], 
-    templates: any[], 
     children: React.ReactNode 
 }) {
     const [open, setOpen] = useState(false)
@@ -249,13 +245,13 @@ export function AccountSettingsDialog({
 
                         {showNew && (
                             <div className="mb-6 p-4 bg-white rounded-xl border border-indigo-100 shadow-md animate-in slide-in-from-top-2">
-                                <NewAccountForm onSuccess={() => setShowNew(false)} templates={templates} />
+                                <NewAccountForm onSuccess={() => setShowNew(false)} />
                             </div>
                         )}
 
                         <div className="flex-1 overflow-y-auto space-y-1">
                             {initialAccounts.map((acc: FinanceAccount) => (
-                                <AccountRow key={acc.id} account={acc} templates={templates} />
+                                <AccountRow key={acc.id} account={acc} />
                             ))}
                         </div>
                     </div>
