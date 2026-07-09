@@ -419,22 +419,42 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
                                     )}
                                 </div>
 
+                                {/* SEMÁFOROS BANNER DE AVISO / BLOQUEO */}
                                 {isBlockedByGap ? (
-                                    <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-[11px] space-y-1">
-                                        <p className="font-bold flex items-center gap-1.5">
-                                            <AlertTriangle className="w-3.5 h-3.5" /> Bloqueo de Seguridad: Hueco Detectado
+                                    <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-[11px] space-y-3">
+                                        <p className="font-black flex items-center gap-1.5 uppercase tracking-tight text-rose-800">
+                                            <AlertTriangle className="w-4 h-4 text-rose-600 animate-pulse" /> 
+                                            Bloqueo de Seguridad: Hueco Temporal Detectado
                                         </p>
-                                        <p className="text-rose-600/90 leading-relaxed">
-                                            {importMode === 'new'
-                                                ? `El archivo requiere arrancar teniendo ${csvCheckBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} €, pero tu aplicación está hoy en ${appCurrentBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €.`
-                                                : `Este bloque histórico termina dejando un saldo de ${csvClosingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €, pero el inicio de tus registros en la app arranca desde ${appInitialBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €.`
-                                            }
-                                        </p>
-                                        <p className="font-bold text-rose-700 pt-1 border-t border-rose-200/40 mt-1">
-                                            Por favor, descarga e importa primero el extracto con los movimientos intermedios.
+                                        
+                                        <div className="space-y-2 bg-white/60 p-3 rounded-lg border border-rose-100 font-medium text-rose-900 leading-relaxed">
+                                            {importMode === 'new' ? (
+                                                <>
+                                                    <p>
+                                                        🏛️ El saldo en la app a fecha <span className="font-bold underline">{appNewestDate}</span> (Último Cierre) es de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{appCurrentBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                                    </p>
+                                                    <p>
+                                                        📥 Mientras que el saldo inicial del archivo tiene fecha <span className="font-bold underline">{csvOldestDate}</span> (Inicio CSV) y requiere ser de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{(csvCheckBalance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                                    </p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <p>
+                                                        🏛️ El saldo en la app a fecha <span className="font-bold underline">{appOldestDate}</span> (Primer Origen) es de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{appInitialBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                                    </p>
+                                                    <p>
+                                                        📥 Mientras que el saldo final del archivo histórico tiene fecha <span className="font-bold underline">{csvNewestDate}</span> (Fin CSV) y termina dejando un saldo de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{csvClosingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                                    </p>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        <p className="font-bold text-rose-800 leading-normal">
+                                            💡 Consejo: Te faltan transacciones entre el <span className="underline">{importMode === 'new' ? appNewestDate : csvNewestDate}</span> y el <span className="underline">{importMode === 'new' ? csvOldestDate : appOldestDate}</span>. Descarga ese extracto intermedio en tu banco para poder continuar la secuencia.
                                         </p>
                                     </div>
                                 ) : (
+                                    /* BANNER VERDE SI TODO ESTÁ PERFECTO */
                                     <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-[11px]">
                                         <p className="font-bold flex items-center gap-1.5">
                                             <CheckCircle2 className="w-3.5 h-3.5" /> Continuidad Temporal Confirmada
