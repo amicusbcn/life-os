@@ -29,11 +29,10 @@ export async function importCsvTransactionsAction(
         const { data: logRecord, error: logError } = await supabase
             .from('finance_importers')
             .insert({
-                name: `Importación: ${file.name}`,
-                delimiter: mappingConfig.delimiter || ';',
-                settings: mappingConfig.settings || {},
+                filename: file.name,      // 💡 CORREGIDO: Usamos 'filename' tal y como se llama en tu tabla
+                account_id: account_id,   // 💡 Mapeado a la FK real
                 user_id: userData.user.id,
-                row_count: 0 // Se actualizará al final tras la inserción real
+                row_count: 0              // Se actualizará al final tras la inserción real de filas
             })
             .select()
             .single();
@@ -243,8 +242,8 @@ export async function importCsvTransactionsAction(
         await supabase
             .from('finance_importers')
             .update({ row_count: finalTransactions.length })
-            .eq('id', importerLog.id);
-
+            .eq('id', importerLog.id); 
+            
         revalidatePath('/finance');
 
         return {
