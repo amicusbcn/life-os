@@ -159,7 +159,7 @@ export async function importCsvTransactionsAction(
                 amount: t.amount,
                 bank_balance: t.bank_balance,
                 import_sequence: t.import_sequence,
-                import_id: importerLog.id, // 💡 Asignamos el ID del log histórico legítimo
+                importer_id: importerLog.id, // 💡 Asignamos el ID del log histórico legítimo
                 category_id: null
             });
         }
