@@ -9,7 +9,7 @@ import { Readable } from 'stream';
 
 export async function importCsvTransactionsAction(
     formData: FormData,
-    mappingConfig: { delimiter: string; settings: any }, // 💡 Pasamos el mapping temporal limpio directamente como objeto
+    mappingConfig: { delimiter: string; settings: any }, 
 ): Promise<{ success: boolean; error?: string; transactionsCount?: number; autoCategorizedCount?: number }> {
 
     try {
@@ -25,14 +25,16 @@ export async function importCsvTransactionsAction(
         const { data: userData, error: authError } = await supabase.auth.getUser();
         if (authError || !userData?.user) return { success: false, error: 'No autorizado.' };
 
-        // 1. CREAMOS EL REGISTRO DE LOG EN EL HISTORIAL USANDO LA ESTRUCTURA DE FINANCEIMPORTER
+        // ========================================================
+        // 1. CREAMOS EL REGISTRO DE LOG EN EL HISTORIAL (Alineado con Postgres)
+        // ========================================================
         const { data: logRecord, error: logError } = await supabase
             .from('finance_importers')
             .insert({
-                filename: file.name,      // 💡 CORREGIDO: Usamos 'filename' tal y como se llama en tu tabla
-                account_id: account_id,   // 💡 Mapeado a la FK real
+                filename: file.name,      
+                account_id: account_id,   
                 user_id: userData.user.id,
-                row_count: 0              // Se actualizará al final tras la inserción real de filas
+                row_count: 0              
             })
             .select()
             .single();
@@ -41,10 +43,9 @@ export async function importCsvTransactionsAction(
             return { success: false, error: `Error al crear el registro histórico: ${logError?.message}` };
         }
 
-        // Tipo asignado formalmente al registro recuperado
         const importerLog: FinanceImporter = logRecord;
 
-        // 2. Lectura del archivo CSV
+        // 2. Lectura del archivo CSV directo de los bytes
         const bytes = await file.arrayBuffer();
         const content = new TextDecoder('utf-8').decode(bytes);
         
@@ -64,7 +65,7 @@ export async function importCsvTransactionsAction(
             return { success: false, error: 'El archivo CSV está vacío o no contiene suficientes filas.' };
         }
 
-        const csvRowsData = rawLines.slice(1); 
+        const csvRowsData = rawLines.slice(1); // Quitamos la fila de cabecera
         const s = mappingConfig.settings;
         if (!s) {
             await supabase.from('finance_importers').delete().eq('id', importerLog.id);
@@ -88,7 +89,7 @@ export async function importCsvTransactionsAction(
 
         const transactions: any[] = [];
 
-        // 3. Mapeo síncrono del CSV
+        // 3. Mapeo síncrono del CSV a objetos temporales de transacciones
         csvRowsData.forEach((columns, index) => {
             const rawDate = columns[dateIdx];
             if (!rawDate) return;
@@ -148,7 +149,7 @@ export async function importCsvTransactionsAction(
             const csvTxHash = `${t.date}_${Number(t.amount).toFixed(2)}_${Number(t.bank_balance ?? 0).toFixed(2)}`;
 
             if (existingTxHashes.has(csvTxHash)) {
-                continue; 
+                continue; // Clon exacto detectado en la BD, lo saltamos pacíficamente
             }
 
             finalTransactions.push({
@@ -159,7 +160,7 @@ export async function importCsvTransactionsAction(
                 amount: t.amount,
                 bank_balance: t.bank_balance,
                 import_sequence: t.import_sequence,
-                importer_id: importerLog.id, // 💡 Asignamos el ID del log histórico legítimo
+                importer_id: importerLog.id, // Column_name corregido a tu script de Postgres
                 category_id: null
             });
         }
@@ -174,7 +175,7 @@ export async function importCsvTransactionsAction(
         }
 
         // ========================================================
-        // 5. VALIDACIÓN DE CONTINUIDAD STRICTA (EVITAR HUECOS)
+        // 5. VALIDACIÓN INMUTABLE DE HUECOS CRONOLÓGICOS (CONTINUIDAD)
         // ========================================================
         const { data: lastAppTx } = await supabase
             .from('finance_transactions')
@@ -196,6 +197,7 @@ export async function importCsvTransactionsAction(
         const primerSaldoApp = firstAppTx?.[0]?.bank_balance;
         const primerImporteApp = firstAppTx?.[0]?.amount;
 
+        // MODO NEW: Avanzar hacia adelante en el tiempo
         if (importMode === 'new' && ultimoSaldoApp !== undefined && ultimoSaldoApp !== null) {
             const cronoTransactions = [...finalTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.import_sequence - b.import_sequence);
             const primerMovimientoNuevo = cronoTransactions[0];
@@ -213,25 +215,44 @@ export async function importCsvTransactionsAction(
             }
         } 
         
+        // MODO HISTORIC: Meter pasado debajo de los cimientos actuales
         if (importMode === 'historic' && primerSaldoApp !== undefined && primerSaldoApp !== null && primerImporteApp !== undefined && primerImporteApp !== null) {
-            const cronoTransactionsDesc = [...finalTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.import_sequence - a.import_sequence);
-            const ultimoMovimientoHistorico = cronoTransactionsDesc[0];
+            
+            const fechaLimiteAppStr = firstAppTx?.[0]?.date;
+            const dateLimiteApp = fechaLimiteAppStr ? new Date(fechaLimiteAppStr) : null;
 
-            if (ultimoMovimientoHistorico && ultimoMovimientoHistorico.bank_balance !== null) {
-                const saldoAperturaActualApp = (Math.round(primerSaldoApp * 100) - Math.round(primerImporteApp * 100)) / 100;
-                const saldoCierreCsvHistorico = ultimoMovimientoHistorico.bank_balance;
+            // Filtramos las líneas históricas legítimas purgando cualquier residuo futuro o solapado
+            const lineasHistoricasReales = finalTransactions.filter(t => {
+                if (!dateLimiteApp) return true;
+                const txDate = new Date(t.date);
+                if (txDate > dateLimiteApp) return false; // Purga del bloque futuro
+                return true;
+            });
 
-                if (saldoCierreCsvHistorico !== saldoAperturaActualApp) {
-                    await supabase.from('finance_importers').delete().eq('id', importerLog.id);
-                    return {
-                        success: false,
-                        error: `❌ HUECO HISTÓRICO DETECTADO: El cimiento de tu app arranca en ${saldoAperturaActualApp} €, pero este archivo histórico termina dejando un saldo de ${saldoCierreCsvHistorico} €. Revisa la continuidad hacia atrás.`
-                    };
+            if (lineasHistoricasReales.length > 0) {
+                // Ordenamos cronológicamente de más nueva a más antigua para coger la frontera más alta del pasado
+                const cronoTransactionsDesc = [...lineasHistoricasReales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.import_sequence - a.import_sequence);
+                const ultimoMovimientoHistoricoGenuino = cronoTransactionsDesc[0]; 
+
+                if (ultimoMovimientoHistoricoGenuino && ultimoMovimientoHistoricoGenuino.bank_balance !== null) {
+                    // El saldo inicial teórico antes de tu nómina es: 3000 - 2000 = 1000 €
+                    const saldoAperturaActualApp = (Math.round(primerSaldoApp * 100) - Math.round(primerImporteApp * 100)) / 100;
+                    const saldoCierreCsvHistorico = ultimoMovimientoHistoricoGenuino.bank_balance;
+
+                    if (saldoCierreCsvHistorico !== saldoAperturaActualApp) {
+                        await supabase.from('finance_importers').delete().eq('id', importerLog.id);
+                        return {
+                            success: false,
+                            error: `❌ HUECO HISTÓRICO DETECTADO: El cimiento de tu app arranca en ${saldoAperturaActualApp} €, pero este archivo histórico termina dejando un saldo de ${saldoCierreCsvHistorico} €. Revisa la continuidad hacia atrás.`
+                        };
+                    }
                 }
             }
         }
 
-        // 6. INSERCIÓN ATÓMICA DE LAS FILAS DEPURADAS
+        // ========================================================
+        // 6. INSERCIÓN ATÓMICA DE LAS FILAS DEPURADAS EN LA BD
+        // ========================================================
         const { error: insertError } = await supabase.from('finance_transactions').insert(finalTransactions);
         if (insertError) {
             await supabase.from('finance_importers').delete().eq('id', importerLog.id);
@@ -242,8 +263,8 @@ export async function importCsvTransactionsAction(
         await supabase
             .from('finance_importers')
             .update({ row_count: finalTransactions.length })
-            .eq('id', importerLog.id); 
-            
+            .eq('id', importerLog.id);
+
         revalidatePath('/finance');
 
         return {
@@ -257,7 +278,6 @@ export async function importCsvTransactionsAction(
     }
 }
 
-// ÚNICA IMPLEMENTACIÓN DE LÍMITES TEMPORALES (Limpiadas las copias extra del fondo)
 export async function getAccountFileLimitsAction(accountId: string): Promise<{
     success: boolean;
     newestDate?: string;
@@ -299,94 +319,4 @@ export async function getAccountFileLimitsAction(accountId: string): Promise<{
     } catch (e) {
         return { success: false, error: 'Error interno' };
     }
-}
-
-
-export async function processImportAction(transactions: any[], accountId: string, userId: string) {
-    const supabase = await createClient();
-    
-    const { data: oldestTx } = await supabase
-        .from('finance_transactions')
-        .select('date')
-        .eq('account_id', accountId)
-        .order('date', { ascending: true })
-        .limit(1)
-        .single();
-
-    let initialBalanceAdjustment = 0;
-    const finalTransactions = [];
-
-    // REGLA DE NEGOCIO: Al procesar arrays inyectados manualmente desde fuera, inyectamos también la secuencia ordenada
-    for (let i = 0; i < transactions.length; i++) {
-        const tx = transactions[i];
-        if (oldestTx && new Date(tx.date) < new Date(oldestTx.date)) {
-            initialBalanceAdjustment += tx.amount;
-        }
-        finalTransactions.push({ 
-            ...tx, 
-            account_id: accountId, 
-            user_id: userId,
-            import_sequence: i // Guardamos posición ordinal
-        });
-    }
-
-    if (initialBalanceAdjustment !== 0) {
-        const { data: account } = await supabase
-            .from('finance_accounts')
-            .select('initial_balance')
-            .eq('id', accountId)
-            .single();
-
-        if (account) {
-            await supabase
-                .from('finance_accounts')
-                .update({ initial_balance: account.initial_balance + initialBalanceAdjustment })
-                .eq('id', accountId);
-        }
-    }
-
-    return await supabase.from('finance_transactions').insert(finalTransactions);
-}
-
-export async function validateAndImportAction(
-    transactions: any[], 
-    accountId: string, 
-    userId: string,
-    mode: 'new' | 'historic'
-) {
-    const supabase = await createClient();
-
-    if (mode === 'historic') {
-        const totalAmount = transactions.reduce((acc, t) => acc + t.amount, 0);
-        
-        const { data: account } = await supabase
-            .from('finance_accounts')
-            .select('initial_balance')
-            .eq('id', accountId)
-            .single();
-
-        if (account) {
-            await supabase
-                .from('finance_accounts')
-                .update({ initial_balance: account.initial_balance + totalAmount })
-                .eq('id', accountId);
-        }
-    }
-
-    // REGLA DE NEGOCIO: Aseguramos el orden secuencial intradiario mapeando el índice de la colección
-    const finalTxs = transactions.map((t, idx) => ({ 
-        ...t, 
-        account_id: accountId, 
-        user_id: userId,
-        import_sequence: idx // Guardamos el orden relativo
-    }));
-
-    const { error } = await supabase
-        .from('finance_transactions')
-        .insert(finalTxs);
-
-    if (error) return { success: false, error: error.message };
-
-    revalidatePath('/finance');
-    return { success: true };
 }

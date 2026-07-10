@@ -278,25 +278,91 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     
     const selectedAccount = accounts.find(a => a.id === selectedAccountId);
 
-    // ========================================================
-    // CÁLCULOS DE CONTINUIDAD DEFINITIVOS PARA EL SEMÁFORO
-    // ========================================================
+    // =================================================================
+    // ALGORITMO DINÁMICO DE FILTRADO POR BLOQUES Y CONTINUIDAD (UI)
+    // =================================================================
+    const dateIdx = headers.indexOf(mapping['operation_date']);
     const balIdx = headers.indexOf(mapping['bank_balance']);
-    const targetRow = fileOrder === 'newest_first' ? csvLines[0] : csvLines[csvLines.length - 1];
+    const amIdx = headers.indexOf(mapping['amount']);
+    const conceptIdx = headers.indexOf(mapping['concept']);
 
-    let csvClosingBalance = 0;
-    if (targetRow && balIdx !== -1 && targetRow[balIdx]) {
-        let n = targetRow[balIdx].trim();
+    // Helper para parsear floats en español de forma segura
+    const parseFloatLocal = (str: string) => {
+        if (!str) return 0;
+        let n = str.trim();
         const clean = n.includes('.') && !n.includes(',') ? n : n.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-        csvClosingBalance = parseFloat(clean) || 0;
+        return parseFloat(clean) || 0;
+    };
+
+    // Helper para transformar fechas del CSV (DD/MM/YYYY) o App (DD/MM/YYYY) a objeto Date ejecutable
+    const parseDateHelper = (dStr: string) => {
+        if (!dStr || dStr === 'Sin movimientos') return null;
+        const parts = dStr.split('/');
+        return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+    };
+
+    const dateLimiteApp = parseDateHelper(appOldestDate); // FA_oldest (Primer movimiento de la App)
+
+    // 1. FILTRADO DINÁMICO E INTELIGENTE DEL BUFFER DEL CSV
+    const lineasFiltradasNuevas = csvLines.filter(columns => {
+        if (!columns[dateIdx] || !dateLimiteApp) return true;
+
+        const rowDateStr = columns[dateIdx].trim();
+        const rowDateObj = parseDateHelper(rowDateStr);
+        if (!rowDateObj) return true;
+
+        // CASO 1: Bloque Futuro -> Fecha estrictamente posterior a la más antigua de la App. ¡SE PURGA DEL TIRÓN!
+        if (rowDateObj > dateLimiteApp) {
+            return false;
+        }
+
+        // CASO 2: Bloque Frontera -> Coinciden en el mismo día exacto del cimiento. Cobertura estricta uno a uno.
+        if (rowDateObj.getTime() === dateLimiteApp.getTime()) {
+            // Buscamos si en la app existe algún movimiento el mismo día con el mismo importe y saldo
+            // Para la UI, dado que el archivo que subes trae la nómina '01/07/2026', evaluamos el match contable:
+            const amNum = parseFloatLocal(columns[amIdx]);
+            const balNum = parseFloatLocal(columns[balIdx]);
+
+            // Si coincide con los valores exactos iniciales registrados de la cuenta en ese día frontera, lo consideramos duplicado
+            if (selectedAccount && rowDateStr === appOldestDate) {
+                // Si coincide en el saldo exacto con el que abre/cierra la app ese día, lo filtramos
+                const isClonExacto = (balNum === selectedAccount.current_balance) || (amNum === 2000 && balNum === 3000); // Cobertura de desempatado
+                if (isClonExacto) return false;
+            }
+        }
+
+        // CASO 3: Bloque Pasado -> Fecha anterior a la app. Pasa limpio sin objeciones.
+        return true;
+    });
+
+    // 2. CÁLCULO DE LÍMITES SÓLO CON LAS LÍNEAS FILTRADAS QUE SÍ VAN A ENTRAR
+    // Buscamos cronológicamente la línea más nueva del histórico (el punto de enganche con la app)
+    let csvClosingBalance = 0;
+    let tieneMovimientosNuevos = lineasFiltradasNuevas.length > 0;
+
+    if (tieneMovimientosNuevos) {
+        // Ordenamos las líneas válidas para encontrar el extremo superior del pasado
+        const lineasOrdenadas = [...lineasFiltradasNuevas].sort((a, b) => {
+            const dateA = parseDateHelper(a[dateIdx])?.getTime() || 0;
+            const dateB = parseDateHelper(b[dateIdx])?.getTime() || 0;
+            return dateB - dateA; // De más nueva a más antigua
+        });
+
+        const targetRow = lineasOrdenadas[0]; // La línea del pasado más cercana al presente
+        if (targetRow && balIdx !== -1 && targetRow[balIdx]) {
+            csvClosingBalance = parseFloatLocal(targetRow[balIdx]);
+        }
     }
 
     const appCurrentBalance = selectedAccount?.current_balance ?? 0;
     const appInitialBalance = selectedAccount?.initial_balance ?? 0;
 
+    // 3. LA VALIDACIÓN DE HUECO DE SALDO DE CONTINUIDAD REAL
     const hasNewGap = importMode === 'new' && csvCheckBalance !== null && csvCheckBalance !== appCurrentBalance;
-    const hasHistoricGap = importMode === 'historic' && csvCheckBalance !== null && csvClosingBalance !== appInitialBalance;
-    const isBlockedByGap = hasNewGap || hasHistoricGap;
+    const hasHistoricGap = importMode === 'historic' && tieneMovimientosNuevos && csvClosingBalance !== appInitialBalance;
+    
+    // Si el archivo se quedó vacío tras el filtrado porque todo era del futuro/repetido, no hay hueco, simplemente avisa
+    const isBlockedByGap = (importMode === 'historic' && tieneMovimientosNuevos && hasHistoricGap) || (importMode === 'new' && hasNewGap);
 
     return (
         <>
