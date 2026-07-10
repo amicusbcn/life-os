@@ -192,64 +192,68 @@ export async function importCsvTransactionsAction(
             .order('date', { ascending: true })
             .order('import_sequence', { ascending: true })
             .limit(1);
-
-        const ultimoSaldoApp = lastAppTx?.[0]?.bank_balance;
-        const primerSaldoApp = firstAppTx?.[0]?.bank_balance;
-        const primerImporteApp = firstAppTx?.[0]?.amount;
-
-        // MODO NEW: Avanzar hacia adelante en el tiempo
-        if (importMode === 'new' && ultimoSaldoApp !== undefined && ultimoSaldoApp !== null) {
-            const cronoTransactions = [...finalTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.import_sequence - b.import_sequence);
-            const primerMovimientoNuevo = cronoTransactions[0];
-
-            if (primerMovimientoNuevo && primerMovimientoNuevo.bank_balance !== null) {
-                const saldoAperturaCsv = (Math.round(primerMovimientoNuevo.bank_balance * 100) - Math.round(primerMovimientoNuevo.amount * 100)) / 100;
-                
-                if (saldoAperturaCsv !== ultimoSaldoApp) {
-                    await supabase.from('finance_importers').delete().eq('id', importerLog.id);
-                    return {
-                        success: false,
-                        error: `❌ HUECO DETECTADO: La app cerró en ${ultimoSaldoApp} €, pero este archivo requiere empezar en ${saldoAperturaCsv} €. Faltan movimientos intermedios.`
-                    };
-                }
-            }
-        } 
-        
-        // MODO HISTORIC: Meter pasado debajo de los cimientos actuales
-        if (importMode === 'historic' && primerSaldoApp !== undefined && primerSaldoApp !== null && primerImporteApp !== undefined && primerImporteApp !== null) {
+        const tieneMovimientosEnApp = lastAppTx && lastAppTx.length > 0 && firstAppTx && firstAppTx.length > 0;
+        // 💡 EXCEPCIÓN HISTÓRICA: Si la cuenta está totalmente vacía en la App,
+        // no hay pasado ni futuro con el que comparar. El archivo es el nuevo cimiento.
+        if (tieneMovimientosEnApp) {
+            const ultimoSaldoApp = lastAppTx[0].bank_balance;
+            const primerSaldoApp = firstAppTx[0].bank_balance;
+            const primerImporteApp = firstAppTx[0].amount;
             
-            const fechaLimiteAppStr = firstAppTx?.[0]?.date;
-            const dateLimiteApp = fechaLimiteAppStr ? new Date(fechaLimiteAppStr) : null;
+            // MODO NEW: Avanzar hacia adelante en el tiempo
+            if (importMode === 'new' && ultimoSaldoApp !== undefined && ultimoSaldoApp !== null) {
+                const cronoTransactions = [...finalTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.import_sequence - b.import_sequence);
+                const primerMovimientoNuevo = cronoTransactions[0];
 
-            // Filtramos las líneas históricas legítimas purgando cualquier residuo futuro o solapado
-            const lineasHistoricasReales = finalTransactions.filter(t => {
-                if (!dateLimiteApp) return true;
-                const txDate = new Date(t.date);
-                if (txDate > dateLimiteApp) return false; // Purga del bloque futuro
-                return true;
-            });
-
-            if (lineasHistoricasReales.length > 0) {
-                // Ordenamos cronológicamente de más nueva a más antigua para coger la frontera más alta del pasado
-                const cronoTransactionsDesc = [...lineasHistoricasReales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.import_sequence - a.import_sequence);
-                const ultimoMovimientoHistoricoGenuino = cronoTransactionsDesc[0]; 
-
-                if (ultimoMovimientoHistoricoGenuino && ultimoMovimientoHistoricoGenuino.bank_balance !== null) {
-                    // El saldo inicial teórico antes de tu nómina es: 3000 - 2000 = 1000 €
-                    const saldoAperturaActualApp = (Math.round(primerSaldoApp * 100) - Math.round(primerImporteApp * 100)) / 100;
-                    const saldoCierreCsvHistorico = ultimoMovimientoHistoricoGenuino.bank_balance;
-
-                    if (saldoCierreCsvHistorico !== saldoAperturaActualApp) {
+                if (primerMovimientoNuevo && primerMovimientoNuevo.bank_balance !== null) {
+                    const saldoAperturaCsv = (Math.round(primerMovimientoNuevo.bank_balance * 100) - Math.round(primerMovimientoNuevo.amount * 100)) / 100;
+                    
+                    if (saldoAperturaCsv !== ultimoSaldoApp) {
                         await supabase.from('finance_importers').delete().eq('id', importerLog.id);
                         return {
                             success: false,
-                            error: `❌ HUECO HISTÓRICO DETECTADO: El cimiento de tu app arranca en ${saldoAperturaActualApp} €, pero este archivo histórico termina dejando un saldo de ${saldoCierreCsvHistorico} €. Revisa la continuidad hacia atrás.`
+                            error: `❌ HUECO DETECTADO: La app cerró en ${ultimoSaldoApp} €, pero este archivo requiere empezar en ${saldoAperturaCsv} €. Faltan movimientos intermedios.`
                         };
                     }
                 }
-            }
-        }
+            } 
+            
+            // MODO HISTORIC: Meter pasado debajo de los cimientos actuales
+            if (importMode === 'historic' && primerSaldoApp !== undefined && primerSaldoApp !== null && primerImporteApp !== undefined && primerImporteApp !== null) {
+                
+                const fechaLimiteAppStr = firstAppTx?.[0]?.date;
+                const dateLimiteApp = fechaLimiteAppStr ? new Date(fechaLimiteAppStr) : null;
 
+                // Filtramos las líneas históricas legítimas purgando cualquier residuo futuro o solapado
+                const lineasHistoricasReales = finalTransactions.filter(t => {
+                    if (!dateLimiteApp) return true;
+                    const txDate = new Date(t.date);
+                    if (txDate > dateLimiteApp) return false; // Purga del bloque futuro
+                    return true;
+                });
+
+                if (lineasHistoricasReales.length > 0) {
+                    // Ordenamos cronológicamente de más nueva a más antigua para coger la frontera más alta del pasado
+                    const cronoTransactionsDesc = [...lineasHistoricasReales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.import_sequence - a.import_sequence);
+                    const ultimoMovimientoHistoricoGenuino = cronoTransactionsDesc[0]; 
+
+                    if (ultimoMovimientoHistoricoGenuino && ultimoMovimientoHistoricoGenuino.bank_balance !== null) {
+                        // El saldo inicial teórico antes de tu nómina es: 3000 - 2000 = 1000 €
+                        const saldoAperturaActualApp = (Math.round(primerSaldoApp * 100) - Math.round(primerImporteApp * 100)) / 100;
+                        const saldoCierreCsvHistorico = ultimoMovimientoHistoricoGenuino.bank_balance;
+
+                        if (saldoCierreCsvHistorico !== saldoAperturaActualApp) {
+                            await supabase.from('finance_importers').delete().eq('id', importerLog.id);
+                            return {
+                                success: false,
+                                error: `❌ HUECO HISTÓRICO DETECTADO: El cimiento de tu app arranca en ${saldoAperturaActualApp} €, pero este archivo histórico termina dejando un saldo de ${saldoCierreCsvHistorico} €. Revisa la continuidad hacia atrás.`
+                            };
+                        }
+                    }
+                }
+            }
+        
+        }
         // ========================================================
         // 6. INSERCIÓN ATÓMICA DE LAS FILAS DEPURADAS EN LA BD
         // ========================================================

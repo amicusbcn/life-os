@@ -358,11 +358,14 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const appInitialBalance = selectedAccount?.initial_balance ?? 0;
 
     // 3. LA VALIDACIÓN DE HUECO DE SALDO DE CONTINUIDAD REAL
-    const hasNewGap = importMode === 'new' && csvCheckBalance !== null && csvCheckBalance !== appCurrentBalance;
-    const hasHistoricGap = importMode === 'historic' && tieneMovimientosNuevos && csvClosingBalance !== appInitialBalance;
+    // La validación de hueco sólo es relevante si la app ya tiene registros de fecha guardados
+    const cuentaEstaVacia = appOldestDate === 'Sin movimientos' || appNewestDate === 'Sin movimientos';
+
+    const hasNewGap = !cuentaEstaVacia && importMode === 'new' && csvCheckBalance !== null && csvCheckBalance !== appCurrentBalance;
+    const hasHistoricGap = !cuentaEstaVacia && importMode === 'historic' && tieneMovimientosNuevos && csvClosingBalance !== appInitialBalance;
     
-    // Si el archivo se quedó vacío tras el filtrado porque todo era del futuro/repetido, no hay hueco, simplemente avisa
-    const isBlockedByGap = (importMode === 'historic' && tieneMovimientosNuevos && hasHistoricGap) || (importMode === 'new' && hasNewGap);
+    // Si la cuenta está vacía, el bloqueo es FALSE (pase libre)
+    const isBlockedByGap = !cuentaEstaVacia && ((importMode === 'historic' && tieneMovimientosNuevos && hasHistoricGap) || (importMode === 'new' && hasNewGap));
 
     return (
         <>
