@@ -160,15 +160,10 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
             return;
         }
 
-        let minDateObj: Date | null = null;
-        let balanceToCompare: number | null = null;
-
         const parseSpanishFloat = (str: string) => {
             if (!str) return 0;
             let n = str.trim();
-            if (n.includes('.') && !n.includes(',')) {
-                return parseFloat(n) || 0;
-            }
+            if (n.includes('.') && !n.includes(',')) return parseFloat(n) || 0;
             const clean = n.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
             return parseFloat(clean) || 0;
         };
@@ -186,13 +181,15 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
             setCsvOldestDate(firstRowDate || '');
         }
 
+        // 1. Cálculo del saldo de apertura inicial del CSV (Se queda intacto)
+        let minDateObj: Date | null = null;
+        let balanceToCompare: number | null = null;
         const hasBalanceColumn = !(balIdx === -1 || mapping['bank_balance'] === undefined || mapping['bank_balance'] === '' || mapping['bank_balance'] === 'none');
         
         if (hasBalanceColumn) {
             csvLines.forEach((columns) => {
                 const rawDate = columns[dateIdx];
                 const rawBal = columns[balIdx];
-                
                 let amNum = parseSpanishFloat(columns[amIdx]);
                 let balNum = parseSpanishFloat(rawBal);
 
@@ -203,13 +200,9 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
                 if (!isNaN(currentDate.getTime())) {
                     if (!minDateObj || currentDate < minDateObj) {
                         minDateObj = currentDate;
-                        const res = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
-                        balanceToCompare = res;
-                    } else if (currentDate.getTime() === minDateObj.getTime()) {
-                        if (fileOrder === 'newest_first') {
-                            const res = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
-                            balanceToCompare = res;
-                        }
+                        balanceToCompare = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
+                    } else if (currentDate.getTime() === minDateObj.getTime() && fileOrder === 'newest_first') {
+                        balanceToCompare = (Math.round(balNum * 100) - Math.round(amNum * 100)) / 100;
                     }
                 }
             });
@@ -218,6 +211,7 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
             setCsvCheckBalance(null);
         }
 
+        // 2. Consulta de extremos y determinación instantánea del modo
         try {
             const res = await getAccountFileLimitsAction(selectedAccountId);
             if (res.success) {
@@ -226,27 +220,27 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
 
                 const parseNormalizedDate = (dStr: string) => {
                     if (!dStr || dStr === 'Sin movimientos') return null;
-                    const [d, m, y] = dStr.split('/');
-                    return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+                    const cleanStr = dStr.replace(/[^\d/]/g, '').trim(); 
+                    const parts = cleanStr.split('/');
+                    return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
                 };
 
                 const dateNewestApp = parseNormalizedDate(res.newestDate || '');
-                // Buscamos cuál es el día más nuevo que ofrece el archivo CSV
                 const dateNewestCsv = parseNormalizedDate(fileOrder === 'newest_first' ? firstRowDate : lastRowDate);
 
-                // 💡 REGLA DE ORO DEFINITIVA PARA ASIGNAR EL MODO
-                if (!dateNewestApp || !dateNewestCsv || dateNewestCsv > dateNewestApp) {
-                    setImportMode('new'); // Vamos hacia adelante (Añadir presente/futuro)
-                } else {
-                    setImportMode('historic'); // Vamos hacia atrás (Nutrir el pasado)
+                // Determinamos el modo en una variable local para sincronía total
+                let modeDetermined: 'new' | 'historic' = 'new';
+                if (dateNewestApp && dateNewestCsv && dateNewestCsv.getTime() <= dateNewestApp.getTime()) {
+                    modeDetermined = 'historic';
                 }
 
+                setImportMode(modeDetermined);
             } else {
                 toast.error(res.error || 'Error al cargar límites de la app');
             }
         } catch (err) {
             console.error(err);
-            toast.error('Error al conectar con el servidor para obtener los límites de fechas');
+            toast.error('Error al obtener límites de fechas');
         }
         setStep('preview');
     };
@@ -280,14 +274,13 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const selectedAccount = accounts.find(a => a.id === selectedAccountId);
 
     // =================================================================
-    // ALGORITMO DINÁMICO DE FILTRADO POR BLOQUES Y CONTINUIDAD (UI)
+    // COMPONENT SCOPE: INDICES Y HELPERS ACCESIBLES PARA PASO 2 Y PASO 3
     // =================================================================
     const dateIdx = headers.indexOf(mapping['operation_date']);
     const balIdx = headers.indexOf(mapping['bank_balance']);
     const amIdx = headers.indexOf(mapping['amount']);
-    const conceptIdx = headers.indexOf(mapping['concept']);
 
-    // Helper para parsear floats en español de forma segura
+    // Helper para parsear floats en español de forma segura (Accesible en todo el componente)
     const parseFloatLocal = (str: string) => {
         if (!str) return 0;
         let n = str.trim();
@@ -298,58 +291,42 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     // Helper para transformar fechas del CSV (DD/MM/YYYY) o App (DD/MM/YYYY) a objeto Date ejecutable
     const parseDateHelper = (dStr: string) => {
         if (!dStr || dStr === 'Sin movimientos') return null;
-        const parts = dStr.split('/');
-        return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+        const cleanStr = dStr.replace(/[^\d/]/g, '').trim();
+        const parts = cleanStr.split('/');
+        return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
     };
 
-    const dateLimiteApp = parseDateHelper(appOldestDate); // FA_oldest (Primer movimiento de la App)
+    const dateLimiteAppOldest = parseDateHelper(appOldestDate);
+    const dateLimiteAppNewest = parseDateHelper(appNewestDate);
 
-    // 1. FILTRADO DINÁMICO E INTELIGENTE DEL BUFFER DEL CSV
+    // 1. FILTRADO DINÁMICO E INTELIGENTE DEL BUFFER DEL CSV EN TIEMPO DE RENDER
     const lineasFiltradasNuevas = csvLines.filter(columns => {
-        if (!columns[dateIdx] || !dateLimiteApp) return true;
-
-        const rowDateStr = columns[dateIdx].trim();
-        const rowDateObj = parseDateHelper(rowDateStr);
+        if (dateIdx === -1 || !columns[dateIdx]) return true;
+        const rowDateObj = parseDateHelper(columns[dateIdx]);
         if (!rowDateObj) return true;
 
-        // CASO 1: Bloque Futuro -> Fecha estrictamente posterior a la más antigua de la App. ¡SE PURGA DEL TIRÓN!
-        if (rowDateObj > dateLimiteApp) {
-            return false;
+        if (importMode === 'historic') {
+            if (!dateLimiteAppOldest) return true;
+            if (rowDateObj > dateLimiteAppOldest) return false; // Purga el futuro en modo histórico
+        } else {
+            if (!dateLimiteAppNewest) return true;
+            if (rowDateObj <= dateLimiteAppNewest) return false; // Purga el pasado/solape en modo nuevo
         }
-
-        // CASO 2: Bloque Frontera -> Coinciden en el mismo día exacto del cimiento. Cobertura estricta uno a uno.
-        if (rowDateObj.getTime() === dateLimiteApp.getTime()) {
-            // Buscamos si en la app existe algún movimiento el mismo día con el mismo importe y saldo
-            // Para la UI, dado que el archivo que subes trae la nómina '01/07/2026', evaluamos el match contable:
-            const amNum = parseFloatLocal(columns[amIdx]);
-            const balNum = parseFloatLocal(columns[balIdx]);
-
-            // Si coincide con los valores exactos iniciales registrados de la cuenta en ese día frontera, lo consideramos duplicado
-            if (selectedAccount && rowDateStr === appOldestDate) {
-                // Si coincide en el saldo exacto con el que abre/cierra la app ese día, lo filtramos
-                const isClonExacto = (balNum === selectedAccount.current_balance) || (amNum === 2000 && balNum === 3000); // Cobertura de desempatado
-                if (isClonExacto) return false;
-            }
-        }
-
-        // CASO 3: Bloque Pasado -> Fecha anterior a la app. Pasa limpio sin objeciones.
         return true;
     });
 
-    // 2. CÁLCULO DE LÍMITES SÓLO CON LAS LÍNEAS FILTRADAS QUE SÍ VAN A ENTRAR
-    // Buscamos cronológicamente la línea más nueva del histórico (el punto de enganche con la app)
+    // 2. CÁLCULO DEL SALDO DE CIERRE REAL BASADO EN EL BUFFER FILTRADO
     let csvClosingBalance = 0;
     let tieneMovimientosNuevos = lineasFiltradasNuevas.length > 0;
 
     if (tieneMovimientosNuevos) {
-        // Ordenamos las líneas válidas para encontrar el extremo superior del pasado
         const lineasOrdenadas = [...lineasFiltradasNuevas].sort((a, b) => {
             const dateA = parseDateHelper(a[dateIdx])?.getTime() || 0;
             const dateB = parseDateHelper(b[dateIdx])?.getTime() || 0;
-            return dateB - dateA; // De más nueva a más antigua
+            return dateB - dateA;
         });
 
-        const targetRow = lineasOrdenadas[0]; // La línea del pasado más cercana al presente
+        const targetRow = lineasOrdenadas[0];
         if (targetRow && balIdx !== -1 && targetRow[balIdx]) {
             csvClosingBalance = parseFloatLocal(targetRow[balIdx]);
         }
@@ -357,15 +334,12 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
 
     const appCurrentBalance = selectedAccount?.current_balance ?? 0;
     const appInitialBalance = selectedAccount?.initial_balance ?? 0;
-
-    // 3. LA VALIDACIÓN DE HUECO DE SALDO DE CONTINUIDAD REAL
-    // La validación de hueco sólo es relevante si la app ya tiene registros de fecha guardados
     const cuentaEstaVacia = appOldestDate === 'Sin movimientos' || appNewestDate === 'Sin movimientos';
 
+    // 3. SEMÁFOROS Y REGLAS DE BLOQUEO CONTABLE DE SEGURIDAD
     const hasNewGap = !cuentaEstaVacia && importMode === 'new' && csvCheckBalance !== null && csvCheckBalance !== appCurrentBalance;
     const hasHistoricGap = !cuentaEstaVacia && importMode === 'historic' && tieneMovimientosNuevos && csvClosingBalance !== appInitialBalance;
     
-    // Si la cuenta está vacía, el bloqueo es FALSE (pase libre)
     const isBlockedByGap = !cuentaEstaVacia && ((importMode === 'historic' && tieneMovimientosNuevos && hasHistoricGap) || (importMode === 'new' && hasNewGap));
 
     return (
