@@ -224,20 +224,21 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
                 setAppNewestDate(res.newestDate || 'Sin movimientos');
                 setAppOldestDate(res.oldestDate || 'Sin movimientos');
 
-                // 💡 LOGICA INTELIGENTE AUTO-CALCULADA DE MODO
                 const parseNormalizedDate = (dStr: string) => {
                     if (!dStr || dStr === 'Sin movimientos') return null;
                     const [d, m, y] = dStr.split('/');
                     return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
                 };
 
-                const dateFA = parseNormalizedDate(res.newestDate || '');
-                const dateFi = parseNormalizedDate(fileOrder === 'newest_first' ? lastRowDate : firstRowDate);
+                const dateNewestApp = parseNormalizedDate(res.newestDate || '');
+                // Buscamos cuál es el día más nuevo que ofrece el archivo CSV
+                const dateNewestCsv = parseNormalizedDate(fileOrder === 'newest_first' ? firstRowDate : lastRowDate);
 
-                if (!dateFA || !dateFi || dateFA < dateFi) {
-                    setImportMode('new');
+                // 💡 REGLA DE ORO DEFINITIVA PARA ASIGNAR EL MODO
+                if (!dateNewestApp || !dateNewestCsv || dateNewestCsv > dateNewestApp) {
+                    setImportMode('new'); // Vamos hacia adelante (Añadir presente/futuro)
                 } else {
-                    setImportMode('historic');
+                    setImportMode('historic'); // Vamos hacia atrás (Nutrir el pasado)
                 }
 
             } else {
