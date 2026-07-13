@@ -274,13 +274,12 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const selectedAccount = accounts.find(a => a.id === selectedAccountId);
 
     // =================================================================
-    // COMPONENT SCOPE: INDICES Y HELPERS ACCESIBLES PARA PASO 2 Y PASO 3
+    // COMPONENT SCOPE: INDICES Y HELPERS ACCESIBLES
     // =================================================================
     const dateIdx = headers.indexOf(mapping['operation_date']);
     const balIdx = headers.indexOf(mapping['bank_balance']);
     const amIdx = headers.indexOf(mapping['amount']);
 
-    // Helper para parsear floats en español de forma segura (Accesible en todo el componente)
     const parseFloatLocal = (str: string) => {
         if (!str) return 0;
         let n = str.trim();
@@ -288,7 +287,6 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
         return parseFloat(clean) || 0;
     };
 
-    // Helper para transformar fechas del CSV (DD/MM/YYYY) o App (DD/MM/YYYY) a objeto Date ejecutable
     const parseDateHelper = (dStr: string) => {
         if (!dStr || dStr === 'Sin movimientos') return null;
         const cleanStr = dStr.replace(/[^\d/]/g, '').trim();
@@ -299,18 +297,35 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const dateLimiteAppOldest = parseDateHelper(appOldestDate);
     const dateLimiteAppNewest = parseDateHelper(appNewestDate);
 
-    // 1. FILTRADO DINÁMICO E INTELIGENTE DEL BUFFER DEL CSV EN TIEMPO DE RENDER
+    // 💡 DETERMINACIÓN EN TIEMPO REAL DEL MODO PARA EVITAR LAGS DE REACT
+    // Si la fecha del archivo más nueva es estrictamente posterior al último movimiento de la app, es 'new'
+    const csvFirstRowDateObj = csvLines.length > 0 && dateIdx !== -1 ? parseDateHelper(csvLines[0][dateIdx]) : null;
+    const csvLastRowDateObj = csvLines.length > 0 && dateIdx !== -1 ? parseDateHelper(csvLines[csvLines.length - 1][dateIdx]) : null;
+    
+    let currentCsvNewestDateObj = csvFirstRowDateObj;
+    if (csvLastRowDateObj && csvFirstRowDateObj && csvLastRowDateObj > csvFirstRowDateObj) {
+        currentCsvNewestDateObj = csvLastRowDateObj;
+    }
+
+    const cuentaEstaVacia = appOldestDate === 'Sin movimientos' || appNewestDate === 'Sin movimientos';
+    
+    // El modo contable real en este instante de render
+    const realRenderMode = (!dateLimiteAppNewest || !currentCsvNewestDateObj || currentCsvNewestDateObj.getTime() > dateLimiteAppNewest.getTime()) 
+        ? 'new' 
+        : 'historic';
+
+    // 1. FILTRADO DINÁMICO DEL BUFFER SEGÚN EL MODO CALCULADO AL VUELO
     const lineasFiltradasNuevas = csvLines.filter(columns => {
         if (dateIdx === -1 || !columns[dateIdx]) return true;
         const rowDateObj = parseDateHelper(columns[dateIdx]);
         if (!rowDateObj) return true;
 
-        if (importMode === 'historic') {
+        if (realRenderMode === 'historic') {
             if (!dateLimiteAppOldest) return true;
-            if (rowDateObj > dateLimiteAppOldest) return false; // Purga el futuro en modo histórico
+            if (rowDateObj > dateLimiteAppOldest) return false; // Purgamos futuro
         } else {
             if (!dateLimiteAppNewest) return true;
-            if (rowDateObj <= dateLimiteAppNewest) return false; // Purga el pasado/solape en modo nuevo
+            if (rowDateObj <= dateLimiteAppNewest) return false; // Purgamos pasado/solape
         }
         return true;
     });
@@ -334,13 +349,12 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
 
     const appCurrentBalance = selectedAccount?.current_balance ?? 0;
     const appInitialBalance = selectedAccount?.initial_balance ?? 0;
-    const cuentaEstaVacia = appOldestDate === 'Sin movimientos' || appNewestDate === 'Sin movimientos';
 
     // 3. SEMÁFOROS Y REGLAS DE BLOQUEO CONTABLE DE SEGURIDAD
-    const hasNewGap = !cuentaEstaVacia && importMode === 'new' && csvCheckBalance !== null && csvCheckBalance !== appCurrentBalance;
-    const hasHistoricGap = !cuentaEstaVacia && importMode === 'historic' && tieneMovimientosNuevos && csvClosingBalance !== appInitialBalance;
+    const hasNewGap = !cuentaEstaVacia && realRenderMode === 'new' && csvCheckBalance !== null && csvCheckBalance !== appCurrentBalance;
+    const hasHistoricGap = !cuentaEstaVacia && realRenderMode === 'historic' && tieneMovimientosNuevos && csvClosingBalance !== appInitialBalance;
     
-    const isBlockedByGap = !cuentaEstaVacia && ((importMode === 'historic' && tieneMovimientosNuevos && hasHistoricGap) || (importMode === 'new' && hasNewGap));
+    const isBlockedByGap = !cuentaEstaVacia && ((realRenderMode === 'historic' && tieneMovimientosNuevos && hasHistoricGap) || (realRenderMode === 'new' && hasNewGap));
 
     return (
         <>
