@@ -226,7 +226,7 @@ export async function getImportBatchDetail(id: string): Promise<{
             amount,
             bank_balance,
             import_sequence,
-            category:finance_categories!category_id ( name, color_theme )
+            finance_categories ( name, color )
         `)
         .eq('importer_id', id)
         .order('import_sequence', { ascending: true, nullsFirst: false })
@@ -248,7 +248,7 @@ export async function getImportBatchDetail(id: string): Promise<{
         id: rawBatch.id,
         filename: rawBatch.filename,
         row_count: Number(rawBatch.row_count || 0),
-        skipped_count: Number(rawBatch.skipped_count || 0),
+        skipped_count: (rawBatch as any).skipped_count ? Number((rawBatch as any).skipped_count) : 0,
         created_at: rawBatch.created_at,
         import_date: rawBatch.import_date,
         account_name: (rawBatch.finance_accounts as any)?.name || 'Cuenta no disponible',
