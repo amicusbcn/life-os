@@ -4,31 +4,44 @@
 import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 
-/**
- * Obtiene los extremos de fechas (más antigua y más nueva) de la cuenta en BBDD
+/*
+ * Obtiene los extremos de fechas y saldos dinámicos de la cuenta desde finance_transactions
  */
 export async function getAccountFileLimitsAction(account_id: string) {
     const supabase = await createClient();
 
     try {
+        // 1. Movimiento más reciente (Techo de la App)
         const { data: lastTx } = await supabase
             .from('finance_transactions')
-            .select('date')
+            .select('date, bank_balance, amount')
             .eq('account_id', account_id)
             .order('date', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(1);
 
+        // 2. Movimiento más antiguo (Cimiento de la App)
         const { data: firstTx } = await supabase
             .from('finance_transactions')
-            .select('date')
+            .select('date, bank_balance, amount')
             .eq('account_id', account_id)
             .order('date', { ascending: true })
+            .order('created_at', { ascending: true })
             .limit(1);
 
-        const newestDateStr = lastTx && lastTx.length > 0 ? lastTx[0].date : null; // YYYY-MM-DD
-        const oldestDateStr = firstTx && firstTx.length > 0 ? firstTx[0].date : null; // YYYY-MM-DD
+        const hasTx = lastTx && lastTx.length > 0 && firstTx && firstTx.length > 0;
 
-        // Formatea YYYY-MM-DD a DD/MM/YYYY para la UI
+        const newestDateStr = hasTx ? lastTx[0].date : null;
+        const oldestDateStr = hasTx ? firstTx[0].date : null;
+
+        // Saldo actual en App = Saldo de banco registrado en el movimiento más reciente
+        const appCurrentBalance = hasTx && lastTx[0].bank_balance !== null ? lastTx[0].bank_balance : 0;
+
+        // Saldo inicial en App = Saldo de apertura del movimiento más antiguo (bank_balance - amount)
+        const appInitialBalance = hasTx && firstTx[0].bank_balance !== null 
+            ? (Math.round(firstTx[0].bank_balance * 100) - Math.round(firstTx[0].amount * 100)) / 100 
+            : 0;
+
         const formatToDisplay = (dStr: string | null) => {
             if (!dStr) return null;
             const parts = dStr.split('-');
@@ -41,7 +54,9 @@ export async function getAccountFileLimitsAction(account_id: string) {
         return {
             success: true,
             newestDate: formatToDisplay(newestDateStr),
-            oldestDate: formatToDisplay(oldestDateStr)
+            oldestDate: formatToDisplay(oldestDateStr),
+            currentBalance: appCurrentBalance,
+            initialBalance: appInitialBalance
         };
     } catch (err: any) {
         console.error('Error en getAccountFileLimitsAction:', err);

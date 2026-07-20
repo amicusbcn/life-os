@@ -36,9 +36,12 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const [fileOrder, setFileOrder] = useState<'newest_first' | 'oldest_first'>('newest_first');
     const [detectedCount, setDetectedCount] = useState(0);
 
-    // Extremos de lo que ya tenemos guardado en la App (Base de datos)
+    // Extremos y saldos calculados dinámicamente desde el Libro Diario (finance_transactions)
     const [appNewestDate, setAppNewestDate] = useState<string | null>(null);
     const [appOldestDate, setAppOldestDate] = useState<string | null>(null);
+    const [appCurrentBalance, setAppCurrentBalance] = useState<number>(0);
+    const [appInitialBalance, setAppInitialBalance] = useState<number>(0);
+
     const [invertAmount, setInvertAmount] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
 
@@ -160,6 +163,8 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
             if (res.success) {
                 setAppNewestDate(res.newestDate || null);
                 setAppOldestDate(res.oldestDate || null);
+                setAppCurrentBalance(res.currentBalance ?? 0);
+                setAppInitialBalance(res.initialBalance ?? 0);
             } else {
                 toast.error(res.error || 'Error al cargar límites de la app');
             }
@@ -169,8 +174,6 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
         }
         setStep('preview');
     };
-
-    const selectedAccount = accounts.find(a => a.id === selectedAccountId);
 
     // =================================================================
     // ANÁLISIS EN TIEMPO REAL MEDIANTE EL MOTOR PURO (importEngine.ts)
@@ -187,8 +190,8 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const appBounds: AppBounds = {
         appNewestDate,
         appOldestDate,
-        appCurrentBalance: selectedAccount?.current_balance ?? 0,
-        appInitialBalance: selectedAccount?.initial_balance ?? 0
+        appCurrentBalance, // 💡 CORREGIDO: Leemos el estado dinámico sincronizado de la BD
+        appInitialBalance  // 💡 CORREGIDO: Leemos el estado dinámico sincronizado de la BD
     };
 
     // Ejecutamos la función pura de análisis del motor
