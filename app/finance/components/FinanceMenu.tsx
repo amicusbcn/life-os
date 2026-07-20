@@ -19,7 +19,6 @@ interface FinanceMenuProps {
     accounts: FinanceAccount[];
     categories: FinanceCategory[];
     rules: FinanceRule[];
-    templates: any[];
     history: any[];
     mode: 'operative' | 'settings';
     currentPanel?: 'dashboard' | 'transactions' | 'analytics' | 'investments' | 'history'; // Para saber qué panel está activo en modo operativo
@@ -28,8 +27,7 @@ interface FinanceMenuProps {
 export function FinanceMenu({ 
     accounts, 
     categories, 
-    rules, 
-    templates, 
+    rules ,
     history,
     mode,
     currentPanel

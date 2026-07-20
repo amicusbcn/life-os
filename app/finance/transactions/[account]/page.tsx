@@ -52,7 +52,6 @@ export default async function AccountTransactionsPage({
                     categories={categories} 
                     currentPanel='transactions' 
                     rules={rules}
-                    templates={templates} 
                     history={history} 
                 />
             }
@@ -62,7 +61,6 @@ export default async function AccountTransactionsPage({
                     accounts={accounts} 
                     categories={categories}
                     rules={rules}
-                    templates={templates}
                     history={history}
                 />
             }
