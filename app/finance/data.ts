@@ -223,8 +223,7 @@ export async function getImportBatchDetail(id: string): Promise<{
             finance_categories ( name, color_theme )
         `)
         .eq('importer_id', id)
-        .order('import_sequence', { ascending: true })
-        .order('date', { ascending: true });
+        .order('import_sequence', { ascending: true });
 
     // 3. Calculamos min/max de fechas del lote
     const oldestDate = rawTransactions && rawTransactions.length > 0 ? rawTransactions[0].date : null;
