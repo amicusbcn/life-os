@@ -15,7 +15,7 @@ import {
 export async function getAccounts(): Promise<FinanceAccount[]> {
     const supabase = await createClient();
     
-    // 1. Traemos las cuentas ordenadas
+    // 1. Traemos todas las cuentas
     const { data: accounts, error } = await supabase
         .from('finance_accounts')
         .select('*')
@@ -24,66 +24,66 @@ export async function getAccounts(): Promise<FinanceAccount[]> {
 
     if (error || !accounts) return [];
 
-    // 2. Traemos las transacciones para calcular saldos y rangos en una sola query rápida
-    const { data: allTransactions } = await supabase
-        .from('finance_transactions')
-        .select('account_id, amount, bank_balance, date, created_at')
-        .order('date', { ascending: true })
-        .order('created_at', { ascending: true });
+    // 2. Para cada cuenta, traemos en paralelo SOLO la transacción más antigua y la más reciente (1 fila de cada)
+    const enrichedAccounts = await Promise.all(
+        accounts.map(async (acc) => {
+            // Transacción MÁS RECIENTE (Techo / Saldo Actual)
+            const { data: latestTxs } = await supabase
+                .from('finance_transactions')
+                .select('date, amount, bank_balance')
+                .eq('account_id', acc.id)
+                .order('date', { ascending: false })
+                .order('created_at', { ascending: false })
+                .limit(1);
 
-    // Agrupamos por cuenta
-    const txByAccount: Record<string, NonNullable<typeof allTransactions>> = {};
+            // Transacción MÁS ANTIGUA (Cimiento / Saldo Inicial)
+            const { data: oldestTxs } = await supabase
+                .from('finance_transactions')
+                .select('date, amount, bank_balance')
+                .eq('account_id', acc.id)
+                .order('date', { ascending: true })
+                .order('created_at', { ascending: true })
+                .limit(1);
 
-    if (allTransactions) {
-        allTransactions.forEach(tx => {
-            if (!tx.account_id) return;
-            if (!txByAccount[tx.account_id]) {
-                txByAccount[tx.account_id] = [];
+            const latestTx = latestTxs && latestTxs.length > 0 ? latestTxs[0] : null;
+            const oldestTx = oldestTxs && oldestTxs.length > 0 ? oldestTxs[0] : null;
+
+            let calculatedCurrentBalance = parseFloat((acc.current_balance || 0).toString());
+            let calculatedInitialBalance = parseFloat((acc.initial_balance || 0).toString());
+            let oldestDate: string | null = null;
+            let newestDate: string | null = null;
+
+            if (latestTx && oldestTx) {
+                oldestDate = oldestTx.date || null;
+                newestDate = latestTx.date || null;
+
+                if (latestTx.bank_balance !== null && latestTx.bank_balance !== undefined) {
+                    // ESCENARIO A: Cuenta Bancaria
+                    calculatedCurrentBalance = latestTx.bank_balance;
+                    calculatedInitialBalance = (Math.round((oldestTx.bank_balance ?? 0) * 100) - Math.round((oldestTx.amount ?? 0) * 100)) / 100;
+                } else {
+                    // ESCENARIO B: Cuenta Auxiliar / Manual (Si no tiene bank_balance, sumamos importes de esa cuenta)
+                    const { data: sumData } = await supabase
+                        .from('finance_transactions')
+                        .select('amount')
+                        .eq('account_id', acc.id);
+                    
+                    calculatedCurrentBalance = sumData?.reduce((sum, t) => sum + (t.amount || 0), 0) ?? 0;
+                    calculatedInitialBalance = 0;
+                }
             }
-            txByAccount[tx.account_id].push(tx);
-        });
-    }
 
-    // 3. Mapeamos enriqueciendo saldos y rango temporal
-    return accounts.map(item => {
-        const accountTx = txByAccount[item.id] || [];
-        
-        let calculatedCurrentBalance = 0;
-        let calculatedInitialBalance = 0;
-        let oldestDate: string | null = null;
-        let newestDate: string | null = null;
+            return {
+                ...acc,
+                initial_balance: calculatedInitialBalance,
+                current_balance: calculatedCurrentBalance,
+                oldest_date: oldestDate,
+                newest_date: newestDate,
+            };
+        })
+    );
 
-        if (accountTx.length > 0) {
-            const oldestTx = accountTx[0];
-            const latestTx = accountTx[accountTx.length - 1];
-
-            // Fechas extremas registradas
-            oldestDate = oldestTx.date || null;
-            newestDate = latestTx.date || null;
-
-            if (latestTx && latestTx.bank_balance !== null && latestTx.bank_balance !== undefined) {
-                // ESCENARIO A (Banco real con bank_balance)
-                calculatedCurrentBalance = latestTx.bank_balance;
-                calculatedInitialBalance = (Math.round(oldestTx.bank_balance * 100) - Math.round(oldestTx.amount * 100)) / 100;
-            } else {
-                // ESCENARIO B (Cuenta Auxiliar/Manual sin bank_balance)
-                calculatedCurrentBalance = accountTx.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-                calculatedInitialBalance = 0;
-            }
-        } else {
-            // Sin transacciones
-            calculatedCurrentBalance = parseFloat((item.current_balance || 0).toString());
-            calculatedInitialBalance = parseFloat((item.initial_balance || 0).toString());
-        }
-
-        return {
-            ...item,
-            initial_balance: calculatedInitialBalance,
-            current_balance: calculatedCurrentBalance,
-            oldest_date: oldestDate,
-            newest_date: newestDate,
-        };
-    });
+    return enrichedAccounts;
 }
 
 export async function getCategories(): Promise<FinanceCategory[]> {
