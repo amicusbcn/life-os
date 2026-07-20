@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { 
-    FileText, Eye, Trash2, History, Filter, ArrowLeft, Calendar, Loader2, Pencil, Check, X 
+    FileText, Eye, Trash2, History, Filter, ArrowLeft, Calendar, Loader2, Pencil, Check, X, Clock 
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { deleteImportBatchAction, renameImportBatchAction } from '../actions/importers';
@@ -216,15 +216,15 @@ export function ImporterLogsView({ initialLogs, accounts }: ImporterLogsViewProp
                         {filteredLogs.map(log => {
                             const isDeleting = deletingId === log.id;
                             const isEditing = editingId === log.id;
+                            const logDate = log.import_date || log.created_at;
 
                             return (
                                 <div 
                                     key={log.id} 
                                     className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors"
                                 >
-                                    {/* IDENTIFICACIÓN: AVATAR DE LA CUENTA + NOMBRE Y PERIODO */}
+                                    {/* IDENTIFICACIÓN: AVATAR DE LA CUENTA + NOMBRE, FECHA CARGA Y PERIODO */}
                                     <div className="flex items-center gap-4 min-w-0 flex-1">
-                                        {/* Avatar de la Cuenta */}
                                         <AccountAvatar 
                                             account={{
                                                 name: log.account_name || 'Cuenta',
@@ -277,15 +277,27 @@ export function ImporterLogsView({ initialLogs, accounts }: ImporterLogsViewProp
                                                 </div>
                                             )}
 
-                                            {/* CUENTA Y PERIODO DENTRO DEL LOTE */}
+                                            {/* METADATOS COMPLETOS: CUENTA • FECHA DE CARGA • PERIODO */}
                                             <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
                                                 <span className="font-bold uppercase tracking-wider text-[10px] text-slate-600">
                                                     {log.account_name}
                                                 </span>
                                                 •
-                                                {/* Insignia del Periodo Importado */}
+                                                {/* Fecha y Hora de Carga del Archivo */}
+                                                <span className="flex items-center gap-1 font-mono text-[10px] text-slate-500">
+                                                    <Clock size={10} className="text-slate-400 shrink-0" />
+                                                    {new Date(logDate).toLocaleDateString('es-ES', {
+                                                        day: '2-digit',
+                                                        month: '2-digit',
+                                                        year: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
+                                                </span>
+                                                •
+                                                {/* Insignia del Periodo de Movimientos */}
                                                 <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-100 rounded-full text-slate-600 text-[10px] font-mono font-bold">
-                                                    <Calendar size={10} className="text-indigo-500" />
+                                                    <Calendar size={10} className="text-indigo-500 shrink-0" />
                                                     <span>{formatDateRange(log.oldest_date, log.newest_date)}</span>
                                                 </div>
                                             </div>
@@ -308,7 +320,7 @@ export function ImporterLogsView({ initialLogs, accounts }: ImporterLogsViewProp
                                                     size="sm" 
                                                     className="h-9 text-xs font-bold gap-1.5 rounded-xl border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
                                                 >
-                                                    <Eye size={14} /> Ver Lote
+                                                    <Eye size={14} /> Ver Detalle
                                                 </Button>
                                             </Link>
 

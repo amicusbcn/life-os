@@ -286,3 +286,46 @@ export async function renameImportBatchAction(importId: string, newFilename: str
         return { success: false, error: err.message || 'Error al renombrar el lote.' };
     }
 }
+
+export interface ReorderItem {
+    id: string;
+    import_sequence: number;
+}
+
+/**
+ * Reordena masivamente las transacciones de un lote concreto de importación
+ */
+export async function reorderBatchTransactionsAction(batchId: string, items: ReorderItem[]) {
+    const supabase = await createClient();
+
+    if (!items || items.length === 0) {
+        return { success: false, error: 'No hay elementos para reordenar.' };
+    }
+
+    try {
+        // Actualizamos cada transacción con su nueva posición en el orden del lote
+        const updates = items.map(item => 
+            supabase
+                .from('finance_transactions')
+                .update({ import_sequence: item.import_sequence })
+                .eq('id', item.id)
+                .eq('importer_id', batchId)
+        );
+
+        const results = await Promise.all(updates);
+        const hasError = results.some(r => r.error);
+
+        if (hasError) {
+            throw new Error('Ocurrió un error al actualizar algunas posiciones.');
+        }
+
+        revalidatePath(`/finance/imports/${batchId}`);
+        revalidatePath('/finance/imports');
+        revalidatePath('/finance');
+
+        return { success: true, message: 'Orden de transacciones guardado correctamente.' };
+    } catch (err: any) {
+        console.error('Error en reorderBatchTransactionsAction:', err);
+        return { success: false, error: err.message || 'Error al reordenar el lote.' };
+    }
+}

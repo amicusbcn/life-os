@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useMemo } from 'react';
-import { FinanceAccount } from '@/types/finance';
+import { FinanceAccount, ImportLogItem } from '@/types/finance';
 import { Button } from '@/components/ui/button';
 import { 
     Copy, ArrowUpRight, Eye, EyeOff, Wallet, 
@@ -16,7 +16,7 @@ import { AccountSettingsDialog } from './AccountSettingsDialog';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-export function FinanceDashboardView({ initialAccounts, templates }: { initialAccounts: FinanceAccount[], templates: any[] }) {
+export function FinanceDashboardView({ initialAccounts, history }: { initialAccounts: FinanceAccount[], history: ImportLogItem[] }) {
     const [isPrivate, setIsPrivate] = useState(true);
 
     // Lógica de Saldos
@@ -79,7 +79,7 @@ export function FinanceDashboardView({ initialAccounts, templates }: { initialAc
                     </div>
 
                     <div className="flex gap-3">
-                        <AccountSettingsDialog initialAccounts={initialAccounts} history={templates}>
+                        <AccountSettingsDialog initialAccounts={initialAccounts} history={history}>
                             <Button variant="outline" className="rounded-2xl bg-white/5 border-white/10 hover:bg-white/10 h-12 px-6 uppercase font-black text-[10px] tracking-widest text-slate-300">
                                 Ajustes
                             </Button>

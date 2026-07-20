@@ -24,7 +24,6 @@ export default async function InvestmentPage({
         investmentAccounts, // Cambiado para reflejar lo que viene de getInvestmentViewData
         categories, 
         rules, 
-        templates, 
         history,
         investmentTransactions
     } = data;

@@ -77,6 +77,22 @@ export interface FinanceImporter {
   user_id: string;
 }
 
+export interface ImportLogItem {
+    id: string;
+    created_at: string;
+    filename: string;
+    row_count: number;
+    skipped_count?: number;
+    import_date?: string | null;
+    account_id: string;
+    account_name: string;
+    account_color: string;
+    account_letter: string;
+    account_icon?: string | null;
+    oldest_date: string | null;
+    newest_date: string | null;
+}
+
 export interface FinanceTransactionSplit {
   id: string;
   transaction_id: string;

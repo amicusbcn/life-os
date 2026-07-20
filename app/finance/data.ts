@@ -5,7 +5,8 @@ import {
     FinanceCategory, 
     FinanceTransaction, 
     FinanceRule, 
-    FinanceDashboardData 
+    FinanceDashboardData, 
+    ImportLogItem
 } from '@/types/finance';
 
 // ==========================================
@@ -107,20 +108,75 @@ export async function getRules(): Promise<FinanceRule[]> {
     return error ? [] : data;
 }
 
-export async function getImporterData() {
+export async function getImporterHistory(): Promise<ImportLogItem[]> {
     const supabase = await createClient();
-    const [templates, history] = await Promise.all([
-        supabase.from('finance_importer_templates').select('*').order('name'),
-        supabase.from('finance_importers')
-            .select('*, accounts:account_id(name)')
-            .order('created_at', { ascending: false })
-            .limit(10)
-    ]);
-    
-    return { 
-        templates: templates.data || [], 
-        history: history.data || [] 
-    };
+
+    // 1. Cargamos el historial de lotes cruzado con la información visual de la cuenta
+    const { data: rawLogs, error: logError } = await supabase
+        .from('finance_importers')
+        .select(`
+            id,
+            created_at,
+            filename,
+            row_count,
+            skipped_count,
+            import_date,
+            account_id,
+            finance_accounts (
+                name,
+                color_theme,
+                avatar_letter,
+                icon_name
+            )
+        `)
+        .order('created_at', { ascending: false });
+
+    if (logError || !rawLogs) {
+        console.error('Error al obtener el historial de importaciones:', logError?.message);
+        return [];
+    }
+
+    // 2. Traemos las fechas min/max de las transacciones vinculadas a los importer_id
+    const { data: txBounds } = await supabase
+        .from('finance_transactions')
+        .select('importer_id, date')
+        .not('importer_id', 'is', null);
+
+    // Agrupamos en memoria las fechas extremas por lote
+    const rangeMap: Record<string, { oldest: string; newest: string }> = {};
+
+    txBounds?.forEach(tx => {
+        if (!tx.importer_id || !tx.date) return;
+
+        if (!rangeMap[tx.importer_id]) {
+            rangeMap[tx.importer_id] = { oldest: tx.date, newest: tx.date };
+        } else {
+            if (tx.date < rangeMap[tx.importer_id].oldest) rangeMap[tx.importer_id].oldest = tx.date;
+            if (tx.date > rangeMap[tx.importer_id].newest) rangeMap[tx.importer_id].newest = tx.date;
+        }
+    });
+
+    // 3. Retornamos la lista totalmente mapeada y tipada
+    return rawLogs.map((item: any) => {
+        const account = item.finance_accounts;
+        const accountName = account?.name || 'Cuenta no disponible';
+
+        return {
+            id: item.id,
+            created_at: item.created_at,
+            filename: item.filename,
+            row_count: Number(item.row_count || 0),
+            skipped_count: Number(item.skipped_count || 0),
+            import_date: item.import_date || null,
+            account_id: item.account_id,
+            account_name: accountName,
+            account_color: account?.color_theme || '#6366f1',
+            account_letter: account?.avatar_letter || accountName.charAt(0).toUpperCase() || 'C',
+            account_icon: account?.icon_name || null,
+            oldest_date: rangeMap[item.id]?.oldest || null,
+            newest_date: rangeMap[item.id]?.newest || null,
+        };
+    });
 }
 
 // ==========================================
@@ -132,18 +188,17 @@ export async function getImporterData() {
  * Carga lo necesario para saldos, sidebar y configuración, pero ignora transacciones.
  */
 export async function getDashboardViewData() {
-    const [accounts, categories, importer, rules] = await Promise.all([
+    const [accounts, categories, history, rules] = await Promise.all([
         getAccounts(),
         getCategories(),
-        getImporterData(),
+        getImporterHistory(),
         getRules()
     ]);
 
     return {
         accounts,
         categories,
-        templates: importer.templates,
-        history: importer.history,
+        history: history,
         rules
     };
 }
@@ -162,11 +217,11 @@ export async function getTransactionViewData(
     const end = `${year}-12-31`;
 
     // 1. Cargamos estructura base (Cuentas, Categorías, Reglas e Importador)
-    const [accounts, categories, rules, importer] = await Promise.all([
+    const [accounts, categories, rules, history] = await Promise.all([
         getAccounts(),
         getCategories(),
         getRules(),
-        getImporterData()
+        getImporterHistory()
     ]);
 
     // 2. Identificamos la cuenta. 
@@ -202,8 +257,7 @@ export async function getTransactionViewData(
         accounts,
         categories,
         rules,
-        templates: importer.templates,
-        history: importer.history,
+        history,
         currentAccount: account, // Será null si es 'all', perfecto para la lógica de la página
         isAllMode: isAll,        // Flag útil para la UI
         year
@@ -217,11 +271,11 @@ export async function getAnalyticsViewData(year: number = new Date().getFullYear
     const start = `${year}-01-01`;
     const end = `${year}-12-31`;
 
-    const [accounts, categories, rules, importer] = await Promise.all([
+    const [accounts, categories, rules, history] = await Promise.all([
         getAccounts(),
         getCategories(),
         getRules(),
-        getImporterData()
+        getImporterHistory()
     ]);
 
     const { data: transactions, error } = await supabase
@@ -245,8 +299,7 @@ export async function getAnalyticsViewData(year: number = new Date().getFullYear
         accounts,
         categories,
         rules,
-        templates: importer.templates,
-        history: importer.history,
+        history,
         year,
         rawTransactions: transactions || [] 
     };
@@ -307,11 +360,11 @@ export async function getInvestmentViewData(year: number = new Date().getFullYea
 
     // 1. Cargamos todos los datos de soporte (igual que en Analytics)
     // Los necesitamos para que el Sidebar y los selectores del menú funcionen
-    const [accounts, categories, rules, importer] = await Promise.all([
+    const [accounts, categories, rules, history] = await Promise.all([
         getAccounts(),
         getCategories(),
         getRules(),
-        getImporterData()
+        getImporterHistory()
     ]);
 
     // 2. Filtramos solo las cuentas de tipo inversión
@@ -341,8 +394,7 @@ export async function getInvestmentViewData(year: number = new Date().getFullYea
         accounts, 
         categories,
         rules,
-        templates: importer.templates,
-        history: importer.history,
+        history: history,
         
         // Datos específicos para el Dashboard de Inversión
         investmentAccounts,

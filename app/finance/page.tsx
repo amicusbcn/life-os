@@ -10,7 +10,7 @@ export default async function FinancePage() {
     const { profile, accessibleModules } = await getUserData('finance');
 
     // 2. Obtener dat(Quitamos transactions de la vista de saldos si prefieres)
-    const { accounts, categories, rules, templates, history } = await getDashboardViewData();
+    const { accounts, categories, rules, history } = await getDashboardViewData();
     
     // 3. Saldo Global (opcional aquí, lo puede calcular el cliente también)
     const totalBalance = accounts.reduce((acc, account) => acc + (account.current_balance || 0), 0);
@@ -46,7 +46,7 @@ export default async function FinancePage() {
             <div className="max-w-6xl mx-auto px-6 py-8">
                 <FinanceDashboardView 
                     initialAccounts={accounts} 
-                    templates={templates}
+                    history={history}
                 />
             </div>
         </UnifiedAppSidebar>
