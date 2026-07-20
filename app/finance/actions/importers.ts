@@ -223,3 +223,40 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
         return { success: false, error: err.message || 'Error interno del servidor' };
     }
 }
+
+/**
+ * Elimina un lote completo de importación y todas sus transacciones asociadas (Rollback)
+ */
+export async function deleteImportBatchAction(importId: string) {
+    const supabase = await createClient();
+
+    try {
+        // 1. Borramos todas las transacciones generadas por esta importación
+        const { error: txError } = await supabase
+            .from('finance_transactions')
+            .delete()
+            .eq('importer_id', importId);
+
+        if (txError) throw new Error(`Error al eliminar transacciones: ${txError.message}`);
+
+        // 2. Borramos el registro del historial de la importación
+        const { error: importError } = await supabase
+            .from('finance_importers')
+            .delete()
+            .eq('id', importId);
+
+        if (importError) throw new Error(`Error al eliminar registro de importación: ${importError.message}`);
+
+        // 3. Revalidamos cachés de finanzas
+        revalidatePath('/finance/imports');
+        revalidatePath('/finance');
+
+        return { 
+            success: true, 
+            message: 'Importación y transacciones asociadas eliminadas correctamente.' 
+        };
+    } catch (err: any) {
+        console.error('Error en deleteImportBatchAction:', err);
+        return { success: false, error: err.message || 'Error al deshacer la importación' };
+    }
+}
