@@ -77,6 +77,31 @@ export interface FinanceImporter {
   user_id: string;
 }
 
+export interface BatchTransactionItem {
+    id: string;
+    date: string;
+    concept: string;
+    amount: number;
+    bank_balance?: number | null;
+    import_sequence: number;
+    category_name?: string;
+    category_color?: string;
+}
+
+export interface BatchDetailLog {
+    id: string;
+    filename: string;
+    row_count: number;
+    skipped_count?: number;
+    created_at: string;
+    import_date?: string;
+    account_name: string;
+    account_color?: string;
+    account_letter?: string;
+    oldest_date?: string | null;
+    newest_date?: string | null;
+}
+
 export interface ImportLogItem {
     id: string;
     created_at: string;

@@ -6,7 +6,9 @@ import {
     FinanceTransaction, 
     FinanceRule, 
     FinanceDashboardData, 
-    ImportLogItem
+    ImportLogItem,
+    BatchDetailLog,
+    BatchTransactionItem
 } from '@/types/finance';
 
 // ==========================================
@@ -177,6 +179,84 @@ export async function getImporterHistory(): Promise<ImportLogItem[]> {
             newest_date: rangeMap[item.id]?.newest || null,
         };
     });
+}
+
+/**
+ * Obtiene el detalle de un lote de importación específico y sus transacciones
+ */
+export async function getImportBatchDetail(id: string): Promise<{
+    batch: BatchDetailLog;
+    transactions: BatchTransactionItem[];
+} | null> {
+    const supabase = await createClient();
+
+    // 1. Traemos la información del lote
+    const { data: rawBatch, error: batchError } = await supabase
+        .from('finance_importers')
+        .select(`
+            id,
+            filename,
+            row_count,
+            skipped_count,
+            created_at,
+            import_date,
+            account_id,
+            finance_accounts ( name, color_theme, avatar_letter )
+        `)
+        .eq('id', id)
+        .single();
+
+    if (batchError || !rawBatch) {
+        return null;
+    }
+
+    // 2. Traemos únicamente las transacciones pertenecientes a este lote
+    const { data: rawTransactions } = await supabase
+        .from('finance_transactions')
+        .select(`
+            id,
+            date,
+            concept,
+            amount,
+            bank_balance,
+            import_sequence,
+            finance_categories ( name, color_theme )
+        `)
+        .eq('importer_id', id)
+        .order('import_sequence', { ascending: true })
+        .order('date', { ascending: true });
+
+    // 3. Calculamos min/max de fechas del lote
+    const oldestDate = rawTransactions && rawTransactions.length > 0 ? rawTransactions[0].date : null;
+    const newestDate = rawTransactions && rawTransactions.length > 0 ? rawTransactions[rawTransactions.length - 1].date : null;
+
+    // 4. Mapeo y formateo estructurado
+    const batch: BatchDetailLog = {
+        id: rawBatch.id,
+        filename: rawBatch.filename,
+        row_count: Number(rawBatch.row_count || 0),
+        skipped_count: Number(rawBatch.skipped_count || 0),
+        created_at: rawBatch.created_at,
+        import_date: rawBatch.import_date,
+        account_name: (rawBatch.finance_accounts as any)?.name || 'Cuenta no disponible',
+        account_color: (rawBatch.finance_accounts as any)?.color_theme || '#6366f1',
+        account_letter: (rawBatch.finance_accounts as any)?.avatar_letter || 'C',
+        oldest_date: oldestDate,
+        newest_date: newestDate,
+    };
+
+    const transactions: BatchTransactionItem[] = rawTransactions?.map((tx: any, idx: number) => ({
+        id: tx.id,
+        date: tx.date,
+        concept: tx.concept,
+        amount: Number(tx.amount || 0),
+        bank_balance: tx.bank_balance !== null && tx.bank_balance !== undefined ? Number(tx.bank_balance) : null,
+        import_sequence: tx.import_sequence || idx + 1,
+        category_name: tx.finance_categories?.name,
+        category_color: tx.finance_categories?.color_theme,
+    })) || [];
+
+    return { batch, transactions };
 }
 
 // ==========================================

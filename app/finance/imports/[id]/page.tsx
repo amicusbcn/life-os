@@ -11,7 +11,8 @@ import {
     getRules, 
     getImporterHistory
 } from '@/app/finance/data';
-import { ImportBatchDetailView, BatchDetailLog, BatchTransactionItem } from './ImportBatchDetailView';
+import { BatchDetailLog, BatchTransactionItem } from '@/types/finance';
+import { ImportBatchDetailView } from './ImportBatchDetailView';
 
 export default async function ImportBatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
