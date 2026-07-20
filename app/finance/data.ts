@@ -190,7 +190,7 @@ export async function getImportBatchDetail(id: string): Promise<{
 } | null> {
     const supabase = await createClient();
 
-    // 1. Traemos la información del lote
+    // 1. Obtener la cabecera del lote
     const { data: rawBatch, error: batchError } = await supabase
         .from('finance_importers')
         .select(`
@@ -201,10 +201,10 @@ export async function getImportBatchDetail(id: string): Promise<{
             created_at,
             import_date,
             account_id,
-            finance_accounts ( name, color_theme, avatar_letter )
+            finance_accounts!account_id ( name, color_theme, avatar_letter )
         `)
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
     if (batchError) {
         console.error('❌ [getImportBatchDetail] Error al consultar finance_importers:', batchError.message);
@@ -216,7 +216,7 @@ export async function getImportBatchDetail(id: string): Promise<{
         return null;
     }
 
-    // 2. Traemos únicamente las transacciones pertenecientes a este lote
+    // 2. Obtener las transacciones del lote con JOIN explícito a category_id
     const { data: rawTransactions, error: txError } = await supabase
         .from('finance_transactions')
         .select(`
@@ -226,19 +226,24 @@ export async function getImportBatchDetail(id: string): Promise<{
             amount,
             bank_balance,
             import_sequence,
-            finance_categories ( name, color_theme )
+            category:finance_categories!category_id ( name, color_theme )
         `)
         .eq('importer_id', id)
-        .order('import_sequence', { ascending: true });
-    
+        .order('import_sequence', { ascending: true, nullsFirst: false })
+        .order('date', { ascending: true })
+        .order('created_at', { ascending: true });
+
     if (txError) {
         console.error('❌ [getImportBatchDetail] Error al consultar finance_transactions:', txError.message);
     }
-    // 3. Calculamos min/max de fechas del lote
-    const oldestDate = rawTransactions && rawTransactions.length > 0 ? rawTransactions[0].date : null;
-    const newestDate = rawTransactions && rawTransactions.length > 0 ? rawTransactions[rawTransactions.length - 1].date : null;
 
-    // 4. Mapeo y formateo estructurado
+    const txList = rawTransactions || [];
+
+    // 3. Rango de fechas del lote
+    const oldestDate = txList.length > 0 ? txList[0].date : null;
+    const newestDate = txList.length > 0 ? txList[txList.length - 1].date : null;
+
+    // 4. Formateo y retorno
     const batch: BatchDetailLog = {
         id: rawBatch.id,
         filename: rawBatch.filename,
@@ -253,16 +258,21 @@ export async function getImportBatchDetail(id: string): Promise<{
         newest_date: newestDate,
     };
 
-    const transactions: BatchTransactionItem[] = rawTransactions?.map((tx: any, idx: number) => ({
-        id: tx.id,
-        date: tx.date,
-        concept: tx.concept,
-        amount: Number(tx.amount || 0),
-        bank_balance: tx.bank_balance !== null && tx.bank_balance !== undefined ? Number(tx.bank_balance) : null,
-        import_sequence: tx.import_sequence || idx + 1,
-        category_name: tx.finance_categories?.name,
-        category_color: tx.finance_categories?.color_theme,
-    })) || [];
+    const transactions: BatchTransactionItem[] = txList.map((tx: any, idx: number) => {
+        // Soporte tanto para el alias 'category' como para el objeto plano
+        const categoryData = Array.isArray(tx.category) ? tx.category[0] : tx.category;
+
+        return {
+            id: tx.id,
+            date: tx.date,
+            concept: tx.concept,
+            amount: Number(tx.amount || 0),
+            bank_balance: tx.bank_balance !== null && tx.bank_balance !== undefined ? Number(tx.bank_balance) : null,
+            import_sequence: tx.import_sequence ?? (idx + 1),
+            category_name: categoryData?.name,
+            category_color: categoryData?.color_theme,
+        };
+    });
 
     return { batch, transactions };
 }
