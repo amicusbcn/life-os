@@ -206,12 +206,18 @@ export async function getImportBatchDetail(id: string): Promise<{
         .eq('id', id)
         .single();
 
-    if (batchError || !rawBatch) {
+    if (batchError) {
+        console.error('❌ [getImportBatchDetail] Error al consultar finance_importers:', batchError.message);
+        return null;
+    }
+
+    if (!rawBatch) {
+        console.warn(`⚠️ [getImportBatchDetail] No se encontró ningún lote con id: ${id}`);
         return null;
     }
 
     // 2. Traemos únicamente las transacciones pertenecientes a este lote
-    const { data: rawTransactions } = await supabase
+    const { data: rawTransactions, error: txError } = await supabase
         .from('finance_transactions')
         .select(`
             id,
@@ -224,7 +230,10 @@ export async function getImportBatchDetail(id: string): Promise<{
         `)
         .eq('importer_id', id)
         .order('import_sequence', { ascending: true });
-
+    
+    if (txError) {
+        console.error('❌ [getImportBatchDetail] Error al consultar finance_transactions:', txError.message);
+    }
     // 3. Calculamos min/max de fechas del lote
     const oldestDate = rawTransactions && rawTransactions.length > 0 ? rawTransactions[0].date : null;
     const newestDate = rawTransactions && rawTransactions.length > 0 ? rawTransactions[rawTransactions.length - 1].date : null;
