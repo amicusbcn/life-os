@@ -27,7 +27,6 @@ export default async function FinancePage() {
                     accounts={accounts} 
                     categories={categories}
                     rules={rules}
-                    templates={templates}
                     history={history}
                     currentPanel='dashboard'
                 />
@@ -39,7 +38,6 @@ export default async function FinancePage() {
                     accounts={accounts} 
                     categories={categories}
                     rules={rules}
-                    templates={templates}
                     history={history}
                 />
             }
