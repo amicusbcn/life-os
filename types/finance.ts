@@ -32,22 +32,29 @@ export interface FinanceDashboardData {
 export interface FinanceAccount {
   id: string;
   created_at: string;
+  user_id: string;
   name: string;
+  slug:string;
+  account_number?: string;
   account_type: FinanceAccountType;
   currency: string;
-  initial_balance: number;
-  is_active: boolean;
-  user_id: string;
-  account_number?: string;
-  current_balance: number;
+
   avatar_letter?:string;
-  balance_updated_at?: string; 
   color_theme?: string;
   icon_name?: string;
-  auto_mirror_transfers?:boolean|null;
-  importer_id?:string|null;
+
+  initial_balance: number;
+  current_balance: number;
+  oldest_date?: string | null;
+  newest_date?: string | null;
+
+  is_active: boolean;
   is_hidden: boolean;
-  slug:string;
+  auto_mirror_transfers?:boolean|null;
+
+  //DEPRECATED
+  balance_updated_at?: string; 
+  importer_id?:string|null;
 }
 
 export interface FinanceCategory {

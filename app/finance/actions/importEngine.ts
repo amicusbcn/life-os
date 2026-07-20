@@ -248,7 +248,7 @@ export function analyzeCsvImport(
 
         let msg = `El extracto engancha perfectamente con el saldo actual (${appBounds.appCurrentBalance.toFixed(2)} €). Se importarán ${sortedFuture.length} movimientos nuevos.`;
         if (dupesCount > 0) msg += ` (Se omitieron ${dupesCount} duplicados exactos).`;
-        if (unmatchedInBetweenCount > 0) msg += ` ⚠️ Nota: Se ignoraron ${unmatchedInBetweenCount} líneas del rango intermedio no registradas.`;
+        if (unmatchedInBetweenCount > 0) msg += ` ⚠️ Nota: Se detectaron algunas incoherencias en fechas intermedias (revisa la Conciliación).`;
 
         return {
             scenario: 'NEW',

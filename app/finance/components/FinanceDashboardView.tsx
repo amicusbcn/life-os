@@ -5,7 +5,8 @@ import { FinanceAccount } from '@/types/finance';
 import { Button } from '@/components/ui/button';
 import { 
     Copy, ArrowUpRight, Eye, EyeOff, Wallet, 
-    Landmark, TrendingUp, CreditCard, ChevronDown, Banknote
+    Landmark, TrendingUp, CreditCard, ChevronDown, Banknote,
+    Calendar
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -40,6 +41,17 @@ export function FinanceDashboardView({ initialAccounts, templates }: { initialAc
             loan: { label: 'Préstamos y Deudas', icon: 'Banknote', list: initialAccounts.filter(a => a.account_type === 'loan') },
         };
     }, [initialAccounts]);
+
+    const formatDateRange = (oldest?: string | null, newest?: string | null) => {
+        if (!oldest || !newest) return "Sin movimientos";
+        const format = (dStr: string) => {
+            const p = dStr.split('-');
+            if (p.length === 3) return `${p[2]}/${p[1]}/${p[0].slice(2)}`;
+            return dStr;
+        };
+        if (oldest === newest) return format(oldest);
+        return `${format(oldest)} → ${format(newest)}`;
+    };
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
@@ -142,7 +154,13 @@ export function FinanceDashboardView({ initialAccounts, templates }: { initialAc
                                                     </div>
                                                 </div>
                                             </div>
-
+                                            {/* FILA INFERIOR: SALDO Y ACCIÓN */}
+                                            <div className="mb-6 flex items-center gap-1.5 px-3 py-1 bg-white/70 backdrop-blur-sm rounded-full border border-slate-200/60 w-fit text-slate-500 text-[10px] font-medium">
+                                                <Calendar size={11} className="text-slate-400 shrink-0" />
+                                                <span className="font-mono font-bold text-[9px]">
+                                                    {formatDateRange(acc.oldest_date, acc.newest_date)}
+                                                </span>
+                                            </div>
                                             {/* FILA INFERIOR: SALDO Y ACCIÓN */}
                                             <div className="flex items-end justify-between mt-auto">
                                                 <div className="flex flex-col">

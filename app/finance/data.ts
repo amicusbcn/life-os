@@ -15,7 +15,7 @@ import {
 export async function getAccounts(): Promise<FinanceAccount[]> {
     const supabase = await createClient();
     
-    // 1. Traemos las cuentas tal y como haces tú
+    // 1. Traemos las cuentas ordenadas
     const { data: accounts, error } = await supabase
         .from('finance_accounts')
         .select('*')
@@ -24,62 +24,54 @@ export async function getAccounts(): Promise<FinanceAccount[]> {
 
     if (error || !accounts) return [];
 
-    // 2. 💡 JUGADA MAESTRA: Traemos el último movimiento de cada cuenta en una sola query
-    // Usamos .order() y Supabase nos dará las transacciones ordenadas cronológicamente.
-    // Al traerlas, podremos quedarnos con la foto más reciente y la más antigua de cada cuenta.
+    // 2. Traemos las transacciones para calcular saldos y rangos en una sola query rápida
     const { data: allTransactions } = await supabase
         .from('finance_transactions')
-        .select('account_id, amount, bank_balance, date, import_sequence')
+        .select('account_id, amount, bank_balance, date, created_at')
         .order('date', { ascending: true })
-        .order('import_sequence', { ascending: true });
+        .order('created_at', { ascending: true });
 
-    // Agrupamos las transacciones por cuenta para trabajar con ellas en memoria de forma súper rápida
+    // Agrupamos por cuenta
     const txByAccount: Record<string, NonNullable<typeof allTransactions>> = {};
 
     if (allTransactions) {
         allTransactions.forEach(tx => {
-            // Blindaje de ID nulo
             if (!tx.account_id) return;
-
-            // Si no existe la clave, inicializamos el array de forma segura
             if (!txByAccount[tx.account_id]) {
                 txByAccount[tx.account_id] = [];
             }
-            
-            // Ahora TypeScript sabe con total certeza que esto es un array del tipo correcto
             txByAccount[tx.account_id].push(tx);
         });
     }
 
-    // 3. Mapeamos las cuentas calculando los saldos dinámicamente
+    // 3. Mapeamos enriqueciendo saldos y rango temporal
     return accounts.map(item => {
         const accountTx = txByAccount[item.id] || [];
         
         let calculatedCurrentBalance = 0;
         let calculatedInitialBalance = 0;
+        let oldestDate: string | null = null;
+        let newestDate: string | null = null;
 
-        // Si es una cuenta bancaria con movimientos reales (tiene columna bank_balance en transacciones)
         if (accountTx.length > 0) {
-            // El movimiento MÁS RECIENTE es el último del array (gracias al orden ascending: true)
-            const latestTx = accountTx[accountTx.length - 1];
-            
-            // El movimiento MÁS ANTIGUO es el primero del array
             const oldestTx = accountTx[0];
+            const latestTx = accountTx[accountTx.length - 1];
+
+            // Fechas extremas registradas
+            oldestDate = oldestTx.date || null;
+            newestDate = latestTx.date || null;
 
             if (latestTx && latestTx.bank_balance !== null && latestTx.bank_balance !== undefined) {
-                // ESCENARIO A (Banco): El saldo actual es la última foto del banco
+                // ESCENARIO A (Banco real con bank_balance)
                 calculatedCurrentBalance = latestTx.bank_balance;
-                
-                // El saldo inicial antes de que existiera el primer movimiento de la app es: Saldo - Importe
                 calculatedInitialBalance = (Math.round(oldestTx.bank_balance * 100) - Math.round(oldestTx.amount * 100)) / 100;
             } else {
-                // ESCENARIO B (Cuenta Auxiliar/Manual sin bank_balance): 
-                // El saldo actual es simplemente el sumatorio acumulativo de todos sus importes
+                // ESCENARIO B (Cuenta Auxiliar/Manual sin bank_balance)
                 calculatedCurrentBalance = accountTx.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-                calculatedInitialBalance = 0; // Las auxiliares manuales suelen arrancar de 0
+                calculatedInitialBalance = 0;
             }
         } else {
-            // Si la cuenta está completamente vacía y no tiene transacciones todavía
+            // Sin transacciones
             calculatedCurrentBalance = parseFloat((item.current_balance || 0).toString());
             calculatedInitialBalance = parseFloat((item.initial_balance || 0).toString());
         }
@@ -88,6 +80,8 @@ export async function getAccounts(): Promise<FinanceAccount[]> {
             ...item,
             initial_balance: calculatedInitialBalance,
             current_balance: calculatedCurrentBalance,
+            oldest_date: oldestDate,
+            newest_date: newestDate,
         };
     });
 }
