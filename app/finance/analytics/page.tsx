@@ -24,7 +24,6 @@ export default async function AnalyticsPage({
         accounts, 
         categories, 
         rules, 
-        templates, 
         history,
         rawTransactions
     } = data;
@@ -41,7 +40,6 @@ export default async function AnalyticsPage({
                     categories={categories} 
                     currentPanel='analytics' // Cambiado a analytics para que el menú sepa dónde está
                     rules={rules}
-                    templates={templates} 
                     history={history} 
                 />
             }
@@ -51,7 +49,6 @@ export default async function AnalyticsPage({
                     accounts={accounts} 
                     categories={categories}
                     rules={rules}
-                    templates={templates}
                     history={history}
                 />
             }
