@@ -29,8 +29,7 @@ export default async function AccountTransactionsPage({
         transactions, 
         accounts, 
         categories, 
-        rules, 
-        templates, 
+        rules,  
         history, 
         currentAccount 
     } = data;
