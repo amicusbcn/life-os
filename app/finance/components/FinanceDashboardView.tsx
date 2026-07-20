@@ -79,7 +79,7 @@ export function FinanceDashboardView({ initialAccounts, templates }: { initialAc
                     </div>
 
                     <div className="flex gap-3">
-                        <AccountSettingsDialog initialAccounts={initialAccounts}>
+                        <AccountSettingsDialog initialAccounts={initialAccounts} history={templates}>
                             <Button variant="outline" className="rounded-2xl bg-white/5 border-white/10 hover:bg-white/10 h-12 px-6 uppercase font-black text-[10px] tracking-widest text-slate-300">
                                 Ajustes
                             </Button>

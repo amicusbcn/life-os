@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from "react"
 import { useRouter } from 'next/navigation'
 import { createAccount, updateAccount } from "@/app/finance/actions/accounts" 
-import { FinanceAccount } from "@/types/finance" 
+import { FinanceAccount, FinanceImporter } from "@/types/finance" 
 import { ActionResponse } from "@/types/common"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -251,7 +251,7 @@ export function AccountSettingsDialog({
     children 
 }: { 
     initialAccounts: FinanceAccount[], 
-    history?: any[],
+    history: FinanceImporter[],
     children: React.ReactNode 
 }) {
     const [open, setOpen] = useState(false)

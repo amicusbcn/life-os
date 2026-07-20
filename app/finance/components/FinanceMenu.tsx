@@ -7,7 +7,6 @@ import { FileUp, FolderTree, CreditCard, Settings2, Scale, NotebookTabs, LinkIco
 import { AccountSettingsDialog } from './AccountSettingsDialog';
 import { CategorySettingsDialog } from './CategorySettingsDialog';
 import { ImporterDialog } from './ImporterDialog';
-import { ImporterHistory } from './ImporterHistory';
 import { 
     SidebarMenuItem, 
     SidebarMenuButton, 
@@ -124,15 +123,6 @@ export function FinanceMenu({
                         </SidebarMenuButton>
                     </ImporterDialog>
                 </SidebarMenuItem>
-
-                <SidebarMenuItem>
-                    <ImporterHistory history={history}>
-                        <SidebarMenuButton tooltip="Histórico de Importación">
-                            <Settings2 className="h-4 w-4" />
-                            <span>Histórico de Importación</span>
-                        </SidebarMenuButton>
-                    </ImporterHistory>
-                </SidebarMenuItem>
             </>
         );
     }
@@ -141,7 +131,7 @@ export function FinanceMenu({
     return (
         <>
             <SidebarMenuItem>
-                <AccountSettingsDialog initialAccounts={accounts}>
+                <AccountSettingsDialog initialAccounts={accounts} history={history}>
                     <SidebarMenuButton tooltip="Gestionar Cuentas">
                         <CreditCard className="h-4 w-4" />
                         <span>Gestionar Cuentas</span>
