@@ -1,83 +1,101 @@
-'use server'
-import { createClient } from '@/utils/supabase/server'
-import { revalidatePath } from 'next/cache'
-import { ActionResponse } from '@/types/common'
-import {  FinanceImporter, ParsedTransaction } from '@/types/finance'; 
-import * as csv from 'csv-parser'; 
-import { Readable } from 'stream'; 
+// app/finance/actions/importers.ts
+'use server';
 
+import { createClient } from '@/utils/supabase/server';
+import { revalidatePath } from 'next/cache';
 
-export async function importCsvTransactionsAction(
-    formData: FormData,
-    mappingConfig: { delimiter: string; settings: any }, 
-): Promise<{ success: boolean; error?: string; transactionsCount?: number; autoCategorizedCount?: number }> {
+/**
+ * Obtiene los extremos de fechas (más antigua y más nueva) de la cuenta en BBDD
+ */
+export async function getAccountFileLimitsAction(account_id: string) {
+    const supabase = await createClient();
 
     try {
-        const file = formData.get('file') as File | null;
-        const account_id = formData.get('accountId') as string;
-        const invertAmountManual = formData.get('invertAmount') === 'true';
-        const importMode = formData.get('importMode') as 'new' | 'historic';
-        const fileOrder = formData.get('fileOrder') as 'newest_first' | 'oldest_first' || 'newest_first';
+        const { data: lastTx } = await supabase
+            .from('finance_transactions')
+            .select('date')
+            .eq('account_id', account_id)
+            .order('date', { ascending: false })
+            .limit(1);
 
-        if (!file) return { success: false, error: 'No se ha subido ningún archivo.' };
+        const { data: firstTx } = await supabase
+            .from('finance_transactions')
+            .select('date')
+            .eq('account_id', account_id)
+            .order('date', { ascending: true })
+            .limit(1);
 
-        const supabase = await createClient();
-        const { data: userData, error: authError } = await supabase.auth.getUser();
-        if (authError || !userData?.user) return { success: false, error: 'No autorizado.' };
+        const newestDateStr = lastTx && lastTx.length > 0 ? lastTx[0].date : null; // YYYY-MM-DD
+        const oldestDateStr = firstTx && firstTx.length > 0 ? firstTx[0].date : null; // YYYY-MM-DD
 
-        // ========================================================
-        // 1. CREAMOS EL REGISTRO DE LOG EN EL HISTORIAL (Alineado con Postgres)
-        // ========================================================
-        const { data: logRecord, error: logError } = await supabase
+        // Formatea YYYY-MM-DD a DD/MM/YYYY para la UI
+        const formatToDisplay = (dStr: string | null) => {
+            if (!dStr) return null;
+            const parts = dStr.split('-');
+            if (parts.length === 3) {
+                return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+            return dStr;
+        };
+
+        return {
+            success: true,
+            newestDate: formatToDisplay(newestDateStr),
+            oldestDate: formatToDisplay(oldestDateStr)
+        };
+    } catch (err: any) {
+        console.error('Error en getAccountFileLimitsAction:', err);
+        return { success: false, error: err.message || 'Error al obtener límites de la cuenta' };
+    }
+}
+
+/**
+ * Procesa e inserta las transacciones del CSV de forma idempotente
+ */
+export async function importCsvTransactionsAction(formData: FormData, config: any) {
+    const supabase = await createClient();
+
+    // 1. OBTENCIÓN Y VALIDACIÓN DE PARÁMETROS
+    const file = formData.get('file') as File;
+    const account_id = formData.get('accountId') as string;
+    const invertAmount = formData.get('invertAmount') === 'true';
+
+    if (!file || !account_id) {
+        return { success: false, error: 'Faltan parámetros obligatorios (Archivo o Cuenta)' };
+    }
+
+    try {
+        const userResponse = await supabase.auth.getUser();
+        const user = userResponse.data.user;
+        if (!user) return { success: false, error: 'Usuario no autenticado' };
+
+        // 2. REGISTRO DE AUDITORÍA EN FINANCE_IMPORTERS
+        const { data: importerLog, error: logError } = await supabase
             .from('finance_importers')
             .insert({
-                filename: file.name,      
-                account_id: account_id,   
-                user_id: userData.user.id,
-                row_count: 0              
+                user_id: user.id,
+                account_id,
+                filename: file.name,
+                row_count: 0,
+                import_date: new Date().toISOString()
             })
             .select()
             .single();
 
-        if (logError || !logRecord) {
-            return { success: false, error: `Error al crear el registro histórico: ${logError?.message}` };
+        if (logError || !importerLog) {
+            return { success: false, error: `Error al registrar log de importación: ${logError?.message}` };
         }
 
-        const importerLog: FinanceImporter = logRecord;
+        // 3. LECTURA Y PARSEO DEL ARCHIVO CSV
+        const text = await file.text();
+        const delimiter = config?.delimiter || ';';
+        const lines = text.split('\n');
 
-        // 2. Lectura del archivo CSV directo de los bytes
-        const bytes = await file.arrayBuffer();
-        const content = new TextDecoder('utf-8').decode(bytes);
-        
-        const rawLines: string[][] = [];
-        const delimiter = mappingConfig.delimiter || ';';
-
-        const lines = content.split(/\r?\n/);
-        lines.forEach(line => {
-            if (line.trim()) {
-                const cols = line.split(delimiter).map(c => c.replace(/^["']|["']$/g, '').trim());
-                rawLines.push(cols);
-            }
-        });
-
-        if (rawLines.length < 2) {
-            await supabase.from('finance_importers').delete().eq('id', importerLog.id);
-            return { success: false, error: 'El archivo CSV está vacío o no contiene suficientes filas.' };
-        }
-
-        const csvRowsData = rawLines.slice(1); // Quitamos la fila de cabecera
-        const s = mappingConfig.settings;
-        if (!s) {
-            await supabase.from('finance_importers').delete().eq('id', importerLog.id);
-            return { success: false, error: 'Configuración de mapeo ausente.' };
-        }
-
-        const dateIdx = s.column_map.date;
-        const conceptIdx = s.column_map.concept;
-        const balIdx = s.column_map.bank_balance;
-        const amIdx = s.column_map.amount;
-        const chargeIdx = s.has_two_columns ? s.column_map.charge : -1;
-        const creditIdx = s.has_two_columns ? s.column_map.credit : -1;
+        const { column_map } = config.settings;
+        const dateIdx = column_map.date;
+        const conceptIdx = column_map.concept;
+        const amountIdx = column_map.amount;
+        const balanceIdx = column_map.bank_balance;
 
         const parseSpanishFloat = (str: string) => {
             if (!str) return 0;
@@ -87,240 +105,106 @@ export async function importCsvTransactionsAction(
             return parseFloat(clean) || 0;
         };
 
-        const transactions: any[] = [];
+        const rawTransactions: Array<{
+            dateStr: string;
+            concept: string;
+            amount: number;
+            bank_balance: number | null;
+            hash: string;
+        }> = [];
 
-        // 3. Mapeo síncrono del CSV a objetos temporales de transacciones
-        csvRowsData.forEach((columns, index) => {
+        for (let line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.length < 10 || trimmed.startsWith('---')) continue;
+            const columns = trimmed.split(delimiter).map(c => c.trim().replace(/"/g, ''));
+
+            // Ignoramos cabeceras
+            if (columns.some(c => {
+                const h = c.toLowerCase();
+                return h.includes('importe') || h.includes('fecha') || h.includes('date');
+            })) continue;
+
             const rawDate = columns[dateIdx];
-            if (!rawDate) return;
+            if (!rawDate) continue;
 
-            const parts = rawDate.split('/');
-            if (parts.length !== 3) return;
+            const cleanDateStr = rawDate.replace(/[^\d/]/g, '').trim();
+            const parts = cleanDateStr.split('/');
+            if (parts.length !== 3) continue;
+
             const dbDateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            let amNum = parseSpanishFloat(columns[amountIdx]);
+            if (invertAmount) amNum = amNum * -1;
 
-            let amNum = 0;
-            if (s.has_two_columns) {
-                const charge = parseSpanishFloat(columns[chargeIdx]);
-                const credit = parseSpanishFloat(columns[creditIdx]);
-                amNum = credit - charge; 
-            } else {
-                amNum = parseSpanishFloat(columns[amIdx]);
-            }
+            const balNum = balanceIdx !== -1 && columns[balanceIdx] ? parseSpanishFloat(columns[balanceIdx]) : null;
+            const concept = columns[conceptIdx] || 'Movimiento importado';
 
-            if (invertAmountManual || s.invert_sign) {
-                amNum = amNum * -1;
-            }
+            const hash = `${dbDateStr}_${Number(amNum).toFixed(2)}_${Number(balNum ?? 0).toFixed(2)}`;
 
-            const balNum = balIdx !== -1 && columns[balIdx] ? parseSpanishFloat(columns[balIdx]) : null;
-
-            let seq = index;
-            if (fileOrder === 'newest_first') {
-                seq = csvRowsData.length - 1 - index;
-            }
-
-            transactions.push({
-                date: dbDateStr,
-                concept: columns[conceptIdx] || 'Movimiento importado',
+            rawTransactions.push({
+                dateStr: dbDateStr,
+                concept,
                 amount: amNum,
                 bank_balance: balNum,
-                import_sequence: seq
+                hash
             });
-        });
+        }
 
-        // ========================================================
-        // 4. BÚNKER DE FILTRADO ANTIDUPLICADOS POR HASH EXACTO
-        // ========================================================
-        const { data: existingTx } = await supabase
+        if (rawTransactions.length === 0) {
+            await supabase.from('finance_importers').delete().eq('id', importerLog.id);
+            return { success: false, error: 'No se encontraron filas válidas para procesar.' };
+        }
+
+        // 4. RECUPERAMOS TRANSACCIONES EXISTENTES EN LA APP PARA EVITAR DUPLICADOS POR HASH
+        const { data: existingDbTxs } = await supabase
             .from('finance_transactions')
             .select('date, amount, bank_balance')
             .eq('account_id', account_id);
 
-        const existingTxHashes = new Set<string>();
-        if (existingTx) {
-            existingTx.forEach(t => {
-                const hash = `${t.date}_${Number(t.amount).toFixed(2)}_${Number(t.bank_balance ?? 0).toFixed(2)}`;
-                existingTxHashes.add(hash);
-            });
-        }
+        const existingHashes = new Set<string>();
+        existingDbTxs?.forEach(tx => {
+            const h = `${tx.date}_${Number(tx.amount).toFixed(2)}_${Number(tx.bank_balance ?? 0).toFixed(2)}`;
+            existingHashes.add(h);
+        });
 
-        const finalTransactions: any[] = [];
+        // 5. PURGA COMPLETA DE DUPLICADOS CONOCIDOS
+        const rowsToInsert = rawTransactions.filter(t => !existingHashes.has(t.hash));
 
-        for (const t of transactions) {
-            const csvTxHash = `${t.date}_${Number(t.amount).toFixed(2)}_${Number(t.bank_balance ?? 0).toFixed(2)}`;
-
-            if (existingTxHashes.has(csvTxHash)) {
-                continue; // Clon exacto detectado en la BD, lo saltamos pacíficamente
-            }
-
-            finalTransactions.push({
-                account_id,
-                user_id: userData.user.id,
-                date: t.date,
-                concept: t.concept,
-                amount: t.amount,
-                bank_balance: t.bank_balance,
-                import_sequence: t.import_sequence,
-                importer_id: importerLog.id, // Column_name corregido a tu script de Postgres
-                category_id: null
-            });
-        }
-
-        if (finalTransactions.length === 0) {
+        if (rowsToInsert.length === 0) {
             await supabase.from('finance_importers').delete().eq('id', importerLog.id);
-            return { 
-                success: true, 
-                transactionsCount: 0, 
-                error: "ℹ️ Todos los movimientos del archivo ya están registrados en la app." 
-            };
+            return { success: true, message: 'Todos los movimientos ya existían en la base de datos.' };
         }
 
-        // ========================================================
-        // 5. VALIDACIÓN INMUTABLE DE HUECOS CRONOLÓGICOS (CONTINUIDAD)
-        // ========================================================
-        const { data: lastAppTx } = await supabase
+        // 6. INSERCIÓN MASIVA EN FINANCE_TRANSACTIONS
+        const payload = rowsToInsert.map((t) => ({
+            account_id,
+            user_id: user.id,
+            importer_id: importerLog.id,
+            date: t.dateStr,
+            concept: t.concept,
+            amount: t.amount,
+            bank_balance: t.bank_balance
+        }));
+
+        const { error: insertError } = await supabase
             .from('finance_transactions')
-            .select('bank_balance, date')
-            .eq('account_id', account_id)
-            .order('date', { ascending: false })
-            .order('import_sequence', { ascending: false })
-            .limit(1);
+            .insert(payload);
 
-        const { data: firstAppTx } = await supabase
-            .from('finance_transactions')
-            .select('bank_balance, date, amount')
-            .eq('account_id', account_id)
-            .order('date', { ascending: true })
-            .order('import_sequence', { ascending: true })
-            .limit(1);
-        const tieneMovimientosEnApp = lastAppTx && lastAppTx.length > 0 && firstAppTx && firstAppTx.length > 0;
-        // 💡 EXCEPCIÓN HISTÓRICA: Si la cuenta está totalmente vacía en la App,
-        // no hay pasado ni futuro con el que comparar. El archivo es el nuevo cimiento.
-        if (tieneMovimientosEnApp) {
-            const ultimoSaldoApp = lastAppTx[0].bank_balance;
-            const primerSaldoApp = firstAppTx[0].bank_balance;
-            const primerImporteApp = firstAppTx[0].amount;
-            
-            // MODO NEW: Avanzar hacia adelante en el tiempo
-            if (importMode === 'new' && ultimoSaldoApp !== undefined && ultimoSaldoApp !== null) {
-                const cronoTransactions = [...finalTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.import_sequence - b.import_sequence);
-                const primerMovimientoNuevo = cronoTransactions[0];
-
-                if (primerMovimientoNuevo && primerMovimientoNuevo.bank_balance !== null) {
-                    const saldoAperturaCsv = (Math.round(primerMovimientoNuevo.bank_balance * 100) - Math.round(primerMovimientoNuevo.amount * 100)) / 100;
-                    
-                    if (saldoAperturaCsv !== ultimoSaldoApp) {
-                        await supabase.from('finance_importers').delete().eq('id', importerLog.id);
-                        return {
-                            success: false,
-                            error: `❌ HUECO DETECTADO: La app cerró en ${ultimoSaldoApp} €, pero este archivo requiere empezar en ${saldoAperturaCsv} €. Faltan movimientos intermedios.`
-                        };
-                    }
-                }
-            } 
-            
-            // MODO HISTORIC: Meter pasado debajo de los cimientos actuales
-            if (importMode === 'historic' && primerSaldoApp !== undefined && primerSaldoApp !== null && primerImporteApp !== undefined && primerImporteApp !== null) {
-                
-                const fechaLimiteAppStr = firstAppTx?.[0]?.date;
-                const dateLimiteApp = fechaLimiteAppStr ? new Date(fechaLimiteAppStr) : null;
-
-                // Filtramos las líneas históricas legítimas purgando cualquier residuo futuro o solapado
-                const lineasHistoricasReales = finalTransactions.filter(t => {
-                    if (!dateLimiteApp) return true;
-                    const txDate = new Date(t.date);
-                    if (txDate > dateLimiteApp) return false; // Purga del bloque futuro
-                    return true;
-                });
-
-                if (lineasHistoricasReales.length > 0) {
-                    // Ordenamos cronológicamente de más nueva a más antigua para coger la frontera más alta del pasado
-                    const cronoTransactionsDesc = [...lineasHistoricasReales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.import_sequence - a.import_sequence);
-                    const ultimoMovimientoHistoricoGenuino = cronoTransactionsDesc[0]; 
-
-                    if (ultimoMovimientoHistoricoGenuino && ultimoMovimientoHistoricoGenuino.bank_balance !== null) {
-                        // El saldo inicial teórico antes de tu nómina es: 3000 - 2000 = 1000 €
-                        const saldoAperturaActualApp = (Math.round(primerSaldoApp * 100) - Math.round(primerImporteApp * 100)) / 100;
-                        const saldoCierreCsvHistorico = ultimoMovimientoHistoricoGenuino.bank_balance;
-
-                        if (saldoCierreCsvHistorico !== saldoAperturaActualApp) {
-                            await supabase.from('finance_importers').delete().eq('id', importerLog.id);
-                            return {
-                                success: false,
-                                error: `❌ HUECO HISTÓRICO DETECTADO: El cimiento de tu app arranca en ${saldoAperturaActualApp} €, pero este archivo histórico termina dejando un saldo de ${saldoCierreCsvHistorico} €. Revisa la continuidad hacia atrás.`
-                            };
-                        }
-                    }
-                }
-            }
-        
-        }
-        // ========================================================
-        // 6. INSERCIÓN ATÓMICA DE LAS FILAS DEPURADAS EN LA BD
-        // ========================================================
-        const { error: insertError } = await supabase.from('finance_transactions').insert(finalTransactions);
         if (insertError) {
             await supabase.from('finance_importers').delete().eq('id', importerLog.id);
-            return { success: false, error: `Error en Base de Datos: ${insertError.message}` };
+            return { success: false, error: `Error al insertar movimientos: ${insertError.message}` };
         }
 
-        // 7. ACTUALIZAMOS EL ROW_COUNT REAL EN EL LOG DE IMPORTACIÓN
+        // 7. ACTUALIZAR CANTIDAD REAL EN LOG DE AUDITORÍA
         await supabase
             .from('finance_importers')
-            .update({ row_count: finalTransactions.length })
+            .update({ row_count: rowsToInsert.length })
             .eq('id', importerLog.id);
 
         revalidatePath('/finance');
+        return { success: true, count: rowsToInsert.length };
 
-        return {
-            success: true,
-            transactionsCount: finalTransactions.length,
-            autoCategorizedCount: 0
-        };
-
-    } catch (e) {
-        return { success: false, error: e instanceof Error ? e.message : 'Error interno crítico en el servidor.' };
-    }
-}
-
-export async function getAccountFileLimitsAction(accountId: string): Promise<{
-    success: boolean;
-    newestDate?: string;
-    oldestDate?: string;
-    error?: string;
-}> {
-    try {
-        const supabase = await createClient();
-
-        const { data: recentData, error: err1 } = await supabase
-            .from('finance_transactions')
-            .select('date')
-            .eq('account_id', accountId)
-            .order('date', { ascending: false })
-            .order('import_sequence', { ascending: false })
-            .limit(1);
-
-        const { data: oldestData, error: err2 } = await supabase
-            .from('finance_transactions')
-            .select('date')
-            .eq('account_id', accountId)
-            .order('date', { ascending: true })
-            .order('import_sequence', { ascending: true })
-            .limit(1);
-
-        if (err1 || err2) return { success: false, error: 'Error al consultar extremos.' };
-
-        const formatDate = (dbDate?: string) => {
-            if (!dbDate) return 'Sin movimientos';
-            const [y, m, d] = dbDate.split('-');
-            return `${d}/${m}/${y}`;
-        };
-
-        return {
-            success: true,
-            newestDate: formatDate(recentData?.[0]?.date),
-            oldestDate: formatDate(oldestData?.[0]?.date),
-        };
-    } catch (e) {
-        return { success: false, error: 'Error interno' };
+    } catch (err: any) {
+        console.error('Error en importCsvTransactionsAction:', err);
+        return { success: false, error: err.message || 'Error interno del servidor' };
     }
 }
