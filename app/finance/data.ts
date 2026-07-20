@@ -189,8 +189,9 @@ export async function getImportBatchDetail(id: string): Promise<{
     transactions: BatchTransactionItem[];
 } | null> {
     const supabase = await createClient();
+    const cleanId = id.trim();
 
-    // 1. Obtener la cabecera del lote
+    // 1. Cabecera del Lote
     const { data: rawBatch, error: batchError } = await supabase
         .from('finance_importers')
         .select(`
@@ -201,22 +202,26 @@ export async function getImportBatchDetail(id: string): Promise<{
             created_at,
             import_date,
             account_id,
-            finance_accounts!account_id ( name, color_theme, avatar_letter )
+            finance_accounts!finance_importers_account_id_fkey (
+                name,
+                color_theme,
+                avatar_letter
+            )
         `)
-        .eq('id', id)
+        .eq('id', cleanId)
         .maybeSingle();
 
     if (batchError) {
-        console.error('❌ [getImportBatchDetail] Error al consultar finance_importers:', batchError.message);
+        console.error('❌ Error al consultar finance_importers:', batchError.message);
         return null;
     }
 
     if (!rawBatch) {
-        console.warn(`⚠️ [getImportBatchDetail] No se encontró ningún lote con id: ${id}`);
+        console.warn('⚠️ Lote no encontrado con ID:', cleanId);
         return null;
     }
 
-    // 2. Obtener las transacciones del lote con JOIN explícito a category_id
+    // 2. Transacciones del Lote (Puras, ordenadas por import_sequence y fecha)
     const { data: rawTransactions, error: txError } = await supabase
         .from('finance_transactions')
         .select(`
@@ -225,15 +230,15 @@ export async function getImportBatchDetail(id: string): Promise<{
             concept,
             amount,
             bank_balance,
-            import_sequence
+            import_sequence,
+            created_at
         `)
-        .eq('importer_id', id)
-        .order('import_sequence', { ascending: true, nullsFirst: false })
-        .order('date', { ascending: true })
-        .order('created_at', { ascending: true });
+        .eq('importer_id', cleanId)
+        .order('import_sequence', { ascending: true })
+        .order('date', { ascending: true });
 
     if (txError) {
-        console.error('❌ [getImportBatchDetail] Error al consultar finance_transactions:', txError.message);
+        console.error('❌ Error al consultar finance_transactions:', txError.message);
     }
 
     const txList = rawTransactions || [];
@@ -242,36 +247,31 @@ export async function getImportBatchDetail(id: string): Promise<{
     const oldestDate = txList.length > 0 ? txList[0].date : null;
     const newestDate = txList.length > 0 ? txList[txList.length - 1].date : null;
 
-    // 4. Formateo y retorno
+    // 4. Mapeo estructurado alineado a las columnas exactas de la BBDD
+    const accountData = (rawBatch as any).finance_accounts;
+
     const batch: BatchDetailLog = {
         id: rawBatch.id,
         filename: rawBatch.filename,
         row_count: Number(rawBatch.row_count || 0),
-        skipped_count: (rawBatch as any).skipped_count ? Number((rawBatch as any).skipped_count) : 0,
+        skipped_count: Number(rawBatch.skipped_count || 0),
         created_at: rawBatch.created_at,
         import_date: rawBatch.import_date,
-        account_name: (rawBatch.finance_accounts as any)?.name || 'Cuenta no disponible',
-        account_color: (rawBatch.finance_accounts as any)?.color_theme || '#6366f1',
-        account_letter: (rawBatch.finance_accounts as any)?.avatar_letter || 'C',
+        account_name: accountData?.name || 'Cuenta no disponible',
+        account_color: accountData?.color_theme || '#6366f1',
+        account_letter: accountData?.avatar_letter || accountData?.name?.charAt(0).toUpperCase() || 'C',
         oldest_date: oldestDate,
         newest_date: newestDate,
     };
 
-    const transactions: BatchTransactionItem[] = txList.map((tx: any, idx: number) => {
-        // Soporte tanto para el alias 'category' como para el objeto plano
-        const categoryData = Array.isArray(tx.category) ? tx.category[0] : tx.category;
-
-        return {
-            id: tx.id,
-            date: tx.date,
-            concept: tx.concept,
-            amount: Number(tx.amount || 0),
-            bank_balance: tx.bank_balance !== null && tx.bank_balance !== undefined ? Number(tx.bank_balance) : null,
-            import_sequence: tx.import_sequence ?? (idx + 1),
-            category_name: categoryData?.name,
-            category_color: categoryData?.color_theme,
-        };
-    });
+    const transactions: BatchTransactionItem[] = txList.map((tx: any, idx: number) => ({
+        id: tx.id,
+        date: tx.date,
+        concept: tx.concept,
+        amount: Number(tx.amount || 0),
+        bank_balance: tx.bank_balance !== null && tx.bank_balance !== undefined ? Number(tx.bank_balance) : null,
+        import_sequence: tx.import_sequence ?? (idx + 1)
+    }));
 
     return { batch, transactions };
 }
