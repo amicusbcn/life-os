@@ -1,7 +1,7 @@
 // app/finance/components/ImporterDialog.tsx
 'use client';
 
-import React, { useEffect, useState, PropsWithChildren } from 'react'; 
+import React, { useState, PropsWithChildren } from 'react'; 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -29,7 +29,7 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const [step, setStep] = useState<'upload' | 'mapping' | 'preview'>('upload');
     const [selectedAccountId, setSelectedAccountId] = useState('');
     const [file, setFile] = useState<File | null>(null);
-    const [delimiter, setDelimiter] = useState(';');
+    const [delimiter] = useState(';');
     const [headers, setHeaders] = useState<string[]>([]);
     const [mapping, setMapping] = useState<Record<string, string>>({});
     const [importMode, setImportMode] = useState<'new' | 'historic'>('new');
@@ -43,7 +43,7 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const [appNewestDate, setAppNewestDate] = useState<string>('');
     const [appOldestDate, setAppOldestDate] = useState<string>('');
     const [invertAmount, setInvertAmount] = useState(false);
-    const [isImporting, setIsImporting] = useState(false); // 💡 ARREGLADO: Estado de carga añadido
+    const [isImporting, setIsImporting] = useState(false);
 
     const childElement = React.Children.only(children) as React.ReactElement<TriggerProps>;
     
@@ -181,7 +181,6 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
             setCsvOldestDate(firstRowDate || '');
         }
 
-        // 1. Cálculo del saldo de apertura inicial del CSV (Se queda intacto)
         let minDateObj: Date | null = null;
         let balanceToCompare: number | null = null;
         const hasBalanceColumn = !(balIdx === -1 || mapping['bank_balance'] === undefined || mapping['bank_balance'] === '' || mapping['bank_balance'] === 'none');
@@ -211,7 +210,6 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
             setCsvCheckBalance(null);
         }
 
-        // 2. Consulta de extremos y determinación instantánea del modo
         try {
             const res = await getAccountFileLimitsAction(selectedAccountId);
             if (res.success) {
@@ -228,7 +226,6 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
                 const dateNewestApp = parseNormalizedDate(res.newestDate || '');
                 const dateNewestCsv = parseNormalizedDate(fileOrder === 'newest_first' ? firstRowDate : lastRowDate);
 
-                // Determinamos el modo en una variable local para sincronía total
                 let modeDetermined: 'new' | 'historic' = 'new';
                 if (dateNewestApp && dateNewestCsv && dateNewestCsv.getTime() <= dateNewestApp.getTime()) {
                     modeDetermined = 'historic';
@@ -274,11 +271,10 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const selectedAccount = accounts.find(a => a.id === selectedAccountId);
 
     // =================================================================
-    // COMPONENT SCOPE: INDICES Y HELPERS ACCESIBLES
+    // COMPONENT SCOPE: INDICES Y HELPERS ACCESIBLES EN EL RENDER
     // =================================================================
     const dateIdx = headers.indexOf(mapping['operation_date']);
     const balIdx = headers.indexOf(mapping['bank_balance']);
-    const amIdx = headers.indexOf(mapping['amount']);
 
     const parseFloatLocal = (str: string) => {
         if (!str) return 0;
@@ -297,8 +293,7 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const dateLimiteAppOldest = parseDateHelper(appOldestDate);
     const dateLimiteAppNewest = parseDateHelper(appNewestDate);
 
-    // 💡 DETERMINACIÓN EN TIEMPO REAL DEL MODO PARA EVITAR LAGS DE REACT
-    // Si la fecha del archivo más nueva es estrictamente posterior al último movimiento de la app, es 'new'
+    // MODO CONTABLE REAL DETERMINADO AL VUELO (Síncrono para evitar lag de React)
     const csvFirstRowDateObj = csvLines.length > 0 && dateIdx !== -1 ? parseDateHelper(csvLines[0][dateIdx]) : null;
     const csvLastRowDateObj = csvLines.length > 0 && dateIdx !== -1 ? parseDateHelper(csvLines[csvLines.length - 1][dateIdx]) : null;
     
@@ -309,12 +304,11 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
 
     const cuentaEstaVacia = appOldestDate === 'Sin movimientos' || appNewestDate === 'Sin movimientos';
     
-    // El modo contable real en este instante de render
     const realRenderMode = (!dateLimiteAppNewest || !currentCsvNewestDateObj || currentCsvNewestDateObj.getTime() > dateLimiteAppNewest.getTime()) 
         ? 'new' 
         : 'historic';
 
-    // 1. FILTRADO DINÁMICO DEL BUFFER SEGÚN EL MODO CALCULADO AL VUELO
+    // 1. FILTRADO DINÁMICO DEL BUFFER
     const lineasFiltradasNuevas = csvLines.filter(columns => {
         if (dateIdx === -1 || !columns[dateIdx]) return true;
         const rowDateObj = parseDateHelper(columns[dateIdx]);
@@ -322,18 +316,19 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
 
         if (realRenderMode === 'historic') {
             if (!dateLimiteAppOldest) return true;
-            if (rowDateObj > dateLimiteAppOldest) return false; // Purgamos futuro
+            if (rowDateObj > dateLimiteAppOldest) return false;
         } else {
             if (!dateLimiteAppNewest) return true;
-            if (rowDateObj <= dateLimiteAppNewest) return false; // Purgamos pasado/solape
+            if (rowDateObj <= dateLimiteAppNewest) return false;
         }
         return true;
     });
 
-    // 2. CÁLCULO DEL SALDO DE CIERRE REAL BASADO EN EL BUFFER FILTRADO
-    let csvClosingBalance = 0;
-    let tieneMovimientosNuevos = lineasFiltradasNuevas.length > 0;
+    // 2. DETECCIÓN DE ARCHIVO 100% DUPLICADO
+    const tieneMovimientosNuevos = lineasFiltradasNuevas.length > 0;
+    const todoElArchivoEstaDuplicado = !cuentaEstaVacia && !tieneMovimientosNuevos;
 
+    let csvClosingBalance = 0;
     if (tieneMovimientosNuevos) {
         const lineasOrdenadas = [...lineasFiltradasNuevas].sort((a, b) => {
             const dateA = parseDateHelper(a[dateIdx])?.getTime() || 0;
@@ -350,7 +345,7 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
     const appCurrentBalance = selectedAccount?.current_balance ?? 0;
     const appInitialBalance = selectedAccount?.initial_balance ?? 0;
 
-    // 3. SEMÁFOROS Y REGLAS DE BLOQUEO CONTABLE DE SEGURIDAD
+    // 3. SEMÁFOROS Y REGLAS DE BLOQUEO CONTABLE
     const hasNewGap = !cuentaEstaVacia && realRenderMode === 'new' && csvCheckBalance !== null && csvCheckBalance !== appCurrentBalance;
     const hasHistoricGap = !cuentaEstaVacia && realRenderMode === 'historic' && tieneMovimientosNuevos && csvClosingBalance !== appInitialBalance;
     
@@ -433,118 +428,148 @@ export function ImporterDialog({ accounts, children }: PropsWithChildren<{ accou
                         )}
 
                         {step === 'preview' && (
-                            <div className="space-y-4">
-                                <div>
-                                    <h3 className="text-sm font-black uppercase text-slate-700 tracking-tight">
-                                        Paso 3: Revisión de Continuidad Temporal
-                                    </h3>
-                                    <p className="text-[11px] text-slate-400 mt-0.5">
-                                        Comprobando que el extracto enganche perfectamente con la línea de tiempo de la aplicación.
-                                    </p>
-                                </div>
-
-                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] space-y-1.5">
-                                    {importMode === 'new' ? (
-                                        <>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-slate-500">💰 Saldo actual hoy en App (Cierre actual):</span>
-                                                <span className="font-mono font-semibold text-slate-600">
-                                                    {appCurrentBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between items-center pt-1.5 border-t border-dashed border-slate-200">
-                                                <span className="text-slate-500 font-medium">📥 Saldo de Apertura del archivo (Inicio CSV):</span>
-                                                <span className={`font-mono font-bold ${hasNewGap ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                                    {csvCheckBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
-                                                </span>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-slate-500">🏛️ Saldo Inicial actual en App (Origen actual):</span>
-                                                <span className="font-mono font-semibold text-slate-600">
-                                                    {appInitialBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between items-center pt-1.5 border-t border-dashed border-slate-200">
-                                                <span className="text-slate-500 font-medium">📥 Saldo de Cierre del archivo histórico (Fin CSV):</span>
-                                                <span className={`font-mono font-bold ${hasHistoricGap ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                                    {csvClosingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
-                                                </span>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-
-                                {/* SEMÁFOROS BANNER DE AVISO / BLOQUEO */}
-                                {isBlockedByGap ? (
-                                    <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-[11px] space-y-3">
-                                        <p className="font-black flex items-center gap-1.5 uppercase tracking-tight text-rose-800">
-                                            <AlertTriangle className="w-4 h-4 text-rose-600 animate-pulse" /> 
-                                            Bloqueo de Seguridad: Hueco Temporal Detectado
+                            todoElArchivoEstaDuplicado ? (
+                                <div className="space-y-4">
+                                    <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-[11px] space-y-1">
+                                        <p className="font-bold flex items-center gap-1.5 uppercase text-amber-900 tracking-tight">
+                                            <AlertTriangle className="w-4 h-4 text-amber-600" /> 
+                                            Extracto ya procesado
                                         </p>
-                                        
-                                        <div className="space-y-2 bg-white/60 p-3 rounded-lg border border-rose-100 font-medium text-rose-900 leading-relaxed">
-                                            {importMode === 'new' ? (
-                                                <>
-                                                    <p>
-                                                        🏛️ El saldo en la app a fecha <span className="font-bold underline">{appNewestDate}</span> (Último Cierre) es de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{appCurrentBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
-                                                    </p>
-                                                    <p>
-                                                        📥 Mientras que el saldo inicial del archivo tiene fecha <span className="font-bold underline">{csvOldestDate}</span> (Inicio CSV) y requiere ser de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{(csvCheckBalance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
-                                                    </p>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <p>
-                                                        🏛️ El saldo en la app a fecha <span className="font-bold underline">{appOldestDate}</span> (Primer Origen) es de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{appInitialBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
-                                                    </p>
-                                                    <p>
-                                                        📥 Mientras que el saldo final del archivo histórico tiene fecha <span className="font-bold underline">{csvNewestDate}</span> (Fin CSV) y termina dejando un saldo de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{csvClosingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
-                                                    </p>
-                                                </>
-                                            )}
+                                        <p className="text-amber-700/90 leading-relaxed">
+                                            Todos los movimientos contenidos en este archivo CSV ya existen registrados en tu aplicación. No hay transacciones nuevas que incorporar.
+                                        </p>
+                                    </div>
+
+                                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => setStep('mapping')}
+                                            disabled={isImporting}
+                                            className="text-xs h-8"
+                                        >
+                                            Atrás
+                                        </Button>
+                                        <Button
+                                            disabled
+                                            className="text-xs h-8 font-bold px-4 bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                                        >
+                                            Sin cambios que aplicar
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div>
+                                        <h3 className="text-sm font-black uppercase text-slate-700 tracking-tight">
+                                            Paso 3: Revisión de Continuidad Temporal
+                                        </h3>
+                                        <p className="text-[11px] text-slate-400 mt-0.5">
+                                            Comprobando que el extracto enganche perfectamente con la línea de tiempo de la aplicación.
+                                        </p>
+                                    </div>
+
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] space-y-1.5">
+                                        {realRenderMode === 'new' ? (
+                                            <>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-slate-500">💰 Saldo actual hoy en App (Cierre actual):</span>
+                                                    <span className="font-mono font-semibold text-slate-600">
+                                                        {appCurrentBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center pt-1.5 border-t border-dashed border-slate-200">
+                                                    <span className="text-slate-500 font-medium">📥 Saldo de Apertura del archivo (Inicio CSV):</span>
+                                                    <span className={`font-mono font-bold ${hasNewGap ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                        {csvCheckBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
+                                                    </span>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-slate-500">🏛️ Saldo Inicial actual en App (Origen actual):</span>
+                                                    <span className="font-mono font-semibold text-slate-600">
+                                                        {appInitialBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center pt-1.5 border-t border-dashed border-slate-200">
+                                                    <span className="text-slate-500 font-medium">📥 Saldo de Cierre del archivo histórico (Fin CSV):</span>
+                                                    <span className={`font-mono font-bold ${hasHistoricGap ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                        {csvClosingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €
+                                                    </span>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {/* SEMÁFOROS BANNER DE AVISO / BLOQUEO */}
+                                    {isBlockedByGap ? (
+                                        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-[11px] space-y-3">
+                                            <p className="font-black flex items-center gap-1.5 uppercase tracking-tight text-rose-800">
+                                                <AlertTriangle className="w-4 h-4 text-rose-600 animate-pulse" /> 
+                                                Bloqueo de Seguridad: Hueco Temporal Detectado
+                                            </p>
+                                            
+                                            <div className="space-y-2 bg-white/60 p-3 rounded-lg border border-rose-100 font-medium text-rose-900 leading-relaxed">
+                                                {realRenderMode === 'new' ? (
+                                                    <>
+                                                        <p>
+                                                            🏛️ El saldo en la app a fecha <span className="font-bold underline">{appNewestDate}</span> (Último Cierre) es de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{appCurrentBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                                        </p>
+                                                        <p>
+                                                            📥 Mientras que el saldo inicial del archivo tiene fecha <span className="font-bold underline">{csvOldestDate}</span> (Inicio CSV) y requiere ser de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{(csvCheckBalance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                                        </p>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <p>
+                                                            🏛️ El saldo en la app a fecha <span className="font-bold underline">{appOldestDate}</span> (Primer Origen) es de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{appInitialBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                                        </p>
+                                                        <p>
+                                                            📥 Mientras que el saldo final del archivo histórico tiene fecha <span className="font-bold underline">{csvNewestDate}</span> (Fin CSV) y termina dejando un saldo de: <span className="font-mono font-bold bg-rose-100/60 px-1.5 py-0.5 rounded text-rose-700">{csvClosingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} €</span>
+                                                        </p>
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            <p className="font-bold text-rose-800 leading-normal">
+                                                💡 Consejo: Te faltan transacciones entre el <span className="underline">{realRenderMode === 'new' ? appNewestDate : csvNewestDate}</span> y el <span className="underline">{realRenderMode === 'new' ? csvOldestDate : appOldestDate}</span>. Descarga ese extracto intermedio en tu banco para poder continuar la secuencia.
+                                            </p>
                                         </div>
+                                    ) : (
+                                        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-[11px]">
+                                            <p className="font-bold flex items-center gap-1.5">
+                                                <CheckCircle2 className="w-3.5 h-3.5" /> Continuidad Temporal Confirmada
+                                            </p>
+                                            <p className="text-emerald-600/90 mt-0.5 leading-relaxed">
+                                                Los eslabones del saldo encajan al céntimo. Las transacciones duplicadas exactas se omitirán automáticamente para proteger tu historial.
+                                            </p>
+                                        </div>
+                                    )}
 
-                                        <p className="font-bold text-rose-800 leading-normal">
-                                            💡 Consejo: Te faltan transacciones entre el <span className="underline">{importMode === 'new' ? appNewestDate : csvNewestDate}</span> y el <span className="underline">{importMode === 'new' ? csvOldestDate : appOldestDate}</span>. Descarga ese extracto intermedio en tu banco para poder continuar la secuencia.
-                                        </p>
+                                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => setStep('mapping')}
+                                            disabled={isImporting}
+                                            className="text-xs h-8"
+                                        >
+                                            Atrás
+                                        </Button>
+                                        <Button
+                                            onClick={executeImport}
+                                            disabled={isBlockedByGap || isImporting}
+                                            className={`text-xs h-8 font-bold px-4 ${
+                                                isBlockedByGap
+                                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                            }`}
+                                        >
+                                            {isImporting ? 'Procesando...' : 'Confirmar e Importar'}
+                                        </Button>
                                     </div>
-                                ) : (
-                                    /* BANNER VERDE SI TODO ESTÁ PERFECTO */
-                                    <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-[11px]">
-                                        <p className="font-bold flex items-center gap-1.5">
-                                            <CheckCircle2 className="w-3.5 h-3.5" /> Continuidad Temporal Confirmada
-                                        </p>
-                                        <p className="text-emerald-600/90 mt-0.5 leading-relaxed">
-                                            Los eslabones del saldo encajan al céntimo. Las transacciones duplicadas exactas se omitirán automáticamente para proteger tu historial.
-                                        </p>
-                                    </div>
-                                )}
-
-                                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => setStep('mapping')}
-                                        disabled={isImporting}
-                                        className="text-xs h-8"
-                                    >
-                                        Atrás
-                                    </Button>
-                                    <Button
-                                        onClick={executeImport}
-                                        disabled={isBlockedByGap || isImporting}
-                                        className={`text-xs h-8 font-bold px-4 ${
-                                            isBlockedByGap
-                                                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                                                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                                        }`}
-                                    >
-                                        {isImporting ? 'Procesando...' : 'Confirmar e Importar'}
-                                    </Button>
                                 </div>
-                            </div>
+                            )
                         )}
                     </div>
                 </DialogContent>
