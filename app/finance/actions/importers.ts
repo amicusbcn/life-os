@@ -260,3 +260,29 @@ export async function deleteImportBatchAction(importId: string) {
         return { success: false, error: err.message || 'Error al deshacer la importación' };
     }
 }
+
+/**
+ * Renombra un lote de importación
+ */
+export async function renameImportBatchAction(importId: string, newFilename: string) {
+    const supabase = await createClient();
+
+    if (!newFilename || newFilename.trim() === '') {
+        return { success: false, error: 'El nombre no puede estar vacío.' };
+    }
+
+    try {
+        const { error } = await supabase
+            .from('finance_importers')
+            .update({ filename: newFilename.trim() })
+            .eq('id', importId);
+
+        if (error) throw new Error(error.message);
+
+        revalidatePath('/finance/imports');
+        return { success: true, message: 'Lote renombrado correctamente.' };
+    } catch (err: any) {
+        console.error('Error en renameImportBatchAction:', err);
+        return { success: false, error: err.message || 'Error al renombrar el lote.' };
+    }
+}

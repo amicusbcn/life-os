@@ -6,14 +6,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FinanceAccount } from '@/types/finance';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { 
-    FileText, Eye, Trash2, History, Filter, ArrowLeft, Calendar, Landmark, Loader2 
+    FileText, Eye, Trash2, History, Filter, ArrowLeft, Calendar, Loader2, Pencil, Check, X 
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { deleteImportBatchAction } from '../actions/importers';
-import LoadIcon from '@/utils/LoadIcon';
+import { deleteImportBatchAction, renameImportBatchAction } from '../actions/importers';
+import { AccountAvatar } from '../components/AccountAvatar';
 
 export interface ImportLogItem {
     id: string;
@@ -24,7 +25,9 @@ export interface ImportLogItem {
     account_id: string;
     account_name?: string;
     account_color?: string;
-    account_icon?: string;
+    account_letter?: string;
+    oldest_date?: string | null;
+    newest_date?: string | null;
 }
 
 interface ImporterLogsViewProps {
@@ -38,11 +41,28 @@ export function ImporterLogsView({ initialLogs, accounts }: ImporterLogsViewProp
     const [selectedYear, setSelectedYear] = useState<string>('ALL');
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
-    // Extraer lista única de años disponibles según los registros
+    // Estado para edición de nombre
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editName, setEditName] = useState<string>('');
+    const [renamingLoading, setRenamingLoading] = useState<boolean>(false);
+
+    // Helper de rango de fechas
+    const formatDateRange = (oldest?: string | null, newest?: string | null) => {
+        if (!oldest || !newest) return "Sin fechas";
+        const format = (dStr: string) => {
+            const p = dStr.split('-');
+            if (p.length === 3) return `${p[2]}/${p[1]}/${p[0].slice(2)}`;
+            return dStr;
+        };
+        if (oldest === newest) return format(oldest);
+        return `${format(oldest)} → ${format(newest)}`;
+    };
+
+    // Extraer lista única de años
     const availableYears = useMemo(() => {
         const yearsSet = new Set<string>();
         initialLogs.forEach(log => {
-            const dateStr = log.import_date || log.created_at;
+            const dateStr = log.oldest_date || log.created_at;
             if (dateStr) {
                 const year = new Date(dateStr).getFullYear().toString();
                 yearsSet.add(year);
@@ -56,13 +76,33 @@ export function ImporterLogsView({ initialLogs, accounts }: ImporterLogsViewProp
         return initialLogs.filter(log => {
             const matchAccount = selectedAccount === 'ALL' || log.account_id === selectedAccount;
             
-            const dateStr = log.import_date || log.created_at;
+            const dateStr = log.oldest_date || log.created_at;
             const logYear = dateStr ? new Date(dateStr).getFullYear().toString() : '';
             const matchYear = selectedYear === 'ALL' || logYear === selectedYear;
 
             return matchAccount && matchYear;
         });
     }, [initialLogs, selectedAccount, selectedYear]);
+
+    // Handler de Renombrado
+    const handleStartRename = (log: ImportLogItem) => {
+        setEditingId(log.id);
+        setEditName(log.filename);
+    };
+
+    const handleSaveRename = async (id: string) => {
+        if (!editName.trim()) return;
+        setRenamingLoading(true);
+        const res = await renameImportBatchAction(id, editName);
+        if (res.success) {
+            toast.success("Nombre actualizado");
+            setEditingId(null);
+            router.refresh();
+        } else {
+            toast.error(res.error || "Error al renombrar");
+        }
+        setRenamingLoading(false);
+    };
 
     // Handler de Rollback
     const handleDeleteBatch = async (log: ImportLogItem) => {
@@ -122,7 +162,6 @@ export function ImporterLogsView({ initialLogs, accounts }: ImporterLogsViewProp
                     <Filter size={14} className="text-indigo-500" /> Filtros:
                 </div>
 
-                {/* Filtro por Cuenta */}
                 <div className="w-full md:w-64">
                     <Select value={selectedAccount} onValueChange={setSelectedAccount}>
                         <SelectTrigger className="h-10 text-xs border-slate-200 rounded-xl">
@@ -139,7 +178,6 @@ export function ImporterLogsView({ initialLogs, accounts }: ImporterLogsViewProp
                     </Select>
                 </div>
 
-                {/* Filtro por Año */}
                 <div className="w-full md:w-44">
                     <Select value={selectedYear} onValueChange={setSelectedYear}>
                         <SelectTrigger className="h-10 text-xs border-slate-200 rounded-xl">
@@ -166,7 +204,7 @@ export function ImporterLogsView({ initialLogs, accounts }: ImporterLogsViewProp
                 )}
             </div>
 
-            {/* TABLA DE AUDITORÍA DE LOTES */}
+            {/* TABLA DE AUDITORÍA */}
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
                 {filteredLogs.length === 0 ? (
                     <div className="text-center py-20 text-slate-400 italic">
@@ -177,43 +215,84 @@ export function ImporterLogsView({ initialLogs, accounts }: ImporterLogsViewProp
                     <div className="divide-y divide-slate-100">
                         {filteredLogs.map(log => {
                             const isDeleting = deletingId === log.id;
-                            const logDate = log.import_date || log.created_at;
+                            const isEditing = editingId === log.id;
 
                             return (
                                 <div 
                                     key={log.id} 
                                     className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors"
                                 >
-                                    {/* DETALLES DEL LOTE */}
-                                    <div className="flex items-center gap-4 min-w-0">
-                                        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl shrink-0">
-                                            <FileText size={20} />
-                                        </div>
-                                        <div className="min-w-0 space-y-1">
-                                            <p className="text-sm font-black text-slate-800 truncate tracking-tight">
-                                                {log.filename}
-                                            </p>
+                                    {/* IDENTIFICACIÓN: AVATAR DE LA CUENTA + NOMBRE Y PERIODO */}
+                                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                                        {/* Avatar de la Cuenta */}
+                                        <AccountAvatar 
+                                            account={{
+                                                name: log.account_name || 'Cuenta',
+                                                color_theme: log.account_color,
+                                                avatar_letter: log.account_letter
+                                            }} 
+                                            className="h-10 w-10 text-xs shrink-0 shadow-sm"
+                                        />
+
+                                        <div className="min-w-0 space-y-1 flex-1">
+                                            {/* EDICIÓN INLINE DEL NOMBRE */}
+                                            {isEditing ? (
+                                                <div className="flex items-center gap-2 max-w-sm">
+                                                    <Input 
+                                                        value={editName}
+                                                        onChange={(e) => setEditName(e.target.value)}
+                                                        className="h-8 text-xs font-bold"
+                                                        autoFocus
+                                                    />
+                                                    <Button 
+                                                        size="icon" 
+                                                        variant="ghost" 
+                                                        onClick={() => handleSaveRename(log.id)}
+                                                        disabled={renamingLoading}
+                                                        className="h-8 w-8 text-emerald-600 bg-emerald-50 shrink-0"
+                                                    >
+                                                        {renamingLoading ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                                    </Button>
+                                                    <Button 
+                                                        size="icon" 
+                                                        variant="ghost" 
+                                                        onClick={() => setEditingId(null)}
+                                                        className="h-8 w-8 text-slate-400 bg-slate-100 shrink-0"
+                                                    >
+                                                        <X size={14} />
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-sm font-black text-slate-800 truncate tracking-tight">
+                                                        {log.filename}
+                                                    </p>
+                                                    <button 
+                                                        onClick={() => handleStartRename(log)}
+                                                        className="text-slate-300 hover:text-indigo-600 transition-colors p-1"
+                                                        title="Renombrar lote"
+                                                    >
+                                                        <Pencil size={12} />
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {/* CUENTA Y PERIODO DENTRO DEL LOTE */}
                                             <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                                                <span className="flex items-center gap-1 font-bold text-slate-600">
-                                                    <Landmark size={12} className="text-indigo-500" />
-                                                    {log.account_name || 'Cuenta'}
+                                                <span className="font-bold uppercase tracking-wider text-[10px] text-slate-600">
+                                                    {log.account_name}
                                                 </span>
                                                 •
-                                                <span className="flex items-center gap-1 font-mono">
-                                                    <Calendar size={12} />
-                                                    {new Date(logDate).toLocaleDateString('es-ES', {
-                                                        day: '2-digit',
-                                                        month: '2-digit',
-                                                        year: 'numeric',
-                                                        hour: '2-digit',
-                                                        minute: '2-digit'
-                                                    })}
-                                                </span>
+                                                {/* Insignia del Periodo Importado */}
+                                                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-100 rounded-full text-slate-600 text-[10px] font-mono font-bold">
+                                                    <Calendar size={10} className="text-indigo-500" />
+                                                    <span>{formatDateRange(log.oldest_date, log.newest_date)}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* MÉTICIS Y ACCIONES */}
+                                    {/* MÉTRICAS Y ACCIONES */}
                                     <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-0 border-slate-100">
                                         <Badge 
                                             variant="secondary" 
@@ -223,7 +302,6 @@ export function ImporterLogsView({ initialLogs, accounts }: ImporterLogsViewProp
                                         </Badge>
 
                                         <div className="flex items-center gap-1.5">
-                                            {/* BOTÓN 1: VER TRANSACCIONES DEL LOTE */}
                                             <Link href={`/finance/imports/${log.id}`}>
                                                 <Button 
                                                     variant="outline" 
@@ -234,7 +312,6 @@ export function ImporterLogsView({ initialLogs, accounts }: ImporterLogsViewProp
                                                 </Button>
                                             </Link>
 
-                                            {/* BOTÓN 2: ROLLBACK (DESHACER LOTE) */}
                                             <Button 
                                                 variant="ghost" 
                                                 size="sm" 
