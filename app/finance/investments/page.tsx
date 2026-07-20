@@ -41,7 +41,6 @@ export default async function InvestmentPage({
                     categories={categories} 
                     currentPanel='investments' // Para que el menú sepa dónde está
                     rules={rules}
-                    templates={templates} 
                     history={history} 
                 />
             }
@@ -51,7 +50,6 @@ export default async function InvestmentPage({
                     accounts={investmentAccounts} 
                     categories={categories}
                     rules={rules}
-                    templates={templates}
                     history={history}
                 />
             }
