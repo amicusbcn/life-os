@@ -1,31 +1,21 @@
 // app/finance/components/AccountSettingsDialog.tsx
 'use client'
 
-import React, { useState, useMemo, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { useRouter } from 'next/navigation'
-import { deleteAccount, createAccount, updateAccount } from "@/app/finance/actions/accounts" 
-import { FinanceAccount, FinanceAccountType, ACCOUNT_TYPES_META } from "@/types/finance" 
+import { createAccount, updateAccount } from "@/app/finance/actions/accounts" 
+import { FinanceAccount } from "@/types/finance" 
 import { ActionResponse } from "@/types/common"
-import { Switch } from "@/components/ui/switch" 
-import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from 'sonner'
 import { cn } from "@/lib/utils"
-import LoadIcon from "@/utils/LoadIcon"
 import { AccountAvatar } from "./AccountAvatar"
 import { 
-    Select, 
-    SelectContent, 
-    SelectItem, 
-    SelectTrigger, 
-    SelectValue 
-} from "@/components/ui/select"
-import { 
-    Trash2, Plus, Check, X, Pencil, EyeOff, Eye, Landmark, Loader2 
+    Plus, Check, X, Pencil, EyeOff, Eye, Landmark, Loader2, History, FileText, Settings
 } from "lucide-react"
 import { AccountFormFields } from "./AccountFormFields"
+import { Badge } from "@/components/ui/badge"
 
 const slugify = (text: string) => {
     return text
@@ -39,21 +29,20 @@ const slugify = (text: string) => {
         .replace(/--+/g, '-');
 };
 
+const formatIBAN = (value: string) => {
+    return value
+        .replace(/\s/g, '') 
+        .replace(/(.{4})/g, '$1 ') 
+        .trim()
+        .toUpperCase();
+};
 
-    const formatIBAN = (value: string) => {
-        return value
-            .replace(/\s/g, '') // Quitamos espacios existentes
-            .replace(/(.{4})/g, '$1 ') // Añadimos espacio cada 4
-            .trim()
-            .toUpperCase();
-    };
 // --- FILA DE CUENTA ---
-function AccountRow({ account}: { account: FinanceAccount }) {
+function AccountRow({ account }: { account: FinanceAccount }) {
     const [isEditing, setIsEditing] = useState(false)
     const [loading, setLoading] = useState(false)
     const router = useRouter()
 
-    // Estados temporales unificados
     const [state, setState] = useState({
         name: account.name,
         slug: account.slug || '',
@@ -104,7 +93,6 @@ function AccountRow({ account}: { account: FinanceAccount }) {
             "group mb-3 p-4 rounded-2xl border bg-white shadow-sm transition-all",
             isEditing ? "ring-2 ring-indigo-500/20 border-indigo-200" : "border-slate-100"
         )}>
-            {/* FILA SUPERIOR: SIEMPRE VISIBLE */}
             <div className="flex items-center gap-3">
                 {!isEditing && (
                     <>
@@ -119,10 +107,8 @@ function AccountRow({ account}: { account: FinanceAccount }) {
                     </>
                 )}
                 
-                {/* SI ESTAMOS EDITANDO, ESTA PARTE SE OCULTA PARA DEJAR PASO AL FORMFIELDS QUE YA LLEVA EL NOMBRE */}
                 {isEditing && <p className="flex-1 text-[10px] font-black text-indigo-500 uppercase italic tracking-widest">Editando cuenta...</p>}
 
-                {/* BOTONES DE ACCIÓN: SIEMPRE A LA DERECHA */}
                 <div className="flex gap-1 shrink-0">
                     {!isEditing && (
                         <Button size="icon" variant="ghost" onClick={() => setState(p => ({...p, active: !p.active}))} className={cn("h-8 w-8", !state.active ? "text-amber-500 bg-amber-50" : "text-slate-300")}>
@@ -155,9 +141,8 @@ function AccountRow({ account}: { account: FinanceAccount }) {
     );
 }
 
-
 // --- FORMULARIO NUEVA CUENTA ---
-function NewAccountForm({ onSuccess }: {  onSuccess: () => void }) {
+function NewAccountForm({ onSuccess }: { onSuccess: () => void }) {
     const [pending, setPending] = useState(false);
     const [isSlugCustom, setIsSlugCustom] = useState(false);
     const [state, setState] = useState({
@@ -172,7 +157,7 @@ function NewAccountForm({ onSuccess }: {  onSuccess: () => void }) {
         setPending(true);
         const fd = new FormData();
         Object.entries(state).forEach(([k, v]) => fd.append(k, String(v)));
-        fd.append('color_theme', state.color); // Mapeo de nombres de campo para la action
+        fd.append('color_theme', state.color);
         fd.append('account_number', state.number);
         fd.append('initial_balance', state.balance);
         fd.append('account_type', state.type);
@@ -200,15 +185,77 @@ function NewAccountForm({ onSuccess }: {  onSuccess: () => void }) {
     );
 }
 
-// --- DIÁLOGO PRINCIPAL ---
+// --- TABLA DE HISTORIAL DE IMPORTACIONES ---
+function HistoryTab({ history = [] }: { history?: any[] }) {
+    return (
+        <div className="flex-1 overflow-y-auto pr-1 space-y-2">
+            {history.length === 0 ? (
+                <div className="text-center py-20 text-slate-400 italic bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                    <History className="h-10 w-10 mx-auto mb-3 opacity-20 text-slate-500" />
+                    <p className="text-sm font-medium">No hay registros de importación todavía.</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Los archivos que importes aparecerán listados aquí.</p>
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-3">
+                        Registros de auditoría ({history.length})
+                    </p>
+                    {history.map((log: any) => (
+                        <div 
+                            key={log.id} 
+                            className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 transition-all flex items-center justify-between gap-4"
+                        >
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
+                                    <FileText className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-xs font-bold text-slate-700 truncate">
+                                        {log.name || `Importación #${log.id.slice(0, 5)}`}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                        <span className="font-medium text-slate-500">
+                                            {log.accounts?.name || 'Cuenta no disponible'}
+                                        </span>
+                                        • 
+                                        <span>
+                                            {new Date(log.created_at).toLocaleDateString(undefined, {
+                                                day: '2-digit',
+                                                month: '2-digit',
+                                                year: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit'
+                                            })}
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+                            <Badge 
+                                variant="secondary" 
+                                className="text-[10px] font-black tracking-tight px-2.5 py-1 bg-slate-100 text-slate-600 shrink-0 border border-slate-200"
+                            >
+                                {log.row_count ?? 0} movs
+                            </Badge>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// --- DIÁLOGO PRINCIPAL CON SECTOR DE PESTAÑAS ---
 export function AccountSettingsDialog({ 
     initialAccounts, 
+    history = [],
     children 
 }: { 
     initialAccounts: FinanceAccount[], 
+    history?: any[],
     children: React.ReactNode 
 }) {
     const [open, setOpen] = useState(false)
+    const [activeTab, setActiveTab] = useState<'accounts' | 'history'>('accounts')
     const [showNew, setShowNew] = useState(false)
 
     const trigger = React.useMemo(() => {
@@ -226,34 +273,68 @@ export function AccountSettingsDialog({
         <>
             {trigger}
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="sm:max-w-[450px] h-[85vh] flex flex-col bg-slate-50 p-0 overflow-hidden border-none shadow-2xl">
-                    <DialogHeader className="p-6 pb-2 bg-white border-b">
-                        <DialogTitle className="flex items-center gap-2 uppercase tracking-tighter font-black text-slate-700">
-                            <Landmark className="h-5 w-5 text-indigo-500" /> Mis Cuentas
+                <DialogContent className="sm:max-w-[480px] h-[85vh] flex flex-col bg-slate-50 p-0 overflow-hidden border-none shadow-2xl">
+                    <DialogHeader className="p-6 pb-4 bg-white border-b space-y-4">
+                        <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-800">
+                            <Settings className="h-5 w-5 text-indigo-500" /> Configuración de Cuentas
                         </DialogTitle>
+
+                        {/* PESTAÑAS TIPO SELECTOR (Igual que en Categorías) */}
+                        <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl">
+                            <button
+                                onClick={() => setActiveTab('accounts')}
+                                className={cn(
+                                    "flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all",
+                                    activeTab === 'accounts'
+                                        ? "bg-white text-slate-800 shadow-sm"
+                                        : "text-slate-500 hover:text-slate-700"
+                                )}
+                            >
+                                <Landmark className="h-3.5 w-3.5 text-indigo-500" /> Mis Cuentas
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('history')}
+                                className={cn(
+                                    "flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all",
+                                    activeTab === 'history'
+                                        ? "bg-white text-slate-800 shadow-sm"
+                                        : "text-slate-500 hover:text-slate-700"
+                                )}
+                            >
+                                <History className="h-3.5 w-3.5 text-indigo-500" /> Historial Import
+                            </button>
+                        </div>
                     </DialogHeader>
 
                     <div className="flex-1 flex flex-col overflow-hidden p-4 pt-4">
-                        <Button 
-                            variant="outline" 
-                            className="w-full mb-4 border-dashed border-slate-300 bg-white hover:bg-slate-50 text-slate-500 gap-2 h-11 font-bold text-xs"
-                            onClick={() => setShowNew(!showNew)}
-                        >
-                            {showNew ? <X className="h-4 w-4"/> : <Plus className="h-4 w-4" />}
-                            {showNew ? "Cerrar" : "Añadir Cuenta"}
-                        </Button>
+                        {activeTab === 'accounts' && (
+                            <>
+                                <Button 
+                                    variant="outline" 
+                                    className="w-full mb-4 border-dashed border-slate-300 bg-white hover:bg-slate-50 text-slate-500 gap-2 h-11 font-bold text-xs shrink-0"
+                                    onClick={() => setShowNew(!showNew)}
+                                >
+                                    {showNew ? <X className="h-4 w-4"/> : <Plus className="h-4 w-4" />}
+                                    {showNew ? "Cerrar" : "Añadir Cuenta"}
+                                </Button>
 
-                        {showNew && (
-                            <div className="mb-6 p-4 bg-white rounded-xl border border-indigo-100 shadow-md animate-in slide-in-from-top-2">
-                                <NewAccountForm onSuccess={() => setShowNew(false)} />
-                            </div>
+                                {showNew && (
+                                    <div className="mb-6 p-4 bg-white rounded-xl border border-indigo-100 shadow-md animate-in slide-in-from-top-2 shrink-0">
+                                        <NewAccountForm onSuccess={() => setShowNew(false)} />
+                                    </div>
+                                )}
+
+                                <div className="flex-1 overflow-y-auto space-y-1">
+                                    {initialAccounts.map((acc: FinanceAccount) => (
+                                        <AccountRow key={acc.id} account={acc} />
+                                    ))}
+                                </div>
+                            </>
                         )}
 
-                        <div className="flex-1 overflow-y-auto space-y-1">
-                            {initialAccounts.map((acc: FinanceAccount) => (
-                                <AccountRow key={acc.id} account={acc} />
-                            ))}
-                        </div>
+                        {activeTab === 'history' && (
+                            <HistoryTab history={history} />
+                        )}
                     </div>
                 </DialogContent>
             </Dialog>
