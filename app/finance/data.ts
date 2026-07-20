@@ -225,8 +225,7 @@ export async function getImportBatchDetail(id: string): Promise<{
             concept,
             amount,
             bank_balance,
-            import_sequence,
-            finance_categories ( name, color )
+            import_sequence
         `)
         .eq('importer_id', id)
         .order('import_sequence', { ascending: true, nullsFirst: false })
