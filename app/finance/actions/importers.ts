@@ -17,6 +17,7 @@ export async function getAccountFileLimitsAction(account_id: string) {
             .select('date, bank_balance, amount')
             .eq('account_id', account_id)
             .order('date', { ascending: false })
+            .order('import_sequence', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(1);
 
@@ -26,6 +27,7 @@ export async function getAccountFileLimitsAction(account_id: string) {
             .select('date, bank_balance, amount')
             .eq('account_id', account_id)
             .order('date', { ascending: true })
+            .order('import_sequence', { ascending: true })
             .order('created_at', { ascending: true })
             .limit(1);
 
@@ -65,7 +67,8 @@ export async function getAccountFileLimitsAction(account_id: string) {
 }
 
 /**
- * Procesa e inserta las transacciones del CSV de forma idempotente
+ * Procesa e inserta las transacciones del CSV detectando automáticamente 
+ * si el archivo está ordenado de forma ASCENDENTE o DESCENDENTE.
  */
 export async function importCsvTransactionsAction(formData: FormData, config: any) {
     const supabase = await createClient();
@@ -84,7 +87,7 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
         const user = userResponse.data.user;
         if (!user) return { success: false, error: 'Usuario no autenticado' };
 
-        // 2. REGISTRO DE AUDITORÍA EN FINANCE_IMPORTERS
+        // 2. REGISTRO INICIAL DE AUDITORÍA
         const { data: importerLog, error: logError } = await supabase
             .from('finance_importers')
             .insert({
@@ -92,6 +95,7 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
                 account_id,
                 filename: file.name,
                 row_count: 0,
+                skipped_count: 0,
                 import_date: new Date().toISOString()
             })
             .select()
@@ -101,7 +105,7 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             return { success: false, error: `Error al registrar log de importación: ${logError?.message}` };
         }
 
-        // 3. LECTURA Y PARSEO DEL ARCHIVO CSV
+        // 3. LECTURA Y PARSEO DE LÍNEAS
         const text = await file.text();
         const delimiter = config?.delimiter || ';';
         const lines = text.split('\n');
@@ -120,12 +124,11 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             return parseFloat(clean) || 0;
         };
 
-        const rawTransactions: Array<{
+        let rawTransactions: Array<{
             dateStr: string;
             concept: string;
             amount: number;
             bank_balance: number | null;
-            hash: string;
         }> = [];
 
         for (let line of lines) {
@@ -133,7 +136,7 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             if (trimmed.length < 10 || trimmed.startsWith('---')) continue;
             const columns = trimmed.split(delimiter).map(c => c.trim().replace(/"/g, ''));
 
-            // Ignoramos cabeceras
+            // Ignorar cabeceras
             if (columns.some(c => {
                 const h = c.toLowerCase();
                 return h.includes('importe') || h.includes('fecha') || h.includes('date');
@@ -153,14 +156,11 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             const balNum = balanceIdx !== -1 && columns[balanceIdx] ? parseSpanishFloat(columns[balanceIdx]) : null;
             const concept = columns[conceptIdx] || 'Movimiento importado';
 
-            const hash = `${dbDateStr}_${Number(amNum).toFixed(2)}_${Number(balNum ?? 0).toFixed(2)}`;
-
             rawTransactions.push({
                 dateStr: dbDateStr,
                 concept,
                 amount: amNum,
-                bank_balance: balNum,
-                hash
+                bank_balance: balNum
             });
         }
 
@@ -169,7 +169,27 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             return { success: false, error: 'No se encontraron filas válidas para procesar.' };
         }
 
-        // 4. RECUPERAMOS TRANSACCIONES EXISTENTES EN LA APP PARA EVITAR DUPLICADOS POR HASH
+        // 4. DETECCION AUTOMÁTICA DEL SENTIDO DEL CSV (ASCENDENTE vs DESCENDENTE)
+        const firstDate = rawTransactions[0].dateStr;
+        const lastDate = rawTransactions[rawTransactions.length - 1].dateStr;
+
+        // Si la primera fila es posterior a la última, el CSV es DESCENDENTE (más reciente arriba)
+        // Invertimos la lista para procesar en estricto orden cronológico (de más antiguo a más reciente)
+        if (firstDate > lastDate) {
+            rawTransactions.reverse();
+        } else if (firstDate === lastDate && rawTransactions.length > 1) {
+            // Si todas son del mismo día y hay saldo, verificamos la tendencia de balance
+            const bFirst = rawTransactions[0].bank_balance;
+            const bLast = rawTransactions[rawTransactions.length - 1].bank_balance;
+            if (bFirst !== null && bLast !== null) {
+                // Si el saldo de la primera fila incluye los movimientos posteriores, invertimos
+                if (Math.abs(bFirst - rawTransactions[0].amount - bLast) < 0.05) {
+                    rawTransactions.reverse();
+                }
+            }
+        }
+
+        // 5. RECUPERAMOS HASHES DE TRANSACCIONES EXISTENTES EN BBDD
         const { data: existingDbTxs } = await supabase
             .from('finance_transactions')
             .select('date, amount, bank_balance')
@@ -181,42 +201,89 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             existingHashes.add(h);
         });
 
-        // 5. PURGA COMPLETA DE DUPLICADOS CONOCIDOS
-        const rowsToInsert = rawTransactions.filter(t => !existingHashes.has(t.hash));
+        // 6. OBTENER ÚLTIMO SALDO REGISTRADO PARA ESTA CUENTA (Por si faltan saldos en tarjetas)
+        const { data: lastTx } = await supabase
+            .from('finance_transactions')
+            .select('bank_balance')
+            .eq('account_id', account_id)
+            .not('bank_balance', 'is', null)
+            .order('date', { ascending: false })
+            .order('import_sequence', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        let runningBalance = lastTx?.bank_balance ? Number(lastTx.bank_balance) : 0;
+
+        // 7. ASIGNACIÓN CRONOLÓGICA DE SEQUENCES Y SALDOS ACUMULADOS
+        const rowsToInsert: any[] = [];
+        let skippedCount = 0;
+
+        rawTransactions.forEach((t) => {
+            let rowBalance: number;
+
+            if (t.bank_balance !== null && t.bank_balance !== undefined) {
+                rowBalance = t.bank_balance;
+                runningBalance = rowBalance;
+            } else {
+                runningBalance = Number((runningBalance + t.amount).toFixed(2));
+                rowBalance = runningBalance;
+            }
+
+            const hash = `${t.dateStr}_${Number(t.amount).toFixed(2)}_${Number(rowBalance).toFixed(2)}`;
+
+            if (existingHashes.has(hash)) {
+                skippedCount++;
+            } else {
+                rowsToInsert.push({
+                    account_id,
+                    user_id: user.id,
+                    importer_id: importerLog.id,
+                    date: t.dateStr,
+                    concept: t.concept,
+                    amount: t.amount,
+                    bank_balance: rowBalance,
+                    import_sequence: rowsToInsert.length + 1 // Garantiza el orden cronológico estricto
+                });
+            }
+        });
 
         if (rowsToInsert.length === 0) {
             await supabase.from('finance_importers').delete().eq('id', importerLog.id);
-            return { success: true, message: 'Todos los movimientos ya existían en la base de datos.' };
+            return { 
+                success: true, 
+                message: 'Todos los movimientos ya existían en la base de datos.',
+                insertedCount: 0,
+                skippedCount
+            };
         }
 
-        // 6. INSERCIÓN MASIVA EN FINANCE_TRANSACTIONS
-        const payload = rowsToInsert.map((t) => ({
-            account_id,
-            user_id: user.id,
-            importer_id: importerLog.id,
-            date: t.dateStr,
-            concept: t.concept,
-            amount: t.amount,
-            bank_balance: t.bank_balance
-        }));
-
+        // 8. INSERCIÓN EN BBDD Y ACTUALIZACIÓN DEL LOG DE AUDITORÍA
         const { error: insertError } = await supabase
             .from('finance_transactions')
-            .insert(payload);
+            .insert(rowsToInsert);
 
         if (insertError) {
             await supabase.from('finance_importers').delete().eq('id', importerLog.id);
             return { success: false, error: `Error al insertar movimientos: ${insertError.message}` };
         }
 
-        // 7. ACTUALIZAR CANTIDAD REAL EN LOG DE AUDITORÍA
         await supabase
             .from('finance_importers')
-            .update({ row_count: rowsToInsert.length })
+            .update({ 
+                row_count: rowsToInsert.length,
+                skipped_count: skippedCount
+            })
             .eq('id', importerLog.id);
 
+        revalidatePath('/finance/imports');
         revalidatePath('/finance');
-        return { success: true, count: rowsToInsert.length };
+
+        return { 
+            success: true, 
+            count: rowsToInsert.length,
+            skippedCount
+        };
 
     } catch (err: any) {
         console.error('Error en importCsvTransactionsAction:', err);
@@ -303,7 +370,6 @@ export async function reorderBatchTransactionsAction(batchId: string, items: Reo
     }
 
     try {
-        // Actualizamos cada transacción con su nueva posición en el orden del lote
         const updates = items.map(item => 
             supabase
                 .from('finance_transactions')
