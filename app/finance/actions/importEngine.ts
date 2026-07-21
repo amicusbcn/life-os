@@ -1,4 +1,4 @@
-// app/finance/lib/importEngine.ts
+// app/finance/actions/importEngine.ts
 
 export interface AppBounds {
     appNewestDate: string | null;
@@ -28,10 +28,10 @@ export interface ParsedTxRow {
 
 export type ImportScenario = 
     | 'EMPTY_APP'          // A: App vacía
-    | 'ALL_DUPLICATED'     // B1: Extracto de en medio / duplicado entero
-    | 'NEW'                // B3: Solo movimientos futuros
-    | 'HISTORIC'           // B4: Solo movimientos pasados
-    | 'SANDWICH'           // B2: Trae pasado Y futuro a la vez
+    | 'ALL_DUPLICATED'     // B1: Duplicado entero
+    | 'NEW'                // B3: Movimientos nuevos / futuros
+    | 'HISTORIC'           // B4: Movimientos históricos
+    | 'SANDWICH'           // B2: Pasado y futuro combinados
     | 'GAP_DETECTED';      // Descuadre en semáforo de saldos
 
 export interface ImportEngineResult {
@@ -43,10 +43,9 @@ export interface ImportEngineResult {
     bannerTitle: string;
     bannerMessage: string;
     
-    // METRICAS DE TRANSPARENCIA
     totalCsvRows: number;
-    dupesCount: number;                  // Filas ignoradas por Hash exacto en BBDD
-    unmatchedInBetweenCount: number;     // Filas de en medio que no existen en BBDD
+    dupesCount: number;
+    unmatchedInBetweenCount: number;
     
     expectedBalance?: number;
     actualFileBalance?: number;
@@ -75,7 +74,7 @@ function parseSpanishFloat(str: string): number {
 }
 
 /**
- * Ordena filas cronológicamente (de más antigua a más reciente).
+ * Ordena filas cronológicamente de forma estricta (de más antigua a más reciente).
  * Si coinciden las fechas en un CSV descendente (más reciente arriba),
  * la fila con mayor rawIndex es la operación MÁS ANTIGUA del día.
  */
@@ -85,11 +84,10 @@ function sortChronologically(rows: ParsedTxRow[], isDescending: boolean): Parsed
         const timeB = parseToDate(b.displayDate)?.getTime() || 0;
 
         if (timeA !== timeB) {
-            return timeA - timeB; // Fecha ascendente
+            return timeA - timeB; // Ascendente por fecha
         }
 
-        // Si la fecha es idéntica:
-        // En un CSV descendente, mayor rawIndex = operación más antigua del día
+        // Si la fecha es idéntica en CSV descendente, mayor rawIndex = más antiguo
         return isDescending ? b.rawIndex - a.rawIndex : a.rawIndex - b.rawIndex;
     });
 }
@@ -157,7 +155,7 @@ export function analyzeCsvImport(
         };
     }
 
-    // Detección del sentido del archivo CSV (descendente vs ascendente)
+    // Detección automática de la orientación del CSV (descendente vs ascendente)
     const isDescending = totalCsvRows > 1 
         ? allParsedRows[0].dateStr > allParsedRows[totalCsvRows - 1].dateStr
         : settings.fileOrder === 'newest_first';
@@ -176,174 +174,85 @@ export function analyzeCsvImport(
         }
     });
 
-    // -----------------------------------------------------------------
-    // FASE 2: CLASIFICACIÓN DE BLOQUES SEGÚN ESTADO DE LA APP
-    // -----------------------------------------------------------------
-    const dateAppNewest = parseToDate(appBounds.appNewestDate);
-    const dateAppOldest = parseToDate(appBounds.appOldestDate);
-
-    // ESCENARIO A: App totalmente vacía
-    if (!dateAppNewest || !dateAppOldest) {
-        const sortedChrono = sortChronologically(rowsWithoutHashDupes, isDescending);
-        return {
-            scenario: 'EMPTY_APP',
-            realMode: 'new',
-            rowsToInsert: sortedChrono,
-            isBlocked: false,
-            bannerType: 'info',
-            bannerTitle: 'Primera Importación de la Cuenta',
-            bannerMessage: `Se van a importar ${sortedChrono.length} movimientos. Este extracto establecerá los cimientos y el saldo actual de la cuenta.`,
-            totalCsvRows,
-            dupesCount,
-            unmatchedInBetweenCount: 0
-        };
-    }
-
-    // Clasificación por rangos temporales
-    const futureRows: ParsedTxRow[] = [];
-    const pastRows: ParsedTxRow[] = [];
-    const unmatchedInBetweenRows: ParsedTxRow[] = [];
-
-    rowsWithoutHashDupes.forEach(r => {
-        const d = parseToDate(r.displayDate);
-        if (!d) return;
-
-        if (d > dateAppNewest) {
-            futureRows.push(r);
-        } else if (d < dateAppOldest) {
-            pastRows.push(r);
-        } else {
-            unmatchedInBetweenRows.push(r);
-        }
-    });
-
-    const unmatchedInBetweenCount = unmatchedInBetweenRows.length;
-
-    // ESCENARIO B1: Extracto de en medio o sin novedades
-    if (futureRows.length === 0 && pastRows.length === 0) {
-        let msg = 'Todos los movimientos de este archivo ya existen en tu aplicación o caen dentro del periodo procesado.';
-        if (unmatchedInBetweenCount > 0) {
-            msg += ` ⚠️ Atención: Se han omitido ${unmatchedInBetweenCount} movimiento(s) intermedio(s) no registrados previamente para proteger la coherencia de saldos. Usa la herramienta de Reconciliación para insertarlos.`;
-        }
-
+    // Si todas las filas existen en BBDD
+    if (rowsWithoutHashDupes.length === 0) {
         return {
             scenario: 'ALL_DUPLICATED',
             realMode: 'none',
             rowsToInsert: [],
             isBlocked: true,
             bannerType: 'warning',
-            bannerTitle: 'Extracto Sin Novedades Fuera del Rango',
-            bannerMessage: msg,
+            bannerTitle: 'Extracto Totalmente Importado',
+            bannerMessage: `Todos los ${totalCsvRows} movimientos de este archivo ya existen registrados en la base de datos.`,
             totalCsvRows,
             dupesCount,
-            unmatchedInBetweenCount
+            unmatchedInBetweenCount: 0
         };
     }
 
+    // Ordenamos cronológicamente todas las filas válidas no duplicadas
+    const sortedAllToInsert = sortChronologically(rowsWithoutHashDupes, isDescending);
+
     // -----------------------------------------------------------------
-    // FASE 3: EVALUACIÓN DE CONTINUIDAD DE SALDOS
+    // FASE 2: CLASIFICACIÓN Y CONTINUIDAD DE SALDOS
     // -----------------------------------------------------------------
+    const dateAppNewest = parseToDate(appBounds.appNewestDate);
 
-    // ESCENARIO B3: Solo Futuro
-    if (futureRows.length > 0 && pastRows.length === 0) {
-        const sortedFuture = sortChronologically(futureRows, isDescending);
-        const firstNewTx = sortedFuture[0];
-
-        if (firstNewTx && firstNewTx.bank_balance !== null) {
-            const aperturaCsv = Math.round((firstNewTx.bank_balance * 100) - (firstNewTx.amount * 100)) / 100;
-            const appBalance = appBounds.appCurrentBalance;
-
-            if (aperturaCsv !== appBalance) {
-                return {
-                    scenario: 'GAP_DETECTED',
-                    realMode: 'new',
-                    rowsToInsert: sortedFuture,
-                    isBlocked: true,
-                    bannerType: 'error',
-                    bannerTitle: 'Bloqueo de Seguridad: Hueco en el Presente',
-                    bannerMessage: `La app cerró en ${appBalance.toFixed(2)} €, pero este archivo requiere empezar en ${aperturaCsv.toFixed(2)} €. Faltan movimientos intermedios.`,
-                    totalCsvRows,
-                    dupesCount,
-                    unmatchedInBetweenCount,
-                    expectedBalance: appBalance,
-                    actualFileBalance: aperturaCsv
-                };
-            }
-        }
-
-        let msg = `El extracto engancha perfectamente con el saldo actual (${appBounds.appCurrentBalance.toFixed(2)} €). Se importarán ${sortedFuture.length} movimientos nuevos.`;
-        if (dupesCount > 0) msg += ` (Se omitieron ${dupesCount} duplicados exactos).`;
-
+    // ESCENARIO A: App vacía
+    if (!dateAppNewest) {
         return {
-            scenario: 'NEW',
+            scenario: 'EMPTY_APP',
             realMode: 'new',
-            rowsToInsert: sortedFuture,
+            rowsToInsert: sortedAllToInsert,
             isBlocked: false,
-            bannerType: 'success',
-            bannerTitle: 'Continuidad Temporal Confirmada',
-            bannerMessage: msg,
+            bannerType: 'info',
+            bannerTitle: 'Primera Importación de la Cuenta',
+            bannerMessage: `Se van a importar ${sortedAllToInsert.length} movimientos. Este extracto establecerá el saldo inicial y actual.`,
             totalCsvRows,
             dupesCount,
-            unmatchedInBetweenCount
+            unmatchedInBetweenCount: 0
         };
     }
 
-    // ESCENARIO B4: Solo Pasado
-    if (pastRows.length > 0 && futureRows.length === 0) {
-        const sortedPastChrono = sortChronologically(pastRows, isDescending);
-        const lastPastTx = sortedPastChrono[sortedPastChrono.length - 1]; // Última transacción del pasado
+    // Verificación de Saldo con la primera transacción cronológica del nuevo lote
+    const firstChronologicalTx = sortedAllToInsert[0];
 
-        if (lastPastTx && lastPastTx.bank_balance !== null) {
-            const cierreCsvPast = lastPastTx.bank_balance;
-            const appInitial = appBounds.appInitialBalance;
+    if (firstChronologicalTx && firstChronologicalTx.bank_balance !== null) {
+        const aperturaCsv = Math.round((firstChronologicalTx.bank_balance * 100) - (firstChronologicalTx.amount * 100)) / 100;
+        const appBalance = appBounds.appCurrentBalance;
 
-            if (cierreCsvPast !== appInitial) {
-                return {
-                    scenario: 'GAP_DETECTED',
-                    realMode: 'historic',
-                    rowsToInsert: sortedPastChrono,
-                    isBlocked: true,
-                    bannerType: 'error',
-                    bannerTitle: 'Bloqueo de Seguridad: Hueco en el Histórico',
-                    bannerMessage: `El cimiento de tu app abre en ${appInitial.toFixed(2)} €, pero este archivo histórico termina dejando un saldo de ${cierreCsvPast.toFixed(2)} €.`,
-                    totalCsvRows,
-                    dupesCount,
-                    unmatchedInBetweenCount,
-                    expectedBalance: appInitial,
-                    actualFileBalance: cierreCsvPast
-                };
-            }
+        // Si la cuenta ya tenía datos y el saldo no encaja
+        if (appBounds.appCurrentBalance !== 0 && aperturaCsv !== appBalance) {
+            return {
+                scenario: 'GAP_DETECTED',
+                realMode: 'new',
+                rowsToInsert: sortedAllToInsert,
+                isBlocked: true,
+                bannerType: 'error',
+                bannerTitle: 'Bloqueo de Seguridad: Hueco en el Presente',
+                bannerMessage: `La app cerró en ${appBalance.toFixed(2)} €, pero este archivo requiere empezar en ${aperturaCsv.toFixed(2)} €. Faltan movimientos intermedios.`,
+                totalCsvRows,
+                dupesCount,
+                unmatchedInBetweenCount: 0,
+                expectedBalance: appBalance,
+                actualFileBalance: aperturaCsv
+            };
         }
-
-        let msg = `El pasado encaja exactamente con los cimientos de tu app (${appBounds.appInitialBalance.toFixed(2)} €). Se añadirán ${sortedPastChrono.length} movimientos históricos.`;
-        if (dupesCount > 0) msg += ` (Se omitieron ${dupesCount} duplicados exactos).`;
-
-        return {
-            scenario: 'HISTORIC',
-            realMode: 'historic',
-            rowsToInsert: sortedPastChrono,
-            isBlocked: false,
-            bannerType: 'success',
-            bannerTitle: 'Continuidad Histórica Confirmada',
-            bannerMessage: msg,
-            totalCsvRows,
-            dupesCount,
-            unmatchedInBetweenCount
-        };
     }
 
-    // ESCENARIO B2: Sándwich
-    const validSandwichRows = sortChronologically([...futureRows, ...pastRows], isDescending);
+    let msg = `Continuidad confirmada. Se importarán ${sortedAllToInsert.length} movimientos correctamente.`;
+    if (dupesCount > 0) msg += ` (Se omitieron ${dupesCount} duplicados exactos).`;
+
     return {
-        scenario: 'SANDWICH',
-        realMode: 'sandwich',
-        rowsToInsert: validSandwichRows,
+        scenario: 'NEW',
+        realMode: 'new',
+        rowsToInsert: sortedAllToInsert,
         isBlocked: false,
         bannerType: 'success',
-        bannerTitle: 'Extracto Combinado (Pasado y Futuro)',
-        bannerMessage: `Se han detectado ${futureRows.length} movimientos nuevos del futuro y ${pastRows.length} del pasado. (${dupesCount} duplicados exactos descartados).`,
+        bannerTitle: 'Importación Lista',
+        bannerMessage: msg,
         totalCsvRows,
         dupesCount,
-        unmatchedInBetweenCount
+        unmatchedInBetweenCount: 0
     };
 }

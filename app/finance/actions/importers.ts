@@ -298,15 +298,8 @@ export async function deleteImportBatchAction(importId: string) {
     const supabase = await createClient();
 
     try {
-        // 1. Borramos todas las transacciones generadas por esta importación
-        const { error: txError } = await supabase
-            .from('finance_transactions')
-            .delete()
-            .eq('importer_id', importId);
-
-        if (txError) throw new Error(`Error al eliminar transacciones: ${txError.message}`);
-
-        // 2. Borramos el registro del historial de la importación
+        // 1. Eliminamos primero la cabecera en finance_importers.
+        // Esto desactiva el bloqueo del trigger fn_protect_imported_transactions para este lote.
         const { error: importError } = await supabase
             .from('finance_importers')
             .delete()
@@ -314,7 +307,15 @@ export async function deleteImportBatchAction(importId: string) {
 
         if (importError) throw new Error(`Error al eliminar registro de importación: ${importError.message}`);
 
-        // 3. Revalidamos cachés de finanzas
+        // 2. Eliminamos las transacciones vinculadas al lote
+        const { error: txError } = await supabase
+            .from('finance_transactions')
+            .delete()
+            .eq('importer_id', importId);
+
+        if (txError) throw new Error(`Error al eliminar transacciones del lote: ${txError.message}`);
+
+        // 3. Revalidamos cachés de Next.js
         revalidatePath('/finance/imports');
         revalidatePath('/finance');
 
