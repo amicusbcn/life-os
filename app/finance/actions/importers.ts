@@ -136,20 +136,20 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             if (trimmed.length < 10 || trimmed.startsWith('---')) continue;
             const columns = trimmed.split(delimiter).map(c => c.trim().replace(/"/g, ''));
 
-            // Ignorar cabeceras
-            if (columns.some(c => {
-                const h = c.toLowerCase();
-                return h.includes('importe') || h.includes('fecha') || h.includes('date');
-            })) continue;
-
             const rawDate = columns[dateIdx];
             if (!rawDate) continue;
 
+            // ✅ FILTRO DE CABECERA SEGURO: Validar formato de fecha estricto (DD/MM/YYYY)
+            // Ignora la fila de títulos ("Fecha") sin descartar transacciones que incluyan 'Fecha de operación' en las notas
             const cleanDateStr = rawDate.replace(/[^\d/]/g, '').trim();
             const parts = cleanDateStr.split('/');
-            if (parts.length !== 3) continue;
+            if (parts.length !== 3 || parts[2].length < 2) continue;
 
-            const dbDateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+            const month = parts[1].padStart(2, '0');
+            const day = parts[0].padStart(2, '0');
+            const dbDateStr = `${year}-${month}-${day}`;
+
             let amNum = parseSpanishFloat(columns[amountIdx]);
             if (invertAmount) amNum = amNum * -1;
 
@@ -169,27 +169,23 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             return { success: false, error: 'No se encontraron filas válidas para procesar.' };
         }
 
-        // 4. DETECCION AUTOMÁTICA DEL SENTIDO DEL CSV (ASCENDENTE vs DESCENDENTE)
+        // 4. DETECCIÓN DEL SENTIDO DEL CSV (ASCENDENTE vs DESCENDENTE)
         const firstDate = rawTransactions[0].dateStr;
         const lastDate = rawTransactions[rawTransactions.length - 1].dateStr;
 
-        // Si la primera fila es posterior a la última, el CSV es DESCENDENTE (más reciente arriba)
-        // Invertimos la lista para procesar en estricto orden cronológico (de más antiguo a más reciente)
         if (firstDate > lastDate) {
             rawTransactions.reverse();
         } else if (firstDate === lastDate && rawTransactions.length > 1) {
-            // Si todas son del mismo día y hay saldo, verificamos la tendencia de balance
             const bFirst = rawTransactions[0].bank_balance;
             const bLast = rawTransactions[rawTransactions.length - 1].bank_balance;
             if (bFirst !== null && bLast !== null) {
-                // Si el saldo de la primera fila incluye los movimientos posteriores, invertimos
                 if (Math.abs(bFirst - rawTransactions[0].amount - bLast) < 0.05) {
                     rawTransactions.reverse();
                 }
             }
         }
 
-        // 5. RECUPERAMOS HASHES DE TRANSACCIONES EXISTENTES EN BBDD
+        // 5. RECUPERAMOS HASHES EXISTENTES EN BBDD PARA PREVENIR DUPLICADOS
         const { data: existingDbTxs } = await supabase
             .from('finance_transactions')
             .select('date, amount, bank_balance')
@@ -201,7 +197,7 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             existingHashes.add(h);
         });
 
-        // 6. OBTENER ÚLTIMO SALDO REGISTRADO PARA ESTA CUENTA (Por si faltan saldos en tarjetas)
+        // 6. OBTENER ÚLTIMO SALDO REGISTRADO DE LA CUENTA
         const { data: lastTx } = await supabase
             .from('finance_transactions')
             .select('bank_balance')
@@ -215,7 +211,7 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
 
         let runningBalance = lastTx?.bank_balance ? Number(lastTx.bank_balance) : 0;
 
-        // 7. ASIGNACIÓN CRONOLÓGICA DE SEQUENCES Y SALDOS ACUMULADOS
+        // 7. PREPARACIÓN Y CÁLCULO DE SALDOS Y SECUENCIAS
         const rowsToInsert: any[] = [];
         let skippedCount = 0;
 
@@ -243,7 +239,7 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
                     concept: t.concept,
                     amount: t.amount,
                     bank_balance: rowBalance,
-                    import_sequence: rowsToInsert.length + 1 // Garantiza el orden cronológico estricto
+                    import_sequence: rowsToInsert.length + 1
                 });
             }
         });
@@ -258,7 +254,7 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             };
         }
 
-        // 8. INSERCIÓN EN BBDD Y ACTUALIZACIÓN DEL LOG DE AUDITORÍA
+        // 8. INSERCIÓN MASIVA EN BBDD
         const { error: insertError } = await supabase
             .from('finance_transactions')
             .insert(rowsToInsert);
@@ -268,6 +264,7 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             return { success: false, error: `Error al insertar movimientos: ${insertError.message}` };
         }
 
+        // 9. ACTUALIZACIÓN DEL LOG DE AUDITORÍA
         await supabase
             .from('finance_importers')
             .update({ 
