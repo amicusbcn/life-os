@@ -43,7 +43,7 @@ export interface ImportEngineResult {
     bannerTitle: string;
     bannerMessage: string;
     
-    // 💡 METRICAS DE TRANSPARENCIA
+    // METRICAS DE TRANSPARENCIA
     totalCsvRows: number;
     dupesCount: number;                  // Filas ignoradas por Hash exacto en BBDD
     unmatchedInBetweenCount: number;     // Filas de en medio que no existen en BBDD
@@ -72,6 +72,26 @@ function parseSpanishFloat(str: string): number {
     if (n.includes('.') && !n.includes(',')) return parseFloat(n) || 0;
     const clean = n.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
     return parseFloat(clean) || 0;
+}
+
+/**
+ * Ordena filas cronológicamente (de más antigua a más reciente).
+ * Si coinciden las fechas en un CSV descendente (más reciente arriba),
+ * la fila con mayor rawIndex es la operación MÁS ANTIGUA del día.
+ */
+function sortChronologically(rows: ParsedTxRow[], isDescending: boolean): ParsedTxRow[] {
+    return [...rows].sort((a, b) => {
+        const timeA = parseToDate(a.displayDate)?.getTime() || 0;
+        const timeB = parseToDate(b.displayDate)?.getTime() || 0;
+
+        if (timeA !== timeB) {
+            return timeA - timeB; // Fecha ascendente
+        }
+
+        // Si la fecha es idéntica:
+        // En un CSV descendente, mayor rawIndex = operación más antigua del día
+        return isDescending ? b.rawIndex - a.rawIndex : a.rawIndex - b.rawIndex;
+    });
 }
 
 export function analyzeCsvImport(
@@ -137,6 +157,11 @@ export function analyzeCsvImport(
         };
     }
 
+    // Detección del sentido del archivo CSV (descendente vs ascendente)
+    const isDescending = totalCsvRows > 1 
+        ? allParsedRows[0].dateStr > allParsedRows[totalCsvRows - 1].dateStr
+        : settings.fileOrder === 'newest_first';
+
     // -----------------------------------------------------------------
     // FASE 1: DESCARTE POR HASH EXACTO (DUPLICADOS CONOCIDOS)
     // -----------------------------------------------------------------
@@ -159,14 +184,15 @@ export function analyzeCsvImport(
 
     // ESCENARIO A: App totalmente vacía
     if (!dateAppNewest || !dateAppOldest) {
+        const sortedChrono = sortChronologically(rowsWithoutHashDupes, isDescending);
         return {
             scenario: 'EMPTY_APP',
             realMode: 'new',
-            rowsToInsert: rowsWithoutHashDupes,
+            rowsToInsert: sortedChrono,
             isBlocked: false,
             bannerType: 'info',
             bannerTitle: 'Primera Importación de la Cuenta',
-            bannerMessage: `Se van a importar ${rowsWithoutHashDupes.length} movimientos. Este extracto establecerá los cimientos y el saldo actual de la cuenta.`,
+            bannerMessage: `Se van a importar ${sortedChrono.length} movimientos. Este extracto establecerá los cimientos y el saldo actual de la cuenta.`,
             totalCsvRows,
             dupesCount,
             unmatchedInBetweenCount: 0
@@ -187,14 +213,13 @@ export function analyzeCsvImport(
         } else if (d < dateAppOldest) {
             pastRows.push(r);
         } else {
-            // Caer en medio y NO estar en BBDD = Movimiento huérfano omitido
             unmatchedInBetweenRows.push(r);
         }
     });
 
     const unmatchedInBetweenCount = unmatchedInBetweenRows.length;
 
-    // ESCENARIO B1: Extracto de en medio o sin novedosas
+    // ESCENARIO B1: Extracto de en medio o sin novedades
     if (futureRows.length === 0 && pastRows.length === 0) {
         let msg = 'Todos los movimientos de este archivo ya existen en tu aplicación o caen dentro del periodo procesado.';
         if (unmatchedInBetweenCount > 0) {
@@ -221,11 +246,11 @@ export function analyzeCsvImport(
 
     // ESCENARIO B3: Solo Futuro
     if (futureRows.length > 0 && pastRows.length === 0) {
-        const sortedFuture = [...futureRows].sort((a, b) => parseToDate(a.displayDate)!.getTime() - parseToDate(b.displayDate)!.getTime());
+        const sortedFuture = sortChronologically(futureRows, isDescending);
         const firstNewTx = sortedFuture[0];
 
         if (firstNewTx && firstNewTx.bank_balance !== null) {
-            const aperturaCsv = (Math.round(firstNewTx.bank_balance * 100) - Math.round(firstNewTx.amount * 100)) / 100;
+            const aperturaCsv = Math.round((firstNewTx.bank_balance * 100) - (firstNewTx.amount * 100)) / 100;
             const appBalance = appBounds.appCurrentBalance;
 
             if (aperturaCsv !== appBalance) {
@@ -248,7 +273,6 @@ export function analyzeCsvImport(
 
         let msg = `El extracto engancha perfectamente con el saldo actual (${appBounds.appCurrentBalance.toFixed(2)} €). Se importarán ${sortedFuture.length} movimientos nuevos.`;
         if (dupesCount > 0) msg += ` (Se omitieron ${dupesCount} duplicados exactos).`;
-        if (unmatchedInBetweenCount > 0) msg += ` ⚠️ Nota: Se detectaron algunas incoherencias en fechas intermedias (revisa la Conciliación).`;
 
         return {
             scenario: 'NEW',
@@ -266,8 +290,8 @@ export function analyzeCsvImport(
 
     // ESCENARIO B4: Solo Pasado
     if (pastRows.length > 0 && futureRows.length === 0) {
-        const sortedPastDesc = [...pastRows].sort((a, b) => parseToDate(b.displayDate)!.getTime() - parseToDate(a.displayDate)!.getTime());
-        const lastPastTx = sortedPastDesc[0];
+        const sortedPastChrono = sortChronologically(pastRows, isDescending);
+        const lastPastTx = sortedPastChrono[sortedPastChrono.length - 1]; // Última transacción del pasado
 
         if (lastPastTx && lastPastTx.bank_balance !== null) {
             const cierreCsvPast = lastPastTx.bank_balance;
@@ -277,7 +301,7 @@ export function analyzeCsvImport(
                 return {
                     scenario: 'GAP_DETECTED',
                     realMode: 'historic',
-                    rowsToInsert: sortedPastDesc,
+                    rowsToInsert: sortedPastChrono,
                     isBlocked: true,
                     bannerType: 'error',
                     bannerTitle: 'Bloqueo de Seguridad: Hueco en el Histórico',
@@ -291,13 +315,13 @@ export function analyzeCsvImport(
             }
         }
 
-        let msg = `El pasado encaja exactamente con los cimientos de tu app (${appBounds.appInitialBalance.toFixed(2)} €). Se añadirán ${sortedPastDesc.length} movimientos históricos.`;
+        let msg = `El pasado encaja exactamente con los cimientos de tu app (${appBounds.appInitialBalance.toFixed(2)} €). Se añadirán ${sortedPastChrono.length} movimientos históricos.`;
         if (dupesCount > 0) msg += ` (Se omitieron ${dupesCount} duplicados exactos).`;
 
         return {
             scenario: 'HISTORIC',
             realMode: 'historic',
-            rowsToInsert: sortedPastDesc,
+            rowsToInsert: sortedPastChrono,
             isBlocked: false,
             bannerType: 'success',
             bannerTitle: 'Continuidad Histórica Confirmada',
@@ -309,7 +333,7 @@ export function analyzeCsvImport(
     }
 
     // ESCENARIO B2: Sándwich
-    const validSandwichRows = [...futureRows, ...pastRows];
+    const validSandwichRows = sortChronologically([...futureRows, ...pastRows], isDescending);
     return {
         scenario: 'SANDWICH',
         realMode: 'sandwich',
