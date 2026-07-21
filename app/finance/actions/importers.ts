@@ -139,10 +139,11 @@ export async function importCsvTransactionsAction(formData: FormData, config: an
             const rawDate = columns[dateIdx];
             if (!rawDate) continue;
 
-            // ✅ FILTRO DE CABECERA SEGURO: Validar formato de fecha estricto (DD/MM/YYYY)
-            // Ignora la fila de títulos ("Fecha") sin descartar transacciones que incluyan 'Fecha de operación' en las notas
-            const cleanDateStr = rawDate.replace(/[^\d/]/g, '').trim();
-            const parts = cleanDateStr.split('/');
+            // Soporta fechas con guiones (-) o barras (/)
+            const cleanDateStr = rawDate.replace(/[^\d/-]/g, '').trim();
+            const dateDelimiter = cleanDateStr.includes('-') ? '-' : '/';
+            const parts = cleanDateStr.split(dateDelimiter);
+
             if (parts.length !== 3 || parts[2].length < 2) continue;
 
             const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];

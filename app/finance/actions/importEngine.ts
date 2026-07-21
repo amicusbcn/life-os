@@ -1,4 +1,4 @@
-// app/finance/actions/importEngine.ts
+// app/finance/lib/importEngine.ts
 
 export interface AppBounds {
     appNewestDate: string | null;
@@ -27,12 +27,12 @@ export interface ParsedTxRow {
 }
 
 export type ImportScenario = 
-    | 'EMPTY_APP'          // A: App vacía
-    | 'ALL_DUPLICATED'     // B1: Duplicado entero
-    | 'NEW'                // B3: Movimientos nuevos / futuros
-    | 'HISTORIC'           // B4: Movimientos históricos
-    | 'SANDWICH'           // B2: Pasado y futuro combinados
-    | 'GAP_DETECTED';      // Descuadre en semáforo de saldos
+    | 'EMPTY_APP'          
+    | 'ALL_DUPLICATED'     
+    | 'NEW'                
+    | 'HISTORIC'           
+    | 'SANDWICH'           
+    | 'GAP_DETECTED';      
 
 export interface ImportEngineResult {
     scenario: ImportScenario;
@@ -53,14 +53,11 @@ export interface ImportEngineResult {
 
 function parseToDate(dStr: string | null): Date | null {
     if (!dStr || dStr === 'Sin movimientos') return null;
-    const cleanStr = dStr.replace(/[^\d/]/g, '').trim();
-    const parts = cleanStr.split('/');
+    const cleanStr = dStr.replace(/[^\d/-]/g, '').trim();
+    const delimiter = cleanStr.includes('-') ? '-' : '/';
+    const parts = cleanStr.split(delimiter);
     if (parts.length === 3) {
         return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
-    }
-    const isoParts = cleanStr.split('-');
-    if (isoParts.length === 3) {
-        return new Date(parseInt(isoParts[0], 10), parseInt(isoParts[1], 10) - 1, parseInt(isoParts[2], 10));
     }
     return null;
 }
@@ -73,21 +70,15 @@ function parseSpanishFloat(str: string): number {
     return parseFloat(clean) || 0;
 }
 
-/**
- * Ordena filas cronológicamente de forma estricta (de más antigua a más reciente).
- * Si coinciden las fechas en un CSV descendente (más reciente arriba),
- * la fila con mayor rawIndex es la operación MÁS ANTIGUA del día.
- */
 function sortChronologically(rows: ParsedTxRow[], isDescending: boolean): ParsedTxRow[] {
     return [...rows].sort((a, b) => {
         const timeA = parseToDate(a.displayDate)?.getTime() || 0;
         const timeB = parseToDate(b.displayDate)?.getTime() || 0;
 
         if (timeA !== timeB) {
-            return timeA - timeB; // Ascendente por fecha
+            return timeA - timeB; 
         }
 
-        // Si la fecha es idéntica en CSV descendente, mayor rawIndex = más antiguo
         return isDescending ? b.rawIndex - a.rawIndex : a.rawIndex - b.rawIndex;
     });
 }
@@ -101,7 +92,7 @@ export function analyzeCsvImport(
     const { dateIdx, conceptIdx, amountIdx, balanceIdx, invertAmount } = settings;
 
     // -----------------------------------------------------------------
-    // FASE 0: PARSEO DE TODAS LAS FILAS BRUTAS DEL CSV
+    // FASE 0: PARSEO UNIVERSAL (Soporta - y /)
     // -----------------------------------------------------------------
     const allParsedRows: ParsedTxRow[] = [];
 
@@ -109,11 +100,14 @@ export function analyzeCsvImport(
         const rawDate = cols[dateIdx];
         if (!rawDate) return;
 
-        const cleanDateStr = rawDate.replace(/[^\d/]/g, '').trim();
-        const parts = cleanDateStr.split('/');
-        if (parts.length !== 3) return;
+        // Soporta separadores de fecha con - o con /
+        const cleanDateStr = rawDate.replace(/[^\d/-]/g, '').trim();
+        const dateDelimiter = cleanDateStr.includes('-') ? '-' : '/';
+        const parts = cleanDateStr.split(dateDelimiter);
 
-        const year = parts[2];
+        if (parts.length !== 3 || parts[2].length < 2) return;
+
+        const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
         const month = parts[1].padStart(2, '0');
         const day = parts[0].padStart(2, '0');
         const dbDateStr = `${year}-${month}-${day}`;
@@ -155,14 +149,10 @@ export function analyzeCsvImport(
         };
     }
 
-    // Detección automática de la orientación del CSV (descendente vs ascendente)
     const isDescending = totalCsvRows > 1 
         ? allParsedRows[0].dateStr > allParsedRows[totalCsvRows - 1].dateStr
         : settings.fileOrder === 'newest_first';
 
-    // -----------------------------------------------------------------
-    // FASE 1: DESCARTE POR HASH EXACTO (DUPLICADOS CONOCIDOS)
-    // -----------------------------------------------------------------
     let dupesCount = 0;
     const rowsWithoutHashDupes: ParsedTxRow[] = [];
 
@@ -174,7 +164,6 @@ export function analyzeCsvImport(
         }
     });
 
-    // Si todas las filas existen en BBDD
     if (rowsWithoutHashDupes.length === 0) {
         return {
             scenario: 'ALL_DUPLICATED',
@@ -190,15 +179,9 @@ export function analyzeCsvImport(
         };
     }
 
-    // Ordenamos cronológicamente todas las filas válidas no duplicadas
     const sortedAllToInsert = sortChronologically(rowsWithoutHashDupes, isDescending);
-
-    // -----------------------------------------------------------------
-    // FASE 2: CLASIFICACIÓN Y CONTINUIDAD DE SALDOS
-    // -----------------------------------------------------------------
     const dateAppNewest = parseToDate(appBounds.appNewestDate);
 
-    // ESCENARIO A: App vacía
     if (!dateAppNewest) {
         return {
             scenario: 'EMPTY_APP',
@@ -214,14 +197,12 @@ export function analyzeCsvImport(
         };
     }
 
-    // Verificación de Saldo con la primera transacción cronológica del nuevo lote
     const firstChronologicalTx = sortedAllToInsert[0];
 
     if (firstChronologicalTx && firstChronologicalTx.bank_balance !== null) {
         const aperturaCsv = Math.round((firstChronologicalTx.bank_balance * 100) - (firstChronologicalTx.amount * 100)) / 100;
         const appBalance = appBounds.appCurrentBalance;
 
-        // Si la cuenta ya tenía datos y el saldo no encaja
         if (appBounds.appCurrentBalance !== 0 && aperturaCsv !== appBalance) {
             return {
                 scenario: 'GAP_DETECTED',
